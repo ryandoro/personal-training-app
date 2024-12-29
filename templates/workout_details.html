@@ -1,0 +1,39 @@
+{% extends "layout.html" %}
+
+{% block title %}
+    {{ category }} Workout Details
+{% endblock %}
+
+{% block content %}
+    <div class="container mt-4">
+        <h2 class="text-center text-primary">{{ category }}</h2>
+        <h5 class="text-center text-secondary">Workout Details</h5>
+
+        {% if workouts %}
+            <div class="card mt-4 shadow-sm">
+                <div class="card-body">
+                    {% for subcategory, exercises in workouts.items() %}
+                        <h5 class="text-primary">{{ subcategory }}</h5>
+                        <ul class="list-group mb-3">
+                            {% for exercise in exercises %}
+                                <li class="list-group-item">
+                                    <strong>{{ exercise["name"] }}</strong>: {{ exercise["description"] }}
+                                </li>
+                            {% endfor %}
+                        </ul>
+                    {% endfor %}
+                </div>
+            </div>
+        {% else %}
+            <p class="text-center text-muted mt-4">No workout details available for this category.</p>
+        {% endif %}
+
+        <div class="text-center mt-4">
+            <a href="/" class="btn btn-secondary">Back to Home</a>
+        </div>
+    </div>
+{% endblock %}
+
+
+
+

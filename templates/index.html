@@ -1,0 +1,37 @@
+{% extends "layout.html" %}
+
+{% block title %}
+    Home
+{% endblock %}
+
+{% block content %}
+    <div class="welcome-message">
+        <h2>Welcome back, {{ name }}!</h2>
+        <p>
+            Here, you can track your workouts, generate customized routines, and see your progress as you achieve your fitness goals. Let’s keep pushing forward together!
+        </p>
+
+        <hr>
+        <strong>Your Stats:</strong>
+        <ul>
+            <li><strong>Workouts Completed:</strong>  {{ workouts_completed }}</li>
+            <li>
+                <strong>Last Workout Completed:</strong> 
+                {% if last_workout_completed != "No workouts completed yet" %}
+                    <a href="{{ url_for('workout_details', category=last_workout_completed) }}">
+                        {{ last_workout_completed }}
+                    </a>
+                {% else %}
+                    {{ last_workout_completed }}
+                {% endif %}
+            </li>
+            <li><strong>Current Goal:</strong> {{ fitness_goals }}</li>
+        </ul>
+        <hr>
+
+        <p>
+            Ready for your next workout? Head over to the training page and get started with your personalized plan.
+        </p>
+        <a href="/training" class="btn btn-primary mt-3">Go to Training</a>
+    </div>
+{% endblock %}

@@ -1,0 +1,87 @@
+/* Apply basic reset for margin and padding */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+/* Make the HTML and body take up the full height */
+html, body {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Set up the main layout container */
+.container {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center; /* Center horizontally */
+    text-align: center; /* Center-align text inside */
+    padding: 20px; /* Add optional padding */
+}
+
+/* Make the main content area take up remaining space */
+.content {
+    flex-grow: 1; /* Pushes footer to the bottom when content is short */
+}
+
+/* Footer styles */
+footer {
+    background-color: #f8f9fa;
+    text-align: center;
+    padding: 10px 0; /* Adjust padding for desired spacing */
+    border-top: 1px solid #ddd;
+    margin-top: auto; /* Pushes footer to the bottom */
+}
+
+.welcome-message {
+    background-color: #f9f9f9; /* Light gray background */
+    border: 1px solid #ddd; /* Light border */
+    border-radius: 5px; /* Rounded corners */
+    padding: 20px; /* Spacing inside */
+    margin-bottom: 20px; /* Space below the message */
+    font-size: 1.1em; /* Slightly larger text for readability */
+    line-height: 1.6; /* Improve spacing between lines */
+}
+
+.welcome-message h3 {
+    font-family: 'Georgia', serif; /* Give the header a unique style */
+    font-size: 1.5em; /* Make it stand out */
+    margin-bottom: 10px; /* Space below the header */
+    color: #333; /* Darker color for emphasis */
+}
+
+.welcome-message p {
+    margin-bottom: 15px; /* Space below paragraphs */
+}
+
+.welcome-message ul {
+    list-style-type: disc; /* Standard bullet points */
+    padding-left: 20px; /* Indent the list */
+    margin-bottom: 20px; /* Space below the list */
+}
+
+.welcome-message ul li {
+    margin-bottom: 10px; /* Add space between list items */
+    font-size: 1.1em; /* Slightly larger text */
+}
+
+.card {
+    border: none;
+    border-radius: 8px;
+    background-color: #f9f9f9;
+}
+
+.card-title {
+    color: #007bff;
+    font-weight: bold;
+}
+
+.list-group-item {
+    background-color: transparent;
+    font-size: 1rem;
+}

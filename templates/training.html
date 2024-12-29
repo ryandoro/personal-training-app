@@ -1,0 +1,385 @@
+{% extends "layout.html" %}
+
+{% block title %}
+    Personal Training
+{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    {% if not form_completed %}      
+        <div class="welcome-message">
+            <h3>Welcome to your personalized training journey!</h3>
+            <p>
+                Hey, it’s me Ryan! Thank you so much for allowing me to guide you through this incredible journey called fitness. There is no set of rules that is going to be able to help everybody reach their individual fitness goals due to genes, injuries, dis-eases, etc... So, what I’ve done is I have laid out for you here a simple road map that will get you to where you want to be, regardless of your body type or level of fitness.
+            </p>
+            <p>
+                <strong>These are fundamental exercises that will make your body perform better, look better, and feel better.</strong> The best feeling in the world is having a “good-feeling” body because if your body is not happy then <strong>YOU</strong> are not happy. Your body is the only vehicle you have to ride in throughout your life so you have to make sure you perform the necessary maintenance required at the gym in order to live long and prosperous.
+            </p>
+            <p>
+                Don’t forget to <strong>stay hydrated</strong>, my friends, and if you ever have any questions please reach out to me directly. Follow these guidelines and keep up with your nutrition, and I am <strong>1000% certain</strong> you will see the best of results. All you have to do is show up to the gym, the rest is laid out for you here.
+            </p>
+            <p>
+                <strong>Stay committed</strong> to feeling the best you’ve ever felt, and <strong>have fun with it!</strong> I wish you the ultimate success in your fitness journey. I’ll be here if you need me. :)
+            </p>
+
+            <hr>
+            <strong>Here's how it works:</strong>
+            <ul>
+                <li>Fill out the form below to help me understand your fitness goals, preferences, and current status.</li>
+                <li>Based on your input, the app will generate customized workout plans tailored to your needs.</li>
+                <li>Check your progress on the home page as you achieve your goals!</li>
+            </ul>
+        </div>
+  
+        <h2 class="text-center mb-4">Personal Training Questionnaire</h2>
+        <form action="/training" method="post" class="needs-validation" novalidate>
+            <!-- Name -->
+            <div class="mb-3">
+                <label for="name" class="form-label fw-bold">Name</label>
+                <input type="text" class="form-control" id="name" name="name" placeholder="Enter your name" required>
+            </div>
+
+            <!-- Age -->
+            <div class="mb-3">
+                <label for="age" class="form-label fw-bold">Age (Years)</label>
+                <input type="number" class="form-control" id="age" name="age" placeholder="Enter your age" required>
+            </div>
+
+            <!-- Weight -->
+            <div class="mb-3">
+                <label for="weight" class="form-label fw-bold">Weight (Pounds)</label>
+                <input type="number" class="form-control" id="weight" name="weight" placeholder="Enter your weight in pounds" required>
+            </div>
+
+            <!-- Height -->
+            <div class="mb-3 row">
+                <label class="form-label fw-bold">Height</label>
+                <div class="col">
+                    <input type="number" class="form-control" id="height-feet" name="height_feet" placeholder="Feet" min="0" required>
+                </div>
+                <div class="col">
+                    <input type="number" class="form-control" id="height-inches" name="height_inches" placeholder="Inches" min="0" max="11" required>
+                </div>
+            </div>
+
+            <!-- Gender -->
+            <div class="mb-3">
+                <label class="form-label fw-bold d-block">Gender</label>
+                <div class="form-check form-check-inline">
+                    <input type="radio" class="form-check-input" id="male" name="gender" value="Male" required>
+                    <label class="form-check-label" for="male">Male</label>
+                </div>
+                <div class="form-check form-check-inline">
+                    <input type="radio" class="form-check-input" id="female" name="gender" value="Female" required>
+                    <label class="form-check-label" for="female">Female</label>
+                </div>
+            </div>
+
+            <!-- Exercise History -->
+            <div class="mb-3">
+                <label for="exercise-history" class="form-label fw-bold">Exercise History</label>
+                <select class="form-select" id="exercise-history" name="exercise_history" required>
+                    <option value="" disabled selected>Select an option</option>
+                    <option value="No Exercise History">No Exercise History</option>
+                    <option value="Exercise less than 1 year">Exercise less than 1 year</option>
+                    <option value="Exercise 1-5 years">Exercise 1-5 years</option>
+                    <option value="Exercise 5+ years">Exercise 5+ years</option>
+                </select>
+            </div>
+
+            <!-- Fitness Goals -->
+            <div class="mb-3">
+                <label class="form-label fw-bold d-block">Fitness Goals (Select one)</label>
+                <div class="form-check">
+                    <input type="radio" class="form-check-input" id="lose-weight" name="fitness_goals" value="Lose Weight">
+                    <label class="form-check-label" for="lose-weight">Lose Weight</label>
+                </div>
+                <div class="form-check">
+                    <input type="radio" class="form-check-input" id="gain-muscle" name="fitness_goals" value="Gain Muscle">
+                    <label class="form-check-label" for="gain-muscle">Gain Muscle</label>
+                </div>
+                <div class="form-check">
+                    <input type="radio" class="form-check-input" id="tone-muscle" name="fitness_goals" value="Tone Muscle">
+                    <label class="form-check-label" for="tone-muscle">Tone Muscle</label>
+                </div>
+                <div class="form-check">
+                    <input type="radio" class="form-check-input" id="abs" name="fitness_goals" value="Abs">
+                    <label class="form-check-label" for="abs">Abs</label>
+                </div>
+                <div class="form-check">
+                    <input type="radio" class="form-check-input" id="strength" name="fitness_goals" value="Increase Strength">
+                    <label class="form-check-label" for="strength">Increase Strength</label>
+                </div>
+                <div class="form-check">
+                    <input type="radio" class="form-check-input" id="endurance" name="fitness_goals" value="Increase Endurance">
+                    <label class="form-check-label" for="endurance">Increase Endurance</label>
+                </div>
+                <div class="form-check">
+                    <input type="radio" class="form-check-input" id="feel-better" name="fitness_goals" value="Feel Better">
+                    <label class="form-check-label" for="feel-better">Feel Better</label>
+                </div>
+            </div>
+
+            <!-- Injury or Illness -->
+            <div class="mb-3">
+                <label class="form-label fw-bold d-block">Do you have, or have you had any recent injuries or illnesses?</label>
+                <div class="form-check form-check-inline">
+                    <input type="radio" class="form-check-input" id="injury-yes" name="injury" value="Yes" required>
+                    <label class="form-check-label" for="injury-yes">Yes</label>
+                </div>
+                <div class="form-check form-check-inline">
+                    <input type="radio" class="form-check-input" id="injury-no" name="injury" value="No" required>
+                    <label class="form-check-label" for="injury-no">No</label>
+                </div>
+            </div>
+
+            <!-- Injury/Illness Details -->
+            <div class="mb-3">
+                <label for="injury-details" class="form-label fw-bold">If yes, please describe your injury/illness:</label>
+                <textarea class="form-control" id="injury-details" name="injury_details" rows="3"></textarea>
+            </div>
+
+            <!-- Commitment -->
+            <div class="mb-3">
+                <label for="commitment" class="form-label fw-bold">How many days per week are you willing to commit to your goals?</label>
+                <select class="form-select" id="commitment" name="commitment" required>
+                    <option value="" disabled selected>Select an option</option>
+                    <option value="1 day per week">1 day per week</option>
+                    <option value="2 days per week">2 days per week</option>
+                    <option value="3 days per week">3 days per week</option>
+                </select>
+            </div>
+
+            <!-- Additional Notes -->
+            <div class="mb-3">
+                <label for="additional-notes" class="form-label fw-bold">Anything else you'd like to share?</label>
+                <textarea class="form-control" id="additional-notes" name="additional_notes" rows="3"></textarea>
+            </div>
+
+            <!-- Submit Button -->
+            <button type="submit" class="btn btn-primary w-100">Submit</button>
+        </form>
+    {% else %}
+        <!-- Guidelines Box -->
+        {% if guidelines %}
+        <div class="card mb-4 shadow-sm">
+            <div class="card-body">
+                <h4 class="card-title text-center mb-3">Guidelines</h4>
+                <p>Based on your current goal - <strong>{{ fitness_goals }}</strong> - I recommend the following for each exercise:</p>
+                <ul class="list-group">
+                    <li class="list-group-item"><strong>Sets:</strong> {{ guidelines.Sets }}</li>
+                    <li class="list-group-item"><strong>Repetitions:</strong> {{ guidelines.Reps }}</li>
+                    <li class="list-group-item"><strong>Rest Between Sets:</strong> {{ guidelines.Rest }}</li>
+                </ul>
+                <ul class="list-group">
+                    <li class="list-group-item"><strong>Resistance Training:</strong> Minimum 2 days per week</li>
+                    <li class="list-group-item"><strong>Cardio Training:</strong> Minimum 3 days per week, 10 minutes per exercise</li>
+                </ul>
+            </div>
+        </div>
+        {% endif %}
+        <hr>
+        <!-- Show workout options after the form is submitted -->
+        <div class="mb-4">
+            <h3 class="text-center mb-3 fw-bold">Choose Your Workout</h3>
+            <div class="row justify-content-center">
+                <div class="mb-3">
+                    <label for="workout-category-select" class="form-label fw-bold text-primary">Workout Categories</label>
+                    <select id="workout-category-select" class="form-select shadow-sm border-primary">
+                        <option value="">-- Select a Workout Category --</option>
+                        {% for category, workouts in grouped_workouts.items() %}
+                            <option value="{{ category }}">{{ category }}</option>
+                        {% endfor %}
+                    </select>
+                </div>                
+            </div>
+        </div> 
+        <hr> 
+
+        <div id="workout-details" class="mt-4">
+            {% for category, workouts in grouped_workouts.items() %}
+            <div id="{{ category|replace(' ', '-')|lower }}-workouts" class="d-none">
+                <div class="card shadow-sm mb-4">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="m-0">{{ category }}</h5>
+                    </div>
+                    <div class="card-body">
+                        <ul class="list-group">
+                            {% for workout in workouts %}
+                                <li class="list-group-item d-flex justify-content-between align-items-start">
+                                    <div class="ms-2 me-auto">
+                                        <div class="fw-bold">{{ workout[0] }}</div>
+                                        <p class="small text-muted">{{ workout[1] }}</p>
+                                    </div>
+                                </li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        
+        <div class="text-center mt-4">
+            <button id="complete-workout-btn" class="btn btn-success btn-lg" style="display: none;">
+                Complete Workout
+            </button>
+        </div>
+        <hr>
+
+        <script>
+            const categorySelect = document.getElementById('workout-category-select');
+            const workoutDetails = document.getElementById('workout-details');
+            const completeWorkoutBtn = document.getElementById('complete-workout-btn');
+        
+            // Initially hide the "Complete Workout" button
+            completeWorkoutBtn.style.display = 'none';
+        
+            categorySelect.addEventListener('change', async () => {
+                const selectedCategory = categorySelect.value;
+        
+                // Hide all workout details
+                document.querySelectorAll('#workout-details > div').forEach(div => div.classList.add('d-none'));
+        
+                if (selectedCategory) {
+                    try {
+                        // Fetch generated workout
+                        const response = await fetch(`/generate_workout?category=${encodeURIComponent(selectedCategory)}`);
+                        const data = await response.json();
+        
+                        if (data.success) {
+                            // Update the DOM with generated workouts
+                            const categoryDiv = document.getElementById(
+                                `${selectedCategory.replaceAll(' ', '-').toLowerCase()}-workouts`
+                            );
+                            categoryDiv.innerHTML = `
+                                <div class="card shadow-sm mb-4">
+                                    <div class="card-header bg-primary text-white">
+                                        <h5 class="m-0">${selectedCategory}</h5>
+                                    </div>
+                                    <div class="card-body">
+                                        <ul class="list-group">
+                                            ${data.workout
+                                                .map(
+                                                    subcategory => `
+                                                    <li class="list-group-item">
+                                                        <strong>${subcategory.subcategory}</strong>
+                                                        <ul class="list-unstyled mt-2">
+                                                            ${subcategory.exercises
+                                                                .map(
+                                                                    exercise => `<li class="mb-2"><strong>${exercise.name}</strong>: ${exercise.description}</li>`
+                                                                )
+                                                                .join('')}
+                                                        </ul>
+                                                    </li>
+                                                `
+                                                )
+                                                .join('')}
+                                        </ul>
+                                    </div>
+                                </div>
+                            `;
+                            categoryDiv.classList.remove('d-none');
+        
+                            // Show the "Complete Workout" button
+                            completeWorkoutBtn.style.display = 'block';
+        
+                            // Attach the selected category to the button's dataset for later use
+                            completeWorkoutBtn.dataset.category = selectedCategory;
+                        } else {
+                            alert('Could not generate workout. Please try again.');
+                            completeWorkoutBtn.style.display = 'none'; // Hide the button if no workout is generated
+                        }
+                    } catch (err) {
+                        console.error('Error fetching workout:', err);
+                        completeWorkoutBtn.style.display = 'none'; // Hide the button on error
+                    }
+                } else {
+                    completeWorkoutBtn.style.display = 'none'; // Hide the button if no category is selected
+                }
+            });
+        
+            // Handle the "Complete Workout" button click
+            completeWorkoutBtn.addEventListener('click', async () => {
+                try {
+                    // Get the selected category from the dropdown
+                    const selectedCategory = document.getElementById('workout-category-select').value;
+
+                    if (!selectedCategory) {
+                        alert('Please select a workout category before completing the workout.');
+                        return;
+                    }
+
+                    // Send the category in the request body
+                    const response = await fetch('/complete_workout', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json', // Set content type to JSON
+                        },
+                        body: JSON.stringify({ category: selectedCategory }) // Include the selected category
+                    });
+
+                    const data = await response.json();
+
+                    if (data.success) {
+                        alert('Workout marked as complete!');
+                    } else {
+                        alert(data.error || 'An error occurred. Please try again.');
+                    }
+                } catch (err) {
+                    console.error('Error completing workout:', err);
+                    alert('An error occurred. Please try again.');
+                }
+            });
+        </script>
+        
+        <!-- Target Heart Rate Zone -->
+        {% if target_heart_rate_zone %}
+        <div class="card mb-4 shadow-sm">
+            <div class="card-body">
+                <h4 class="card-title text-center mb-3">Your Target Heart Rate Zone</h4>
+                <p class="card-text">
+                    Based on your age, the recommended heart rate ranges for your optimal cardiovascular activity are:
+                </p>
+                <ul class="list-group">
+                    <li class="list-group-item">
+                        <strong>Target Heart Rate Zone:</strong> {{ target_heart_rate_zone.lower_bound }} - {{ target_heart_rate_zone.upper_bound }} bpm
+                    </li>
+                    <li class="list-group-item">
+                        <strong>Maximum Heart Rate:</strong> {{ target_heart_rate_zone.max_heart_rate }} bpm
+                    </li>
+                </ul>
+                <p class="mt-3 text-muted">
+                    Try to keep your heart rate in the middle of your target heart rate zone. Track your heart rate during cardio exercises to stay within this range. Use gym equipment monitors
+                    or a smartwatch like a Fitbit, Garmin, or Apple Watch.
+                </p>
+            </div>
+        </div>
+        {% endif %} 
+        
+        <!-- Key Section -->
+        <div class="card mb-4 shadow-sm">
+            <div class="card-body">
+                <h4 class="card-title text-center mb-3">Key</h4>
+                <h5><strong>5 Point Rule:</strong></h5>
+                <ul class="list-group list-group mb-4">
+                    <li class="list-group-item">1. Left foot flat on the floor</li>
+                    <li class="list-group-item">2. Right foot flat on the floor</li>
+                    <li class="list-group-item">3. Butt on bench</li>
+                    <li class="list-group-item">4. Upper back on bench</li>
+                    <li class="list-group-item">5. Head on bench</li>
+                </ul>
+                <h5><strong>4 Point Rule:</strong></h5>
+                <ul class="list-group list-group">
+                    <li class="list-group-item">1. Left foot flat on the floor</li>
+                    <li class="list-group-item">2. Right foot flat on the floor</li>
+                    <li class="list-group-item">3. Butt on bench</li>
+                    <li class="list-group-item">4. Chest on pad</li>
+                </ul>
+            </div>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+
