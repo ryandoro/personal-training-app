@@ -160,25 +160,6 @@
             <button type="submit" class="btn btn-primary w-100">Submit</button>
         </form>
     {% else %}
-        <!-- Guidelines Box -->
-        {% if guidelines %}
-        <div class="card mb-4 shadow-sm">
-            <div class="card-body">
-                <h4 class="card-title text-center mb-3">Guidelines</h4>
-                <p>Based on your current goal - <strong>{{ fitness_goals }}</strong> - I recommend the following for each exercise:</p>
-                <ul class="list-group">
-                    <li class="list-group-item"><strong>Sets:</strong> {{ guidelines.Sets }}</li>
-                    <li class="list-group-item"><strong>Repetitions:</strong> {{ guidelines.Reps }}</li>
-                    <li class="list-group-item"><strong>Rest Between Sets:</strong> {{ guidelines.Rest }}</li>
-                </ul>
-                <ul class="list-group">
-                    <li class="list-group-item"><strong>Resistance Training:</strong> Minimum 2 days per week</li>
-                    <li class="list-group-item"><strong>Cardio Training:</strong> Minimum 3 days per week, 10 minutes per exercise</li>
-                </ul>
-            </div>
-        </div>
-        {% endif %}
-        <hr>
         <!-- Show workout options after the form is submitted -->
         <div class="mb-4">
             <h3 class="text-center mb-3 fw-bold">Choose Your Workout</h3>
@@ -333,6 +314,26 @@
             });
         </script>
         
+        <!-- Guidelines Box -->
+        {% if guidelines %}
+        <div class="card mb-4 shadow-sm">
+            <div class="card-body">
+                <h4 class="card-title text-center mb-3">Guidelines</h4>
+                <p>Based on your current goal - <strong>{{ fitness_goals }}</strong> - I recommend the following for each exercise:</p>
+                <ul class="list-group">
+                    <li class="list-group-item"><strong>Sets:</strong> {{ guidelines.Sets }}</li>
+                    <li class="list-group-item"><strong>Repetitions:</strong> {{ guidelines.Reps }}</li>
+                    <li class="list-group-item"><strong>Rest Between Sets:</strong> {{ guidelines.Rest }}</li>
+                </ul>
+                <ul class="list-group">
+                    <li class="list-group-item"><strong>Resistance Training:</strong> Minimum 2 days per week</li>
+                    <li class="list-group-item"><strong>Cardio Training:</strong> Minimum 3 days per week, 10 minutes per exercise</li>
+                </ul>
+            </div>
+        </div>
+        {% endif %}
+        <hr>
+
         <!-- Target Heart Rate Zone -->
         {% if target_heart_rate_zone %}
         <div class="card mb-4 shadow-sm">
@@ -356,6 +357,7 @@
             </div>
         </div>
         {% endif %} 
+        <hr>
         
         <!-- Key Section -->
         <div class="card mb-4 shadow-sm">
