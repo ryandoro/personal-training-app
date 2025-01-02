@@ -78,7 +78,7 @@ def generate_workout(selected_category, user_level):
     subcategories = workout_structure.get(user_level, {}).get(selected_category, {})
     workout_plan = {}
 
-    with sqlite3.connect('DATABASE_URL') as conn:
+    with sqlite3.connect('DATABASE_PATH') as conn:
         cursor = conn.cursor()
         for subcategory, num_exercises in subcategories.items():
             query = """
