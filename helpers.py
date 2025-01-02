@@ -1,6 +1,9 @@
 from functools import wraps
 from flask import session, redirect, url_for, flash
-import sqlite3
+import os, sqlite3
+
+DATABASE_PATH = os.getenv('DATABASE_URL', 'instance/health.db')
+
 
 def login_required(f):
     @wraps(f)
@@ -75,7 +78,7 @@ def generate_workout(selected_category, user_level):
     subcategories = workout_structure.get(user_level, {}).get(selected_category, {})
     workout_plan = {}
 
-    with sqlite3.connect('instance/health.db') as conn:
+    with sqlite3.connect('DATABASE_URL') as conn:
         cursor = conn.cursor()
         for subcategory, num_exercises in subcategories.items():
             query = """

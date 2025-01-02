@@ -10,6 +10,10 @@ logging.basicConfig(level=logging.INFO)
 app = Flask(__name__)
 app.secret_key = os.urandom(24) # Required for flash messages
 
+# Define database path based on environment
+DATABASE_PATH = os.getenv('DATABASE_URL', 'instance/health.db')
+
+
 
 @app.route('/')
 @login_required
@@ -19,7 +23,7 @@ def home():
     user_id = session['user_id']
 
     # Connect to the database to fetch the username
-    with sqlite3.connect('instance/health.db') as conn:
+    with sqlite3.connect('DATABASE_URL') as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT name, fitness_goals, workouts_completed, last_workout_completed FROM users WHERE id = ?", (user_id,))
         user = cursor.fetchone()
@@ -91,7 +95,7 @@ def register():
             return render_template('register.html')
 
         # Connect to the database
-        with sqlite3.connect('instance/health.db') as conn:
+        with sqlite3.connect('DATABASE_URL') as conn:
             cursor = conn.cursor()
 
             # Check if username already exists
@@ -133,7 +137,7 @@ def login():
             return render_template('login.html')
 
         # Connect to the database
-        with sqlite3.connect('instance/health.db') as conn:
+        with sqlite3.connect('DATABASE_URL') as conn:
             cursor = conn.cursor()
 
             # Query for the user
@@ -173,7 +177,7 @@ def training():
 
     try:
         # Check if the form has already been completed
-        with sqlite3.connect('instance/health.db') as conn:
+        with sqlite3.connect('DATABASE_URL') as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT form_completed, exercise_history, fitness_goals FROM users WHERE id = ?", (user_id,))
             result = cursor.fetchone()
@@ -210,7 +214,7 @@ def training():
 
         # Connect to the database and update user information
         try:
-            with sqlite3.connect('instance/health.db') as conn:
+            with sqlite3.connect('DATABASE_URL') as conn:
                 cursor = conn.cursor()
                 cursor.execute("""
                     UPDATE users
@@ -251,7 +255,7 @@ def training():
     guidelines = {}
 
     # Single connection block for fetching grouped workouts and user data
-    with sqlite3.connect('instance/health.db') as conn:
+    with sqlite3.connect('DATABASE_URL') as conn:
         cursor = conn.cursor()
         try:
             # Fetch grouped workouts
@@ -319,7 +323,7 @@ def generate_workout_route():
     user_id = session['user_id']
 
     # Fetch the user's level
-    with sqlite3.connect('instance/health.db') as conn:
+    with sqlite3.connect('DATABASE_URL') as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT exercise_history FROM users WHERE id = ?", (user_id,))
         exercise_history = cursor.fetchone()[0]
@@ -367,7 +371,7 @@ def complete_workout():
     workout_details = generated_workout['workout']  # Raw workout details
 
     # Store the workout details and increment the workout counter
-    with sqlite3.connect('instance/health.db') as conn:
+    with sqlite3.connect('DATABASE_URL') as conn:
         cursor = conn.cursor()
         cursor.execute("""
             UPDATE users
@@ -387,7 +391,7 @@ def complete_workout():
 def workout_details(category):
     user_id = session['user_id']
 
-    with sqlite3.connect('instance/health.db') as conn:
+    with sqlite3.connect('DATABASE_URL') as conn:
         cursor = conn.cursor()
 
         # Fetch the last workout details for the given category
