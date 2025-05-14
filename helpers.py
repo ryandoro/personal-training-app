@@ -4,8 +4,8 @@ import os, sqlite3 # psycopg2
 
 DATABASE_PATH = os.getenv('DATABASE_URL', 'instance/health.db')
 
-#def get_connection():
- #   return psycopg2.connect(os.getenv("DATABASE_URL"))
+def get_connection():
+    return psycopg2.connect(os.getenv("DATABASE_URL"))
 
 
 def login_required(f):
