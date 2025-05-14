@@ -1,7 +1,10 @@
 import os, sqlite3, logging, json
+# from dotenv import load_dotenv
 from flask import Flask, flash, redirect, render_template, request, session, jsonify
 from werkzeug.security import generate_password_hash, check_password_hash
-from helpers import login_required, calculate_target_heart_rate, generate_workout, get_guidelines
+from helpers import login_required, calculate_target_heart_rate, generate_workout, get_guidelines, get_connection
+
+# load_dotenv()
 
 # Utilized ChatGPT to help complete this web application 
 # Set up basic logging configuration
@@ -13,6 +16,22 @@ app.secret_key = os.urandom(24) # Required for flash messages
 # Define database path based on environment
 DATABASE_PATH = os.getenv('DATABASE_URL', 'instance/health.db')
 
+@app.route("/download_sqlite_dump")
+def download_sqlite_dump():
+    import subprocess
+
+    dump_file = "health_dump.sql"
+    db_path = "instance/health.db"
+
+    # Run the dump command
+    try:
+        subprocess.run(["sqlite3", db_path, f".dump"], stdout=open(dump_file, "w"))
+    except Exception as e:
+        return f"Error generating dump: {e}"
+
+    # Send the file to download
+    from flask import send_file
+    return send_file(dump_file, as_attachment=True)
 
 
 @app.route('/')
@@ -27,7 +46,10 @@ def home():
         cursor = conn.cursor()
         cursor.execute("SELECT name, fitness_goals, workouts_completed, last_workout_completed FROM users WHERE id = ?", (user_id,))
         user = cursor.fetchone()
-
+    #with get_connection() as conn:
+     #   cursor = conn.cursor()
+      #  cursor.execute("SELECT name, fitness_goals, workouts_completed, last_workout_completed FROM users WHERE id = ?", (user_id,))
+        
     # Ensure the user exists
     if user is None:
         flash("User not found.", "danger")
