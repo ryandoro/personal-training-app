@@ -1,8 +1,12 @@
 from functools import wraps
 from flask import session, redirect, url_for, flash
-import os, sqlite3 # psycopg2
+import os, psycopg2
+from psycopg2 import connect
+from urllib.parse import urlparse
+from dotenv import load_dotenv
 
-DATABASE_PATH = os.getenv('DATABASE_URL', 'instance/health.db')
+load_dotenv()
+## Not using - DATABASE_PATH = os.getenv('DATABASE_URL', 'instance/health.db')
 
 def get_connection():
     return psycopg2.connect(os.getenv("DATABASE_URL"))
@@ -81,19 +85,20 @@ def generate_workout(selected_category, user_level):
     subcategories = workout_structure.get(user_level, {}).get(selected_category, {})
     workout_plan = {}
 
-    with sqlite3.connect(DATABASE_PATH) as conn:
-        cursor = conn.cursor()
-        for subcategory, num_exercises in subcategories.items():
-            query = """
-                SELECT name, description 
-                FROM workouts 
-                WHERE category = ? AND level <= ? 
-                ORDER BY RANDOM() 
-                LIMIT ?
-            """
-            cursor.execute(query, (subcategory, user_level, num_exercises))
-            exercises = cursor.fetchall()
-            workout_plan[subcategory] = exercises
+    ## Not using - with sqlite3.connect(DATABASE_PATH) as conn:
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+            for subcategory, num_exercises in subcategories.items():
+                query = """
+                    SELECT name, description 
+                    FROM workouts 
+                    WHERE category = %s AND level <= %s 
+                    ORDER BY RANDOM() 
+                    LIMIT %s 
+                """
+                cursor.execute(query, (subcategory, user_level, num_exercises))
+                exercises = cursor.fetchall()
+                workout_plan[subcategory] = exercises
 
     return workout_plan
 

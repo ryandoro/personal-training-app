@@ -1,10 +1,8 @@
-import os, sqlite3, logging, json
+import os, logging, json
 # from dotenv import load_dotenv
 from flask import Flask, flash, redirect, render_template, request, session, jsonify
 from werkzeug.security import generate_password_hash, check_password_hash
 from helpers import login_required, calculate_target_heart_rate, generate_workout, get_guidelines, get_connection
-
-# load_dotenv()
 
 # Utilized ChatGPT to help complete this web application 
 # Set up basic logging configuration
@@ -14,24 +12,7 @@ app = Flask(__name__)
 app.secret_key = os.urandom(24) # Required for flash messages
 
 # Define database path based on environment
-DATABASE_PATH = os.getenv('DATABASE_URL', 'instance/health.db')
-
-@app.route("/download_sqlite_dump")
-def download_sqlite_dump():
-    import subprocess
-
-    dump_file = "health_dump.sql"
-    db_path = "instance/health.db"
-
-    # Run the dump command
-    try:
-        subprocess.run(["sqlite3", db_path, f".dump"], stdout=open(dump_file, "w"))
-    except Exception as e:
-        return f"Error generating dump: {e}"
-
-    # Send the file to download
-    from flask import send_file
-    return send_file(dump_file, as_attachment=True)
+## Not using - DATABASE_PATH = os.getenv('DATABASE_URL', 'instance/health.db')
 
 
 @app.route('/')
@@ -42,13 +23,11 @@ def home():
     user_id = session['user_id']
 
     # Connect to the database to fetch the username
-    with sqlite3.connect(DATABASE_PATH) as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT name, fitness_goals, workouts_completed, last_workout_completed FROM users WHERE id = ?", (user_id,))
-        user = cursor.fetchone()
-    #with get_connection() as conn:
-     #   cursor = conn.cursor()
-      #  cursor.execute("SELECT name, fitness_goals, workouts_completed, last_workout_completed FROM users WHERE id = ?", (user_id,))
+    ## Not using - with sqlite3.connect(DATABASE_PATH) as conn:
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT name, fitness_goals, workouts_completed, last_workout_completed FROM users WHERE id = %s", (user_id,))
+            user = cursor.fetchone()
         
     # Ensure the user exists
     if user is None:
@@ -117,21 +96,22 @@ def register():
             return render_template('register.html')
 
         # Connect to the database
-        with sqlite3.connect(DATABASE_PATH) as conn:
-            cursor = conn.cursor()
+        ## Not using - with sqlite3.connect(DATABASE_PATH) as conn:
+        with get_connection() as conn:
+            with conn.cursor() as cursor:
 
-            # Check if username already exists
-            cursor.execute("SELECT * FROM users WHERE username = ?", (username,))
-            existing_user = cursor.fetchone()
+                # Check if username already exists
+                cursor.execute("SELECT * FROM users WHERE username = %s", (username,))
+                existing_user = cursor.fetchone()
 
-            if existing_user:
-                flash("Username already exists", "danger")
-                return render_template('register.html')
+                if existing_user:
+                    flash("Username already exists", "danger")
+                    return render_template('register.html')
 
-            # Hash the password and insert the new user
-            hashed_password = generate_password_hash(password)
-            cursor.execute("INSERT INTO users (username, hash) VALUES (?, ?)", (username, hashed_password))
-            conn.commit()
+                # Hash the password and insert the new user
+                hashed_password = generate_password_hash(password)
+                cursor.execute("INSERT INTO users (username, hash) VALUES (%s, %s)", (username, hashed_password))
+                conn.commit()
 
         flash("Registration successful! Please log in.", "success")
         return redirect('/login')
@@ -159,21 +139,22 @@ def login():
             return render_template('login.html')
 
         # Connect to the database
-        with sqlite3.connect(DATABASE_PATH) as conn:
-            cursor = conn.cursor()
+        ## Not using - with sqlite3.connect(DATABASE_PATH) as conn:
+        with get_connection() as conn:
+            with conn.cursor() as cursor:
 
-            # Query for the user
-            cursor.execute("SELECT * FROM users WHERE username = ?", (username,))
-            user = cursor.fetchone()
+                # Query for the user
+                cursor.execute("SELECT * FROM users WHERE username = %s", (username,))
+                user = cursor.fetchone()
 
-        # Validate the username and password
-        if user is None or not check_password_hash(user[2], password):
-            flash("Invalid username and/or password", "danger")
-            return render_template('login.html')
+                # Validate the username and password
+                if user is None or not check_password_hash(user[2], password):
+                    flash("Invalid username and/or password", "danger")
+                    return render_template('login.html')
 
-        # Remember the user's session
-        session['user_id'] = user[0]  # Store the user's ID in the session
-        print(f"User {user[0]} logged in successfully")
+                # Remember the user's session
+                session['user_id'] = user[0]  # Store the user's ID in the session
+                print(f"User {user[0]} logged in successfully")
         flash("Login successful!", "success")
         return redirect('/')
 
@@ -199,13 +180,14 @@ def training():
 
     try:
         # Check if the form has already been completed
-        with sqlite3.connect(DATABASE_PATH) as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT form_completed, exercise_history, fitness_goals FROM users WHERE id = ?", (user_id,))
-            result = cursor.fetchone()
-            form_completed = bool(result[0])  # Retrieve form_completed status
-            exercise_history = result[1]  # Fetch exercise history
-            fitness_goals = result[2]  # Fetch fitness goals
+        ## Not using - with sqlite3.connect(DATABASE_PATH) as conn:
+        with get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("SELECT form_completed, exercise_history, fitness_goals FROM users WHERE id = %s", (user_id,))
+                result = cursor.fetchone()
+                form_completed = bool(result[0])  # Retrieve form_completed status
+                exercise_history = result[1]  # Fetch exercise history
+                fitness_goals = result[2]  # Fetch fitness goals
     except Exception as e:
         flash(f"An error occurred: {e}", "danger")
         return render_template('training.html', form_completed=False)
@@ -236,22 +218,23 @@ def training():
 
         # Connect to the database and update user information
         try:
-            with sqlite3.connect(DATABASE_PATH) as conn:
-                cursor = conn.cursor()
-                cursor.execute("""
-                    UPDATE users
-                    SET 
-                        age = ?, weight = ?, height_feet = ?, height_inches = ?, 
-                        gender = ?, exercise_history = ?, fitness_goals = ?, 
-                        injury = ?, injury_details = ?, commitment = ?, additional_notes = ?, 
-                        name = ?, form_completed = 1
-                    WHERE id = ?
-                """, (
-                    age, weight, height_feet, height_inches, gender, 
-                    exercise_history, fitness_goals_str, injury, injury_details, 
-                    commitment, additional_notes, name, user_id
-                ))
-                conn.commit()
+            ## Not using - with sqlite3.connect(DATABASE_PATH) as conn:
+            with get_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute("""
+                        UPDATE users
+                        SET 
+                            age = %s, weight = %s, height_feet = %s, height_inches = %s, 
+                            gender = %s, exercise_history = %s, fitness_goals = %s, 
+                            injury = %s, injury_details = %s, commitment = %s, additional_notes = %s, 
+                            name = %s, form_completed = TRUE
+                        WHERE id = %s
+                    """, (
+                        age, weight, height_feet, height_inches, gender, 
+                        exercise_history, fitness_goals_str, injury, injury_details, 
+                        commitment, additional_notes, name, user_id
+                    ))
+                    conn.commit()
 
             form_completed = True  # Mark the form as completed
             flash("Your information has been successfully updated!", "success")
@@ -277,51 +260,52 @@ def training():
     guidelines = {}
 
     # Single connection block for fetching grouped workouts and user data
-    with sqlite3.connect(DATABASE_PATH) as conn:
-        cursor = conn.cursor()
-        try:
-            # Fetch grouped workouts
-            for category, group in categories.items():
-                placeholders = ",".join("?" for _ in group)
-                query = f"SELECT name, description FROM workouts WHERE category IN ({placeholders})"
-                cursor.execute(query, group)
-                grouped_workouts[category] = cursor.fetchall()
+    ## Not using - with sqlite3.connect(DATABASE_PATH) as conn:
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+            try:
+                # Fetch grouped workouts
+                for category, group in categories.items():
+                    placeholders = ",".join(["%s"] * len(group))
+                    query = f"SELECT name, description FROM workouts WHERE category IN ({placeholders})"
+                    cursor.execute(query, group)
+                    grouped_workouts[category] = cursor.fetchall()
 
-            # Fetch the user's exercise history and age
-            cursor.execute("SELECT exercise_history, age, fitness_goals FROM users WHERE id = ?", (user_id,))
-            user_data = cursor.fetchone()
+                # Fetch the user's exercise history and age
+                cursor.execute("SELECT exercise_history, age, fitness_goals FROM users WHERE id = %s", (user_id,))
+                user_data = cursor.fetchone()
 
-            if user_data:
-                exercise_history = user_data[0]
-                age = int(user_data[1]) if user_data[1] else None
-                fitness_goals = user_data[2] if user_data[2] else "Not set yet"
+                if user_data:
+                    exercise_history = user_data[0]
+                    age = int(user_data[1]) if user_data[1] else None
+                    fitness_goals = user_data[2] if user_data[2] else "Not set yet"
 
-                # Mapping exercise history to numeric levels
-                level_map = {
-                    "No Exercise History": 1,
-                    "Exercise less than 1 year": 1,
-                    "Exercise 1-5 years": 2,
-                    "Exercise 5+ years": 3
-                }
-                user_level = level_map.get(exercise_history, 1)  # Default to 1 if not found
+                    # Mapping exercise history to numeric levels
+                    level_map = {
+                        "No Exercise History": 1,
+                        "Exercise less than 1 year": 1,
+                        "Exercise 1-5 years": 2,
+                        "Exercise 5+ years": 3
+                    }
+                    user_level = level_map.get(exercise_history, 1)  # Default to 1 if not found
 
-                # Calculate target heart rate zone
-                if age:
-                    target_heart_rate_zone = calculate_target_heart_rate(age)
+                    # Calculate target heart rate zone
+                    if age:
+                        target_heart_rate_zone = calculate_target_heart_rate(age)
 
-                # Fetch workouts matching the user's level
-                cursor.execute("SELECT name, description FROM workouts WHERE level <= ?", (user_level,))
-                workouts = cursor.fetchall()
+                    # Fetch workouts matching the user's level
+                    cursor.execute("SELECT name, description FROM workouts WHERE level <= %s", (user_level,))
+                    workouts = cursor.fetchall()
 
-                # Fetch guidelines based on user's level and fitness goals
-                if exercise_history and fitness_goals:
-                    guidelines = get_guidelines(exercise_history, fitness_goals)
+                    # Fetch guidelines based on user's level and fitness goals
+                    if exercise_history and fitness_goals:
+                        guidelines = get_guidelines(exercise_history, fitness_goals)
 
-            else:
-                flash("User information not found. Please update your profile.", "warning")
+                else:
+                    flash("User information not found. Please update your profile.", "warning")
 
-        except Exception as e:
-            flash(f"An error occurred: {e}", "danger")
+            except Exception as e:
+                flash(f"An error occurred: {e}", "danger")
 
     return render_template(
         'training.html', 
@@ -345,12 +329,13 @@ def generate_workout_route():
     user_id = session['user_id']
 
     # Fetch the user's level
-    with sqlite3.connect(DATABASE_PATH) as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT exercise_history FROM users WHERE id = ?", (user_id,))
-        exercise_history = cursor.fetchone()[0]
-        level_map = {"No Exercise History": 1, "Exercise less than 1 year": 1, "Exercise 1-5 years": 2, "Exercise 5+ years": 3}
-        user_level = level_map.get(exercise_history, 1)
+    ## Not using - with sqlite3.connect(DATABASE_PATH) as conn:
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT exercise_history FROM users WHERE id = %s", (user_id,))
+            exercise_history = cursor.fetchone()[0]
+            level_map = {"No Exercise History": 1, "Exercise less than 1 year": 1, "Exercise 1-5 years": 2, "Exercise 5+ years": 3}
+            user_level = level_map.get(exercise_history, 1)
 
     # Generate the workout
     workout_plan = generate_workout(selected_category, user_level)
@@ -393,16 +378,17 @@ def complete_workout():
     workout_details = generated_workout['workout']  # Raw workout details
 
     # Store the workout details and increment the workout counter
-    with sqlite3.connect(DATABASE_PATH) as conn:
-        cursor = conn.cursor()
-        cursor.execute("""
-            UPDATE users
-            SET workouts_completed = COALESCE(workouts_completed, 0) + 1,
-                last_workout_completed = ?,
-                last_workout_details = ?
-            WHERE id = ?
-        """, (workout_category, json.dumps(workout_details), user_id))
-        conn.commit()
+    ## Not using - with sqlite3.connect(DATABASE_PATH) as conn:
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("""
+                UPDATE users
+                SET workouts_completed = COALESCE(workouts_completed, 0) + 1,
+                    last_workout_completed = %s,
+                    last_workout_details = %s
+                WHERE id = %s
+            """, (workout_category, json.dumps(workout_details), user_id))
+            conn.commit()
 
     return jsonify({'success': True})
 
@@ -413,16 +399,17 @@ def complete_workout():
 def workout_details(category):
     user_id = session['user_id']
 
-    with sqlite3.connect(DATABASE_PATH) as conn:
-        cursor = conn.cursor()
+    ## Not using - with sqlite3.connect(DATABASE_PATH) as conn:
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
 
-        # Fetch the last workout details for the given category
-        cursor.execute("""
-            SELECT last_workout_details
-            FROM users
-            WHERE id = ? AND last_workout_completed = ?
-        """, (user_id, category))
-        result = cursor.fetchone()
+            # Fetch the last workout details for the given category
+            cursor.execute("""
+                SELECT last_workout_details
+                FROM users
+                WHERE id = %s AND last_workout_completed = %s
+            """, (user_id, category))
+            result = cursor.fetchone()
 
     if not result or not result[0]:
         return render_template('workout_details.html', category=category, workouts=None)
