@@ -4,3 +4,7 @@ __pycache__/
 .DS_Store
 .vscode/
 .env
+*.dump
+*.sql
+backup_*.*
+/backups/
