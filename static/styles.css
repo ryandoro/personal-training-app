@@ -90,3 +90,7 @@ footer {
     overflow: hidden;
     transition: max-height 0.3s ease-out;
 }
+
+#prModal.show {
+    display: flex !important;
+}

@@ -338,7 +338,7 @@ def generate_workout_route():
             user_level = level_map.get(exercise_history, 1)
 
     # Generate the workout
-    workout_plan = generate_workout(selected_category, user_level)
+    workout_plan = generate_workout(selected_category, user_level, user_id)
 
     # Save the exact workout and category to the session
     session['generated_workout'] = {
@@ -352,11 +352,14 @@ def generate_workout_route():
             'subcategory': subcategory,
             'exercises': [
                 {
-                    'name': exercise[0],
-                    'description': exercise[1],
-                    'video_demo': exercise[2],
-                    'image_exercise_start': exercise[3],
-                    'image_exercise_end': exercise[4]
+                    'workout_id': exercise[0],
+                    'name': exercise[1],
+                    'description': exercise[2],
+                    'video_demo': exercise[3],
+                    'image_exercise_start': exercise[4],
+                    'image_exercise_end': exercise[5],
+                    'max_weight': exercise[6],
+                    'max_reps': exercise[7]
                 }
                 for exercise in exercises
             ]
@@ -434,6 +437,30 @@ def workout_details(category):
 
     return render_template('workout_details.html', category=category, workouts=workouts)
 
+
+
+@app.route('/update_pr', methods=['POST'])
+@login_required
+def update_pr():
+    data = request.get_json()
+    user_id = session['user_id']
+    workout_id = data['workout_id']
+    max_weight = data['max_weight']
+    max_reps = data['max_reps']
+
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("""
+                INSERT INTO user_exercise_progress (user_id, workout_id, max_weight, max_reps)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (user_id, workout_id) DO UPDATE
+                SET max_weight = EXCLUDED.max_weight,
+                    max_reps = EXCLUDED.max_reps,
+                    updated_at = CURRENT_TIMESTAMP
+            """, (user_id, workout_id, max_weight, max_reps))
+            conn.commit()
+
+    return jsonify({'success': True})
 
 
 if __name__ == '__main__':

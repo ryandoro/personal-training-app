@@ -267,6 +267,17 @@
                                                                                         </video>
                                                                                     </div>`
                                                                                 ) : ''}
+                                                                                
+                                                                                <div class="personal-best bg-light p-2 rounded text-center mb-3 shadow-sm" data-id="${exercise.workout_id}"">
+                                                                                    <small class="text-muted d-block mb-1">Your Max:</small>
+                                                                                    <div class="fw-bold personal-max-text">
+                                                                                        ${exercise.max_weight ? `${exercise.max_weight} lbs` : '–'} × 
+                                                                                        ${exercise.max_reps ? `${exercise.max_reps} reps` : '–'}
+                                                                                    </div>
+                                                                                    <a href="#" class="small update-pr-link text-primary d-block mt-1" data-id="${exercise.workout_id}">
+                                                                                        Update Max
+                                                                                    </a>
+                                                                                </div>
 
                                                                                 <a href="#" class="text-primary small toggle-description" data-id="desc-${exercise.name.replace(/\s+/g, '-')}">
                                                                                     View Description
@@ -340,6 +351,32 @@
                 }
             });
         </script>
+
+        <!-- Success Toast -->
+        <div id="toastSuccess" class="text-success text-center fw-bold"
+            style="display: none; position: fixed; top: 10px; left: 50%; transform: translateX(-50%);
+                z-index: 10000; background: #d4edda; padding: 10px 20px; border-radius: 5px; box-shadow: 0 0 10px rgba(0,0,0,0.2);">
+            Max updated!
+        </div>
+
+        <!-- Max Update Modal -->
+        <div id="prModal" class="modal"
+            style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 9999; align-items: center; justify-content: center;">
+            <div class="bg-white p-4 rounded shadow" style="width: 90%; max-width: 400px; position: relative;">
+                <button id="prModalClose" class="btn-close" style="position: absolute; top: 10px; right: 10px;"></button>
+                <h5 class="mb-3">Update Max</h5>
+                <input type="number" id="maxWeightInput" class="form-control mb-2" placeholder="Max Weight (lbs)">
+                <input type="number" id="maxRepsInput" class="form-control mb-3" placeholder="Max Reps">
+                <button id="submitPrBtn" class="btn btn-primary w-100 mb-2">Save</button>
+            </div>
+        </div>
+
+        <!-- Image Modal -->
+        <div id="imageModal" style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(0,0,0,0.8);">
+            <span id="modalClose" style="position:absolute; top:20px; right:30px; font-size:2rem; color:white; cursor:pointer;">&times;</span>
+            <img id="modalImage" style="margin:auto; display:block; max-width:90%; max-height:90%; position:absolute; top:0; bottom:0; left:0; right:0;">
+        </div>
+
         <script>
         document.addEventListener('click', function (e) {
             if (e.target && e.target.classList.contains('toggle-description')) {
@@ -399,13 +436,78 @@
                 }
             }
         });
-        </script>
+        document.addEventListener('DOMContentLoaded', function () {
+            let currentWorkoutId = null;
 
-        <!-- Image Modal -->
-        <div id="imageModal" style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(0,0,0,0.8);">
-            <span id="modalClose" style="position:absolute; top:20px; right:30px; font-size:2rem; color:white; cursor:pointer;">&times;</span>
-            <img id="modalImage" style="margin:auto; display:block; max-width:90%; max-height:90%; position:absolute; top:0; bottom:0; left:0; right:0;">
-        </div>
+            // Open modal when clicking "Update Max"
+            document.addEventListener('click', function (e) {
+                if (e.target && e.target.classList.contains('update-pr-link')) {
+                    e.preventDefault();
+
+                    currentWorkoutId = e.target.dataset.id;
+                    const container = document.querySelector(`.personal-best[data-id="${currentWorkoutId}"] .personal-max-text`);
+                    const [weight, reps] = container.textContent.split('×').map(val => parseInt(val) || '');
+
+                    document.getElementById('maxWeightInput').value = weight;
+                    document.getElementById('maxRepsInput').value = reps;
+
+                    document.getElementById('prModal').classList.add('show');
+                }
+
+                // Close modal when clicking the "X" button
+                if (e.target.id === 'prModalClose') {
+                    document.getElementById('prModal').classList.remove('show');
+                }
+            });
+
+            // Handle modal "Save" button
+            document.getElementById('submitPrBtn').addEventListener('click', function () {
+                const maxWeight = parseInt(document.getElementById('maxWeightInput').value);
+                const maxReps = parseInt(document.getElementById('maxRepsInput').value);
+
+                if (!maxWeight || !maxReps) {
+                    alert("Please enter valid values.");
+                    return;
+                }
+
+                fetch('/update_pr', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        workout_id: currentWorkoutId,
+                        max_weight: maxWeight,
+                        max_reps: maxReps
+                    })
+                })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        const container = document.querySelector(`.personal-best[data-id="${currentWorkoutId}"] .personal-max-text`);
+                        if (container) {
+                            container.textContent = `${maxWeight} lbs × ${maxReps} reps`;
+                        }
+                        // Hide modal
+                        document.getElementById('prModal').classList.remove('show');
+                        document.getElementById('prModal').style.display = 'none';
+
+                        // Show toast
+                        const toast = document.getElementById('toastSuccess');
+                        toast.style.display = 'block';
+
+                        setTimeout(() => {
+                            toast.style.display = 'none';
+                        }, 2000);
+                    } else {
+                        alert('Error updating max. Please try again.');
+                    }
+                })
+                .catch(err => {
+                    console.error('Error:', err);
+                    alert('Something went wrong.');
+                });
+            });
+        });
+        </script>
         
         <!-- Guidelines Box -->
         {% if guidelines %}

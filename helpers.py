@@ -40,7 +40,7 @@ def calculate_target_heart_rate(age):
     }
 
 
-def generate_workout(selected_category, user_level):
+def generate_workout(selected_category, user_level, user_id):
     """
     Generate a workout based on the selected category and user level.
     :param selected_category: The category selected by the user (e.g., 'Chest and Triceps')
@@ -90,13 +90,23 @@ def generate_workout(selected_category, user_level):
         with conn.cursor() as cursor:
             for subcategory, num_exercises in subcategories.items():
                 query = """
-                    SELECT name, description, video_demo, image_exercise_start, image_exercise_end
-                    FROM workouts 
-                    WHERE category = %s AND level <= %s 
-                    ORDER BY RANDOM() 
-                    LIMIT %s 
+                    SELECT
+                        w.id AS workout_id,
+                        w.name,
+                        w.description,
+                        w.video_demo,
+                        w.image_exercise_start,
+                        w.image_exercise_end,
+                        uep.max_weight,
+                        uep.max_reps
+                    FROM workouts w
+                    LEFT JOIN user_exercise_progress uep
+                        ON w.id = uep.workout_id AND uep.user_id = %s
+                    WHERE w.category = %s AND w.level <= %s
+                    ORDER BY RANDOM()
+                    LIMIT %s
                 """
-                cursor.execute(query, (subcategory, user_level, num_exercises))
+                cursor.execute(query, (user_id, subcategory, user_level, num_exercises))
                 exercises = cursor.fetchall()
                 workout_plan[subcategory] = exercises
 
