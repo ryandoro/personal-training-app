@@ -244,11 +244,38 @@
                                                 .map(
                                                     subcategory => `
                                                     <li class="list-group-item">
-                                                        <strong>${subcategory.subcategory}</strong>
+                                                        <strong class="text-primary fs-5">${subcategory.subcategory}</strong>
                                                         <ul class="list-unstyled mt-2">
                                                             ${subcategory.exercises
                                                                 .map(
-                                                                    exercise => `<li class="mb-2"><strong>${exercise.name}</strong>: ${exercise.description}</li>`
+                                                                    exercise => `
+                                                                        <li class="mb-4">
+                                                                            <div class="card shadow-sm p-3 text-center">
+                                                                                <h6 class="fw-bold mb-3">${exercise.name}</h6>
+                                                                                <p class="text-muted mb-1">Images</p>
+                                                                                <div class="d-flex justify-content-center flex-wrap gap-3 mb-3 px-2">
+                                                                                    <img src="/static/images/${exercise.image_exercise_start}" alt="Start: ${exercise.name}" class="img-thumbnail clickable-img" style="max-width: 150px;">
+                                                                                    <img src="/static/images/${exercise.image_exercise_end}" alt="End: ${exercise.name}" class="img-thumbnail clickable-img" style="max-width: 150px;">
+                                                                                </div>
+
+                                                                                ${exercise.video_demo ? (
+                                                                                    `<p class="text-muted mb-1">Video Demonstration</p>
+                                                                                    <div class="d-flex justify-content-center mb-3 px-2">
+                                                                                        <video controls class="video-clickable rounded" style="width: 100%; max-width: 240px;">
+                                                                                            <source src="/static/videos/${exercise.video_demo}" type="video/mp4">
+                                                                                            Your browser does not support the video tag.
+                                                                                        </video>
+                                                                                    </div>`
+                                                                                ) : ''}
+
+                                                                                <a href="#" class="text-primary small toggle-description" data-id="desc-${exercise.name.replace(/\s+/g, '-')}">
+                                                                                    View Description
+                                                                                </a>
+                                                                                <div id="desc-${exercise.name.replace(/\s+/g, '-')}" class="description text-muted mt-2" style="display: none;">
+                                                                                    ${exercise.description}
+                                                                                </div>
+                                                                            </div>
+                                                                        </li>`
                                                                 )
                                                                 .join('')}
                                                         </ul>
@@ -313,13 +340,79 @@
                 }
             });
         </script>
+        <script>
+        document.addEventListener('click', function (e) {
+            if (e.target && e.target.classList.contains('toggle-description')) {
+                e.preventDefault();
+                const descId = e.target.getAttribute('data-id');
+                const descElement = document.getElementById(descId);
+            
+                if (!descElement) return;
+        
+                const isHidden = descElement.style.display === 'none' || descElement.style.display === '';
+            
+                if (isHidden) {
+                    // Slide down
+                    descElement.style.display = 'block';
+                    descElement.style.maxHeight = '0px';
+                    descElement.style.overflow = 'hidden';
+                    descElement.style.transition = 'max-height 0.3s ease-out';
+                    setTimeout(() => {
+                        descElement.style.maxHeight = descElement.scrollHeight + 'px';
+                    }, 10);
+                    e.target.textContent = 'Hide Description';
+                } else {
+                    // Slide up
+                    descElement.style.maxHeight = '0px';
+                    setTimeout(() => {
+                        descElement.style.display = 'none';
+                    }, 300); // Match the transition duration
+                    e.target.textContent = 'View Description';
+                }
+            }
+        });
+        document.addEventListener('click', function (e) {
+            // Image modal
+            if (e.target && e.target.classList.contains('clickable-img')) {
+                const modal = document.getElementById('imageModal');
+                const modalImg = document.getElementById('modalImage');
+                modalImg.src = e.target.src;
+                modal.style.display = 'block';
+            }
+
+            if (
+                e.target.id === 'modalClose' ||
+                (e.target.id === 'imageModal' && e.target.tagName !== 'IMG')
+            ) {
+                document.getElementById('imageModal').style.display = 'none';
+            }
+        });
+        document.addEventListener('click', function (e) {
+            const video = e.target;
+            if (video.tagName === 'VIDEO' && video.classList.contains('video-clickable')) {
+                if (video.requestFullscreen) {
+                    video.requestFullscreen();
+                } else if (video.webkitRequestFullscreen) {
+                    video.webkitRequestFullscreen();
+                } else if (video.msRequestFullscreen) {
+                    video.msRequestFullscreen();
+                }
+            }
+        });
+        </script>
+
+        <!-- Image Modal -->
+        <div id="imageModal" style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(0,0,0,0.8);">
+            <span id="modalClose" style="position:absolute; top:20px; right:30px; font-size:2rem; color:white; cursor:pointer;">&times;</span>
+            <img id="modalImage" style="margin:auto; display:block; max-width:90%; max-height:90%; position:absolute; top:0; bottom:0; left:0; right:0;">
+        </div>
         
         <!-- Guidelines Box -->
         {% if guidelines %}
         <div class="card mb-4 shadow-sm">
             <div class="card-body">
                 <h4 class="card-title text-center mb-3">Guidelines</h4>
-                <p>Based on your current goal - <strong>{{ fitness_goals }}</strong> - I recommend the following for each exercise:</p>
+                <p>Based on your current goal - <strong>{{ fitness_goals }}</strong> - The following is recommended for each exercise:</p>
                 <ul class="list-group">
                     <li class="list-group-item"><strong>Sets:</strong> {{ guidelines.Sets }}</li>
                     <li class="list-group-item"><strong>Repetitions:</strong> {{ guidelines.Reps }}</li>

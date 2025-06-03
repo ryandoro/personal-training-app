@@ -90,7 +90,7 @@ def generate_workout(selected_category, user_level):
         with conn.cursor() as cursor:
             for subcategory, num_exercises in subcategories.items():
                 query = """
-                    SELECT name, description 
+                    SELECT name, description, video_demo, image_exercise_start, image_exercise_end
                     FROM workouts 
                     WHERE category = %s AND level <= %s 
                     ORDER BY RANDOM() 

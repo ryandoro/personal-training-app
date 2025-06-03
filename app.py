@@ -350,7 +350,16 @@ def generate_workout_route():
     formatted_workout = [
         {
             'subcategory': subcategory,
-            'exercises': [{'name': exercise[0], 'description': exercise[1]} for exercise in exercises]
+            'exercises': [
+                {
+                    'name': exercise[0],
+                    'description': exercise[1],
+                    'video_demo': exercise[2],
+                    'image_exercise_start': exercise[3],
+                    'image_exercise_end': exercise[4]
+                }
+                for exercise in exercises
+            ]
         }
         for subcategory, exercises in workout_plan.items()
     ]
