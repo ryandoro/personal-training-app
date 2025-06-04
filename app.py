@@ -463,5 +463,28 @@ def update_pr():
     return jsonify({'success': True})
 
 
+@app.route("/search")
+@login_required
+def search():
+    query = request.args.get("q", "").strip()
+
+    if not query:
+        flash("Please enter a search term.", "warning")
+        return redirect("/training")
+
+    db = get_connection()
+    cursor = db.cursor()
+    cursor.execute("""
+        SELECT w.id, w.name, w.description, uep.max_weight, uep.max_reps
+        FROM workouts w
+        LEFT JOIN user_exercise_progress uep
+        ON w.id = uep.workout_id AND uep.user_id = %s
+        WHERE LOWER(w.name) LIKE LOWER(%s)
+    """, (session["user_id"], f"%{query}%"))
+    results = cursor.fetchall()
+
+    return render_template("search_results.html", query=query, results=results)
+
+
 if __name__ == '__main__':
     app.run(debug=True)

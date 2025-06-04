@@ -271,7 +271,7 @@
                                                                                 <div class="personal-best bg-light p-2 rounded text-center mb-3 shadow-sm" data-id="${exercise.workout_id}">
                                                                                     <small class="text-muted d-block mb-1">Your Max:</small>
                                                                                     <div class="fw-bold personal-max-text">
-                                                                                        ${exercise.max_weight ? `${exercise.max_weight} lbs` : '–'} × 
+                                                                                        ${exercise.max_weight ? `${parseFloat(exercise.max_weight).toFixed(1)} lbs` : '–'} × 
                                                                                         ${exercise.max_reps ? `${exercise.max_reps} reps` : '–'}
                                                                                     </div>
                                                                                     <a href="#" class="small update-pr-link text-primary d-block mt-1" data-id="${exercise.workout_id}">
@@ -450,7 +450,7 @@
 
                     currentWorkoutId = e.target.dataset.id;
                     const container = document.querySelector(`.personal-best[data-id="${currentWorkoutId}"] .personal-max-text`);
-                    const [weight, reps] = container.textContent.split('×').map(val => parseInt(val) || '');
+                    const [weight, reps] = container.textContent.split('×').map(val => parseFloat(val) || '');
 
                     document.getElementById('maxWeightInput').value = weight;
                     document.getElementById('maxRepsInput').value = reps;
@@ -466,7 +466,7 @@
 
             // Handle modal "Save" button
             document.getElementById('submitPrBtn').addEventListener('click', function () {
-                const maxWeight = parseInt(document.getElementById('maxWeightInput').value);
+                const maxWeight = parseFloat(document.getElementById('maxWeightInput').value);
                 const maxReps = parseInt(document.getElementById('maxRepsInput').value);
 
                 if (!maxWeight || !maxReps) {

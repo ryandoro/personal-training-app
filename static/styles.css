@@ -94,3 +94,12 @@ footer {
 #prModal.show {
     display: flex !important;
 }
+
+.card-title {
+    font-size: 1.25rem;
+}
+
+.card-text {
+    font-size: 0.9rem;
+    color: #6c757d;
+}
