@@ -268,7 +268,7 @@
                                                                                     </div>`
                                                                                 ) : ''}
                                                                                 
-                                                                                <div class="personal-best bg-light p-2 rounded text-center mb-3 shadow-sm" data-id="${exercise.workout_id}"">
+                                                                                <div class="personal-best bg-light p-2 rounded text-center mb-3 shadow-sm" data-id="${exercise.workout_id}">
                                                                                     <small class="text-muted d-block mb-1">Your Max:</small>
                                                                                     <div class="fw-bold personal-max-text">
                                                                                         ${exercise.max_weight ? `${exercise.max_weight} lbs` : '–'} × 
@@ -279,10 +279,10 @@
                                                                                     </a>
                                                                                 </div>
 
-                                                                                <a href="#" class="text-primary small toggle-description" data-id="desc-${exercise.name.replace(/\s+/g, '-')}">
+                                                                                <a href="#" class="text-primary small toggle-description" data-id="desc-${subcategory.subcategory.replace(/\s+/g, '-')}-${exercise.workout_id}">
                                                                                     View Description
                                                                                 </a>
-                                                                                <div id="desc-${exercise.name.replace(/\s+/g, '-')}" class="description text-muted mt-2" style="display: none;">
+                                                                                <div id="desc-${subcategory.subcategory.replace(/\s+/g, '-')}-${exercise.workout_id}" class="description text-muted mt-2" style="display: none;">
                                                                                     ${exercise.description}
                                                                                 </div>
                                                                             </div>
@@ -379,33 +379,37 @@
 
         <script>
         document.addEventListener('click', function (e) {
-            if (e.target && e.target.classList.contains('toggle-description')) {
-                e.preventDefault();
-                const descId = e.target.getAttribute('data-id');
-                const descElement = document.getElementById(descId);
-            
-                if (!descElement) return;
-        
-                const isHidden = descElement.style.display === 'none' || descElement.style.display === '';
-            
-                if (isHidden) {
-                    // Slide down
-                    descElement.style.display = 'block';
-                    descElement.style.maxHeight = '0px';
-                    descElement.style.overflow = 'hidden';
-                    descElement.style.transition = 'max-height 0.3s ease-out';
-                    setTimeout(() => {
-                        descElement.style.maxHeight = descElement.scrollHeight + 'px';
-                    }, 10);
-                    e.target.textContent = 'Hide Description';
-                } else {
-                    // Slide up
-                    descElement.style.maxHeight = '0px';
-                    setTimeout(() => {
-                        descElement.style.display = 'none';
-                    }, 300); // Match the transition duration
-                    e.target.textContent = 'View Description';
-                }
+            const toggle = e.target.closest('.toggle-description');
+            if (!toggle) return;
+
+            e.preventDefault();
+            const descId = toggle.getAttribute('data-id');
+            const descElement = document.getElementById(descId);
+
+            if (!descElement) {
+                console.warn("No element found for ID:", descId);
+                return;
+            }
+
+            const isHidden = descElement.style.display === 'none' || descElement.style.display === '';
+
+            if (isHidden) {
+                // Slide down
+                descElement.style.display = 'block';
+                descElement.style.maxHeight = '0px';
+                descElement.style.overflow = 'hidden';
+                descElement.style.transition = 'max-height 0.3s ease-out';
+                setTimeout(() => {
+                    descElement.style.maxHeight = descElement.scrollHeight + 'px';
+                }, 10);
+                toggle.textContent = 'Hide Description';
+            } else {
+                // Slide up
+                descElement.style.maxHeight = '0px';
+                setTimeout(() => {
+                    descElement.style.display = 'none'; 
+                }, 300); // Match the transition duration
+                toggle.textContent = 'View Description';
             }
         });
         document.addEventListener('click', function (e) {
