@@ -342,6 +342,7 @@
 
                     if (data.success) {
                         alert('Workout marked as complete!');
+                        window.location.href = '/';
                     } else {
                         alert(data.error || 'An error occurred. Please try again.');
                     }

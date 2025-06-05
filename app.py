@@ -387,19 +387,41 @@ def complete_workout():
 
     # Extract category and workout details
     workout_category = generated_workout['category']
-    workout_details = generated_workout['workout']  # Raw workout details
+    # Get fresh max values for all exercises in the generated workout
+    refreshed_workout = {}
 
-    # Store the workout details and increment the workout counter
-    ## Not using - with sqlite3.connect(DATABASE_PATH) as conn:
     with get_connection() as conn:
         with conn.cursor() as cursor:
+            for subcat, exercises in generated_workout['workout'].items():
+                refreshed_workout[subcat] = []
+                for ex in exercises:
+                    workout_id = ex[0]  # assuming (id, name, desc) structure
+                    cursor.execute("""
+                        SELECT w.name, w.description, uep.max_weight, uep.max_reps
+                        FROM workouts w
+                        LEFT JOIN user_exercise_progress uep
+                            ON w.id = uep.workout_id AND uep.user_id = %s
+                        WHERE w.id = %s
+                    """, (user_id, workout_id))
+                    result = cursor.fetchone()
+                    if result:
+                        name, description, max_weight, max_reps = result
+                        refreshed_workout[subcat].append({
+                            "name": name,
+                            "description": description,
+                            "max_weight": float(max_weight) if max_weight is not None else None,
+                            "max_reps": max_reps
+                        })
+            # Store the workout details and increment the workout counter
+            ## Not using - with sqlite3.connect(DATABASE_PATH) as conn:
+            # Save refreshed workout details
             cursor.execute("""
                 UPDATE users
                 SET workouts_completed = COALESCE(workouts_completed, 0) + 1,
                     last_workout_completed = %s,
                     last_workout_details = %s
                 WHERE id = %s
-            """, (workout_category, json.dumps(workout_details), user_id))
+            """, (workout_category, json.dumps(refreshed_workout), user_id))
             conn.commit()
 
     return jsonify({'success': True})
@@ -431,7 +453,15 @@ def workout_details(category):
 
     # Reformat the data for the template
     workouts = {
-        subcategory: [{"name": exercise[0], "description": exercise[1]} for exercise in exercises]
+        subcategory: [
+            {
+                "name": exercise["name"],
+                "description": exercise["description"],
+                "max_weight": exercise["max_weight"],
+                "max_reps": exercise["max_reps"]
+            }
+            for exercise in exercises
+        ]
         for subcategory, exercises in raw_workouts.items()
     }
 

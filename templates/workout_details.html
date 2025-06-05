@@ -5,34 +5,72 @@
 {% endblock %}
 
 {% block content %}
-    <div class="container mt-4">
-        <h2 class="text-center text-primary">{{ category }}</h2>
-        <h5 class="text-center text-secondary">Workout Details</h5>
+<div class="container mt-4">
+    <h2 class="text-center text-primary">{{ category }}</h2>
+    <h5 class="text-center text-secondary">Workout Details</h5>
 
-        {% if workouts %}
-            <div class="card mt-4 shadow-sm">
-                <div class="card-body">
-                    {% for subcategory, exercises in workouts.items() %}
-                        <h5 class="text-primary">{{ subcategory }}</h5>
-                        <ul class="list-group mb-3">
-                            {% for exercise in exercises %}
-                                <li class="list-group-item">
-                                    <strong>{{ exercise["name"] }}</strong>: {{ exercise["description"] }}
-                                </li>
-                            {% endfor %}
-                        </ul>
-                    {% endfor %}
-                </div>
+    {% if workouts %}
+        <div class="card mt-4 shadow-sm">
+            <div class="card-body">
+                {% for subcategory, exercises in workouts.items() %}
+                    {% set subcat_index = loop.index %}
+                    <h5 class="text-primary mt-3">{{ subcategory }}</h5>
+                    <ul class="list-group mb-3">
+                        {% for exercise in exercises %}
+                            {% set ex_index = loop.index %}
+                            <li class="list-group-item">
+                                <h6 class="mb-1 fw-semibold">{{ exercise.name }}</h6>
+                                {% if exercise.max_weight and exercise.max_reps %}
+                                    <p class="mb-0 text-dark small">
+                                        Max: {{ exercise.max_weight|float|round(1) }} lbs × {{ exercise.max_reps }} reps
+                                    </p>
+                                {% else %}
+                                    <p class="mb-0 text-muted small fst-italic">No max recorded</p>
+                                {% endif %}
+                                
+                                <button class="btn btn-sm btn-outline-primary mt-2 toggle-description"
+                                        data-id="desc-{{ subcat_index }}-{{ ex_index }}">
+                                    View Description
+                                </button>
+                                
+                                <div id="desc-{{ subcat_index }}-{{ ex_index }}" class="mt-3 ps-2 text-muted description" style="display: none;">
+                                    {{ exercise.description }}
+                                </div>
+                            </li>
+                        {% endfor %}
+                    </ul>
+                {% endfor %}
             </div>
-        {% else %}
-            <p class="text-center text-muted mt-4">No workout details available for this category.</p>
-        {% endif %}
-
-        <div class="text-center mt-4">
-            <a href="/" class="btn btn-secondary">Back to Home</a>
         </div>
+    {% else %}
+        <p class="text-center text-muted mt-4">No workout details available for this category.</p>
+    {% endif %}
+
+    <div class="text-center mt-4">
+        <a href="/" class="btn btn-secondary">Back to Home</a>
     </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('.toggle-description').forEach(button => {
+        button.addEventListener('click', () => {
+            const descId = button.getAttribute('data-id');
+            const descElement = document.getElementById(descId);
+
+            if (descElement.style.display === 'none' || !descElement.style.display) {
+                descElement.style.display = 'block';
+                button.textContent = 'Hide Description';
+            } else {
+                descElement.style.display = 'none';
+                button.textContent = 'View Description';
+            }
+        });
+    });
+});
+</script>
 {% endblock %}
+
 
 
 
