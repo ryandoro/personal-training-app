@@ -14,11 +14,13 @@
                         <p class="card-text text-muted small">{{ description }}</p>
                         <div class="mt-3">
                             <span class="fw-semibold">Your Max:</span>
-                            {% if max_weight and max_reps %}
-                                <span class="text-dark">{{ max_weight }} lbs × {{ max_reps }} reps</span>
+                            {% if ('bodyweight' in name|lower) or max_weight == 0 %}
+                            <span class="text-dark">Bodyweight × {{ max_reps if max_reps else '–' }} reps</span>
+                            {% elif max_weight and max_reps %}
+                                <span class="text-dark">{{ max_weight|float|round(1) }} lbs × {{ max_reps }} reps</span>
                             {% else %}
                                 <span class="text-muted fst-italic">Not yet recorded</span>
-                            {% endif %}
+                            {% endif %}                        
                             <button class="btn btn-outline-primary btn-sm mt-2 update-max-btn" 
                                     data-id="{{ workout_id }}"
                                     data-weight="{{ max_weight or '' }}"
@@ -36,75 +38,100 @@
         No results found for “{{ query }}”.
     </div>
 {% endif %}
-<div id="updateMaxModal" class="modal" tabindex="-1" style="display: none;">
-    <div class="modal-dialog modal-dialog-centered">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h5 class="modal-title">Update Max</h5>
-          <button type="button" class="btn-close" id="closeModal"></button>
+    
+    <!-- Max Update Modal -->
+    <div id="updateMaxModal" class="modal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 9999; align-items: center; justify-content: center;">
+        <div class="bg-white p-4 rounded shadow" style="width: 90%; max-width: 400px; position: relative;">
+            <button type="button" class="btn-close" id="closeModal" style="position: absolute; top: 10px; right: 10px;"></button>
+            <h5 class="mb-3">Update Max</h5>
+            <input type="hidden" id="modalWorkoutId">
+            <input type="number" id="newWeight" class="form-control mb-2" placeholder="Max Weight (lbs)" title="Bodyweight exercises do not require a weight entry">
+            <input type="number" id="newReps" class="form-control mb-3" placeholder="Max Reps">
+            <button class="btn btn-primary w-100" id="saveMaxBtn">Save</button>
         </div>
-        <div class="modal-body">
-          <input type="hidden" id="modalWorkoutId">
-          <div class="mb-3">
-            <label for="newWeight" class="form-label">Max Weight (lbs)</label>
-            <input type="number" class="form-control" id="newWeight">
-          </div>
-          <div class="mb-3">
-            <label for="newReps" class="form-label">Max Reps</label>
-            <input type="number" class="form-control" id="newReps">
-          </div>
-          <button class="btn btn-success w-100" id="saveMaxBtn">Save</button>
-        </div>
-      </div>
     </div>
-  </div>
+    
   
-  <script>
-    document.addEventListener('DOMContentLoaded', () => {
-        const modal = document.getElementById('updateMaxModal');
-        const workoutIdInput = document.getElementById('modalWorkoutId');
-        const weightInput = document.getElementById('newWeight');
-        const repsInput = document.getElementById('newReps');
-        const closeModal = document.getElementById('closeModal');
-    
-        document.querySelectorAll('.update-max-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                workoutIdInput.value = btn.dataset.id;
-                weightInput.value = btn.dataset.weight;
-                repsInput.value = btn.dataset.reps;
-                modal.style.display = 'block';
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const modal = document.getElementById('updateMaxModal');
+            const workoutIdInput = document.getElementById('modalWorkoutId');
+            const weightInput = document.getElementById('newWeight');
+            const repsInput = document.getElementById('newReps');
+            const closeModal = document.getElementById('closeModal');
+
+            document.querySelectorAll('.update-max-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const weight = btn.dataset.weight;
+                    const reps = btn.dataset.reps;
+                    const workoutName = btn.closest('.card-body').querySelector('.card-title').textContent || '';
+                    const isBodyweight = workoutName.toLowerCase().includes('bodyweight');
+
+                    workoutIdInput.value = btn.dataset.id;
+                    weightInput.value = isBodyweight ? '' : (parseFloat(weight) || '');
+                    weightInput.disabled = isBodyweight;
+                    weightInput.placeholder = isBodyweight ? 'Bodyweight exercise' : 'Max Weight (lbs)';
+                    weightInput.title = weightInput.placeholder;
+
+                    repsInput.value = parseInt(reps) || '';
+
+                    modal.style.display = 'flex';
+                });
             });
-        });
-    
-        closeModal.addEventListener('click', () => {
-            modal.style.display = 'none';
-        });
-    
-        document.getElementById('saveMaxBtn').addEventListener('click', async () => {
-            const workout_id = workoutIdInput.value;
-            const max_weight = parseFloat(weightInput.value);
-            const max_reps = parseInt(repsInput.value);
-    
-            if (!max_weight || !max_reps) {
-                alert("Please enter valid values.");
-                return;
-            }
-    
-            const response = await fetch('/update_pr', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ workout_id, max_weight, max_reps })
-            });
-    
-            const data = await response.json();
-            if (data.success) {
-                alert("Max updated!");
+
+            closeModal.addEventListener('click', () => {
                 modal.style.display = 'none';
-                location.reload(); // or update that card without reload
-            } else {
-                alert("Failed to update max.");
-            }
+            });
+
+            document.getElementById('saveMaxBtn').addEventListener('click', async () => {
+                const max_weight = parseFloat(weightInput.value);
+                const max_reps = parseInt(repsInput.value);
+                const isBodyweight = weightInput.disabled;
+                const workout_id = workoutIdInput.value;
+
+                if (isNaN(max_reps) || (!isBodyweight && isNaN(max_weight))) {
+                    alert("Please enter valid values.");
+                    return;
+                }
+
+                const response = await fetch('/update_pr', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ workout_id, max_weight, max_reps })
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    modal.style.display = 'none';
+                    // Update the max text in the correct card
+                    const card = document.querySelector(`.update-max-btn[data-id="${workout_id}"]`).closest('.card-body');
+                    const maxTextSpan = card.querySelector('span.text-dark, span.text-muted');
+
+                    if (maxTextSpan) {
+                        maxTextSpan.classList.remove('text-muted', 'fst-italic');
+                        maxTextSpan.classList.add('text-dark');
+                        maxTextSpan.textContent = isBodyweight
+                            ? `Bodyweight × ${max_reps} reps`
+                            : `${max_weight.toFixed(1)} lbs × ${max_reps} reps`;
+                    }
+                    // Show success toast
+                    const toast = document.getElementById('toastSuccess');
+                    toast.style.display = 'block';
+                    
+                    setTimeout(() => {
+                        toast.style.display = 'none';
+                    }, 2000);
+                } else {
+                    alert("Error updating max. Please try again.");
+                }
+            });
         });
-    });
     </script>    
+
+    <!-- Success Toast -->
+    <div id="toastSuccess" class="text-success text-center fw-bold"
+    style="display: none; position: fixed; top: 10px; left: 50%; transform: translateX(-50%);
+        z-index: 10000; background: #d4edda; padding: 10px 20px; border-radius: 5px; box-shadow: 0 0 10px rgba(0,0,0,0.2);">
+    Max updated!
+    </div>
 {% endblock %}
