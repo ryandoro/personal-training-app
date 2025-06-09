@@ -244,58 +244,60 @@
                                                 .map(
                                                     subcategory => `
                                                     <li class="list-group-item">
-                                                        <strong class="text-primary fs-5">${subcategory.subcategory}</strong>
-                                                        <ul class="list-unstyled mt-2">
-                                                            ${subcategory.exercises
-                                                                .map(
-                                                                    exercise => `
-                                                                        <li class="mb-4">
-                                                                            <div class="card shadow-sm p-3 text-center border border-2" style:"border-color: #20c997;">
-                                                                                <h6 class="fw-bold mb-3">${exercise.name}</h6>
-                                                                                <p class="text-muted mb-1">Images</p>
-                                                                                <div class="d-flex justify-content-center flex-nowrap gap-3 mb-3 px-2">
-                                                                                    <img src="/static/images/${exercise.image_exercise_start}" alt="Start: ${exercise.name}" class="clickable-img rounded border border-2 p-1" style="border-color: #20c997; padding: 0.25rem; width: 50%; max-width: 150px;">
-                                                                                    <img src="/static/images/${exercise.image_exercise_end}" alt="End: ${exercise.name}" class="clickable-img rounded border border-2 p-1" style="border-color: #20c997; padding: 0.25rem; width: 50%; max-width: 150px;">
-                                                                                </div>
+                                                        <div class="card shadow-sm p-3 border border-1 rounded-3" style="border-color: #ced4da; background-color: #f8f9fa;">
+                                                            <h6 class="text-primary fw-bold fs-5 mb-3">${subcategory.subcategory}</h6>
+                                                            <ul class="list-unstyled mt-2">
+                                                                ${subcategory.exercises
+                                                                    .map(
+                                                                        exercise => `
+                                                                            <li class="mb-4">
+                                                                                <div class="card shadow p-3 text-center border border-2 rounded-3" style="border-color: #20c997;">
+                                                                                    <h6 class="fw-bold mb-3">${exercise.name}</h6>
+                                                                                    <p class="text-muted mb-1">Images</p>
+                                                                                    <div class="d-flex justify-content-center flex-nowrap gap-3 mb-3 px-2">
+                                                                                        <img src="/static/images/${exercise.image_exercise_start}" alt="Start: ${exercise.name}" class="clickable-img rounded border border-2 p-1" style="border-color: #20c997; padding: 0.25rem; width: 50%; max-width: 150px;">
+                                                                                        <img src="/static/images/${exercise.image_exercise_end}" alt="End: ${exercise.name}" class="clickable-img rounded border border-2 p-1" style="border-color: #20c997; padding: 0.25rem; width: 50%; max-width: 150px;">
+                                                                                    </div>
 
-                                                                                ${exercise.video_demo ? (
-                                                                                    `<p class="text-muted mb-1">Video Demonstration</p>
-                                                                                    <div class="d-flex justify-content-center mb-3 px-2">
-                                                                                        <video controls class="video-clickable rounded border border-2 p-1" style="border-color: #20c997; padding: 0.25rem; width: 100%; max-width: 240px;">
-                                                                                            <source src="/static/videos/${exercise.video_demo}" type="video/mp4">
-                                                                                            Your browser does not support the video tag.
-                                                                                        </video>
-                                                                                    </div>`
-                                                                                ) : ''}
-                                                                                
-                                                                                <div class="personal-best bg-light p-3 rounded text-center mb-3 shadow-sm border border-2 mx-auto d-block" style="border-color: #20c997; width: fit-content;" data-id="${exercise.workout_id}">
-                                                                                    <small class="text-muted d-block mb-1">Your Max:</small>
-                                                                                    <div class="fw-bold personal-max-text">
-                                                                                        ${exercise.name.toLowerCase().includes('bodyweight') || exercise.max_weight === 0
-                                                                                            ? 'Bodyweight'
-                                                                                            : (exercise.max_weight
-                                                                                                ? `${parseFloat(exercise.max_weight).toFixed(1)} lbs`
-                                                                                                : '–')
-                                                                                        } × 
-                                                                                        ${exercise.max_reps ? `${exercise.max_reps} reps` : '–'}
+                                                                                    ${exercise.video_demo ? (
+                                                                                        `<p class="text-muted mb-1">Video Demonstration</p>
+                                                                                        <div class="d-flex justify-content-center mb-3 px-2">
+                                                                                            <video controls class="video-clickable rounded border border-2 p-1" style="border-color: #20c997; padding: 0.25rem; width: 100%; max-width: 240px;">
+                                                                                                <source src="/static/videos/${exercise.video_demo}" type="video/mp4">
+                                                                                                Your browser does not support the video tag.
+                                                                                            </video>
+                                                                                        </div>`
+                                                                                    ) : ''}
+                                                                                    
+                                                                                    <div class="personal-best bg-light p-3 rounded text-center mb-3 shadow-sm border border-2 mx-auto d-block" style="border-color: #20c997; width: fit-content;" data-id="${exercise.workout_id}">
+                                                                                        <small class="text-muted d-block mb-1">Your Max:</small>
+                                                                                        <div class="fw-bold personal-max-text">
+                                                                                            ${exercise.name.toLowerCase().includes('bodyweight') || exercise.max_weight === 0
+                                                                                                ? 'Bodyweight'
+                                                                                                : (exercise.max_weight
+                                                                                                    ? `${parseFloat(exercise.max_weight).toFixed(1)} lbs`
+                                                                                                    : '–')
+                                                                                            } × 
+                                                                                            ${exercise.max_reps ? `${exercise.max_reps} reps` : '–'}
+                                                                                        </div>
+                                                                                        <button class="btn btn-outline-primary btn-sm mt-2 update-pr-link" data-id="${exercise.workout_id}">
+                                                                                            Update Max
+                                                                                        </button>
                                                                                     </div>
-                                                                                    <button class="btn btn-outline-primary btn-sm mt-2 update-pr-link" data-id="${exercise.workout_id}">
-                                                                                        Update Max
-                                                                                    </button>
-                                                                                </div>
-                                                                                <div class="text-center">
-                                                                                    <button class="btn btn-outline-primary btn-sm mt-2 toggle-description" data-id="desc-${subcategory.subcategory.replace(/\s+/g, '-')}-${exercise.workout_id}">
-                                                                                        View Description
-                                                                                    </button>
-                                                                                    <div id="desc-${subcategory.subcategory.replace(/\s+/g, '-')}-${exercise.workout_id}" class="description text-muted mt-2" style="display: none;">
-                                                                                        ${exercise.description}
+                                                                                    <div class="text-center">
+                                                                                        <button class="btn btn-outline-primary btn-sm mt-2 toggle-description" data-id="desc-${subcategory.subcategory.replace(/\s+/g, '-')}-${exercise.workout_id}">
+                                                                                            View Description
+                                                                                        </button>
+                                                                                        <div id="desc-${subcategory.subcategory.replace(/\s+/g, '-')}-${exercise.workout_id}" class="description text-muted mt-2" style="display: none;">
+                                                                                            ${exercise.description}
+                                                                                        </div>
                                                                                     </div>
                                                                                 </div>
-                                                                            </div>
-                                                                        </li>`
-                                                                )
-                                                                .join('')}
-                                                        </ul>
+                                                                            </li>`
+                                                                    )
+                                                                    .join('')}
+                                                            </ul>
+                                                        </div>
                                                     </li>
                                                 `
                                                 )
