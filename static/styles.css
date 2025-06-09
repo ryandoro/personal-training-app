@@ -24,6 +24,16 @@ html, body {
     padding: 20px; /* Add optional padding */
 }
 
+/* for training.html page*/
+.training-container {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: 20px;
+}
+
 /* Make the main content area take up remaining space */
 .content {
     flex-grow: 1; /* Pushes footer to the bottom when content is short */
