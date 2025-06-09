@@ -21,7 +21,7 @@ html, body {
     flex-direction: column;
     align-items: center; /* Center horizontally */
     text-align: center; /* Center-align text inside */
-    padding: 20px; /* Add optional padding */
+    padding: 10px; /* Add optional padding */
 }
 
 /* for training.html page*/
@@ -31,7 +31,7 @@ html, body {
     flex-direction: column;
     align-items: center;
     text-align: center;
-    padding: 20px;
+    padding: 4px;
 }
 
 /* Make the main content area take up remaining space */

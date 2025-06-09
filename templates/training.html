@@ -5,7 +5,7 @@
 {% endblock %}
 
 {% block content %}
-<div class="container training-container px-3 px-sm-4 mt-5">
+<div class="container-fluid training-container px-0 mt-5">
     {% if not form_completed %}      
         <div class="welcome-message">
             <h3>Welcome to your personalized training journey!</h3>
@@ -234,7 +234,7 @@
                                 `${selectedCategory.replaceAll(' ', '-').toLowerCase()}-workouts`
                             );
                             categoryDiv.innerHTML = `
-                                <div class="card shadow-sm mb-4">
+                                <div class="card w-100 shadow-sm mb-4">
                                     <div class="card-header bg-primary text-white">
                                         <h5 class="m-0">${selectedCategory}</h5>
                                     </div>
@@ -244,7 +244,7 @@
                                                 .map(
                                                     subcategory => `
                                                     <li class="list-group-item">
-                                                        <div class="card shadow-sm p-3 border border-1 rounded-3" style="border-color: #ced4da; background-color: #f8f9fa;">
+                                                        <div class="card w-100 shadow-sm p-3 border border-1 rounded-3" style="border-color: #ced4da; background-color: #f8f9fa;">
                                                             <h6 class="text-primary fw-bold fs-5 mb-3">${subcategory.subcategory}</h6>
                                                             <ul class="list-unstyled mt-2">
                                                                 ${subcategory.exercises
