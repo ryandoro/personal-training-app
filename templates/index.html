@@ -5,18 +5,21 @@
 {% endblock %}
 
 {% block content %}
-    <div class="welcome-message">
-        <h2>Welcome back, {{ name }}!</h2>
+<div class="card w-100 mx-auto shadow-sm p-3 border border-2 rounded-3 mb-4" style="border-color: #ced4da; background-color: #f8f9fa;">
+    <div class="card-body">
+        <h2 class="text-center mb-4">Welcome back, {{ name }}!</h2>
         <p>
             Here, you can track your workouts, generate customized routines, and see your progress as you achieve your fitness goals. Let’s keep pushing forward together!
         </p>
 
         <hr>
-        <strong>Your Stats:</strong>
-        <ul>
-            <li><strong>Workouts Completed:</strong>  {{ workouts_completed }}</li>
-            <li>
-                <strong>Last Workout Completed:</strong> 
+        <h5><strong>Your Stats:</strong></h5>
+        <ul class="list-group p-2 border border-2 rounded-3 mb-4" style="border-color: #ced4da; background-color: #f8f9fa;">
+            <li class="list-group-item shadow-sm p-3 border border-1 rounded-4 mb-3" style="border-color: #20c997; background-color: #ffffff;">
+                <strong>Workouts Completed:</strong> {{ workouts_completed }}
+            </li>
+            <li class="list-group-item shadow-sm p-3 border border-1 rounded-4 mb-3" style="border-color: #20c997; background-color: #ffffff;">
+                <strong>Last Workout Completed:</strong>
                 {% if last_workout_completed != "No workouts completed yet" %}
                     <a href="{{ url_for('workout_details', category=last_workout_completed) }}">
                         {{ last_workout_completed }}
@@ -25,13 +28,16 @@
                     {{ last_workout_completed }}
                 {% endif %}
             </li>
-            <li><strong>Current Goal:</strong> {{ fitness_goals }}</li>
+            <li class="list-group-item shadow-sm p-3 border border-1 rounded-4" style="border-color: #20c997; background-color: #ffffff;">
+                <strong>Current Goal:</strong> {{ fitness_goals }}
+            </li>
         </ul>
-        <hr>
 
         <p>
             Ready for your next workout? Head over to the training page and get started with your personalized plan.
         </p>
-        <a href="/training" class="btn btn-primary mt-3">Go to Training</a>
+        <div class="text-center">
+            <a href="/training" class="btn btn-primary mt-3">Go to Training</a>
+        </div>
     </div>
 {% endblock %}

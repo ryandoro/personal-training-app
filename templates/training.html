@@ -160,7 +160,38 @@
             <button type="submit" class="btn btn-primary w-100">Submit</button>
         </form>
     {% else %}
-        <!-- Show workout options after the form is submitted -->
+        <!-- Show guidelines and workout options after the form is submitted -->
+        <!-- Guidelines Box -->
+        {% if guidelines %}
+        <div class="card w-100 mx-auto shadow-sm p-3 border border-2 rounded-3 mb-4" style="border-color: #ced4da; background-color: #f8f9fa;">
+            <div class="card-body">
+                <h4 class="card-title text-center mb-3">Guidelines</h4>
+                <p>Based on your current goal - <strong>{{ fitness_goals }}</strong> - the following is recommended for each exercise:</p>
+                
+                <ul class="list-group p-2 border border-2 rounded-3 mb-4" style="border-color: #ced4da; background-color: #f8f9fa;">
+                    <li class="list-group-item shadow-sm p-3 border border-1 rounded-4 mb-3" style="border-color: #20c997; background-color: #ffffff;">
+                        <strong>Sets:</strong> {{ guidelines.Sets }}
+                    </li>
+                    <li class="list-group-item shadow-sm p-3 border border-1 rounded-4 mb-3" style="border-color: #20c997; background-color: #ffffff;">
+                        <strong>Repetitions:</strong> {{ guidelines.Reps }}
+                    </li>
+                    <li class="list-group-item shadow-sm p-3 border border-1 rounded-4 mb-3" style="border-color: #20c997; background-color: #ffffff;">
+                        <strong>Rest Between Sets:</strong> {{ guidelines.Rest }}
+                    </li>
+                </ul>
+        
+                <ul class="list-group p-2 border border-2 rounded-3" style="border-color: #ced4da; background-color: #f8f9fa;">
+                    <li class="list-group-item shadow-sm p-3 border border-1 rounded-4 mb-3" style="border-color: #20c997; background-color: #ffffff;">
+                        <strong>Resistance Training:</strong> Minimum 2 days per week
+                    </li>
+                    <li class="list-group-item shadow-sm p-3 border border-1 rounded-4" style="border-color: #20c997; background-color: #ffffff;">
+                        <strong>Cardio Training:</strong> Minimum 3 days per week, 10 minutes per exercise
+                    </li>
+                </ul>
+            </div>
+        </div>
+        {% endif %}
+        <hr>
         <div class="mb-4">
             <h3 class="text-center mb-3 fw-bold">Choose Your Workout</h3>
             <div class="row justify-content-center">
@@ -538,81 +569,7 @@
         });
         </script>
         
-        <!-- Guidelines Box -->
-        {% if guidelines %}
-        <div class="card w-100 mx-auto shadow-sm p-3 border border-2 rounded-3 mb-4" style="border-color: #ced4da; background-color: #f8f9fa;">
-            <div class="card-body">
-                <h4 class="card-title text-center mb-3">Guidelines</h4>
-                <p>Based on your current goal - <strong>{{ fitness_goals }}</strong> - The following is recommended for each exercise:</p>
-                <ul class="list-group">
-                    <li class="list-group-item"><strong>Sets:</strong> {{ guidelines.Sets }}</li>
-                    <li class="list-group-item"><strong>Repetitions:</strong> {{ guidelines.Reps }}</li>
-                    <li class="list-group-item"><strong>Rest Between Sets:</strong> {{ guidelines.Rest }}</li>
-                </ul>
-                <ul class="list-group">
-                    <li class="list-group-item"><strong>Resistance Training:</strong> Minimum 2 days per week</li>
-                    <li class="list-group-item"><strong>Cardio Training:</strong> Minimum 3 days per week, 10 minutes per exercise</li>
-                </ul>
-            </div>
-        </div>
-        {% endif %}
-        <hr>
-
-        {% if guidelines %}
-        <div class="card w-100 mx-auto shadow-sm p-3 border border-2 rounded-3 mb-4" style="border-color: #ced4da; background-color: #f8f9fa;">
-            <div class="card-body">
-                <h4 class="card-title text-center mb-3">Guidelines</h4>
-                <p>Based on your current goal - <strong>{{ fitness_goals }}</strong> - the following is recommended for each exercise:</p>
-                
-                <ul class="list-group p-2 border border-2 rounded-3 mb-4" style="border-color: #ced4da; background-color: #f8f9fa;">
-                    <li class="list-group-item shadow-sm p-3 border border-1 rounded-4 mb-3" style="border-color: #20c997; background-color: #ffffff;">
-                        <strong>Sets:</strong> {{ guidelines.Sets }}
-                    </li>
-                    <li class="list-group-item shadow-sm p-3 border border-1 rounded-4 mb-3" style="border-color: #20c997; background-color: #ffffff;">
-                        <strong>Repetitions:</strong> {{ guidelines.Reps }}
-                    </li>
-                    <li class="list-group-item shadow-sm p-3 border border-1 rounded-4 mb-3" style="border-color: #20c997; background-color: #ffffff;">
-                        <strong>Rest Between Sets:</strong> {{ guidelines.Rest }}
-                    </li>
-                </ul>
-        
-                <ul class="list-group p-2 border border-2 rounded-3" style="border-color: #ced4da; background-color: #f8f9fa;">
-                    <li class="list-group-item shadow-sm p-3 border border-1 rounded-4 mb-3" style="border-color: #20c997; background-color: #ffffff;">
-                        <strong>Resistance Training:</strong> Minimum 2 days per week
-                    </li>
-                    <li class="list-group-item shadow-sm p-3 border border-1 rounded-4" style="border-color: #20c997; background-color: #ffffff;">
-                        <strong>Cardio Training:</strong> Minimum 3 days per week, 10 minutes per exercise
-                    </li>
-                </ul>
-            </div>
-        </div>
-        {% endif %}
-        
         <!-- Target Heart Rate Zone -->
-        {% if target_heart_rate_zone %}
-        <div class="card w-100 mx-auto shadow-sm p-3 border border-2 rounded-3 mb-4" style="border-color: #ced4da; background-color: #f8f9fa;">
-            <div class="card-body">
-                <h4 class="card-title text-center mb-3">Your Target Heart Rate Zone</h4>
-                <p class="card-text">
-                    Based on your age, the recommended heart rate ranges for your optimal cardiovascular activity are:
-                </p>
-                <ul class="list-group">
-                    <li class="list-group-item">
-                        <strong>Target Heart Rate Zone:</strong> {{ target_heart_rate_zone.lower_bound }} - {{ target_heart_rate_zone.upper_bound }} bpm
-                    </li>
-                    <li class="list-group-item">
-                        <strong>Maximum Heart Rate:</strong> {{ target_heart_rate_zone.max_heart_rate }} bpm
-                    </li>
-                </ul>
-                <p class="mt-3 text-muted">
-                    Try to keep your heart rate in the middle of your target heart rate zone. Track your heart rate during cardio exercises to stay within this range. Use gym equipment monitors
-                    or a smartwatch like a Fitbit, Garmin, or Apple Watch.
-                </p>
-            </div>
-        </div>
-        {% endif %} 
-        <hr>
-        
         {% if target_heart_rate_zone %}
         <div class="card w-100 mx-auto shadow-sm p-3 border border-2 rounded-3 mb-4" style="border-color: #ced4da; background-color: #f8f9fa;">
             <div class="card-body">
@@ -642,27 +599,6 @@
         <div class="card w-100 mx-auto shadow-sm p-3 border border-2 rounded-3 mb-4" style="border-color: #ced4da; background-color: #f8f9fa;">
             <div class="card-body">
                 <h4 class="card-title text-center mb-3">Key</h4>
-                <h5><strong>5 Point Rule:</strong></h5>
-                <ul class="list-group list-group mb-4">
-                    <li class="list-group-item">1. Left foot flat on the floor</li>
-                    <li class="list-group-item">2. Right foot flat on the floor</li>
-                    <li class="list-group-item">3. Butt on bench</li>
-                    <li class="list-group-item">4. Upper back on bench</li>
-                    <li class="list-group-item">5. Head on bench</li>
-                </ul>
-                <h5><strong>4 Point Rule:</strong></h5>
-                <ul class="list-group list-group">
-                    <li class="list-group-item">1. Left foot flat on the floor</li>
-                    <li class="list-group-item">2. Right foot flat on the floor</li>
-                    <li class="list-group-item">3. Butt on bench</li>
-                    <li class="list-group-item">4. Chest/back on pad</li>
-                </ul>
-            </div>
-        </div>
-
-        <div class="card w-100 mx-auto shadow-sm p-3 border border-2 rounded-3 mb-4" style="border-color: #ced4da; background-color: #f8f9fa;">
-            <div class="card-body">
-                <h4 class="card-title text-center mb-3">Key</h4>
                 
                 <h5><strong>5 Point Rule:</strong></h5>
                 <ul class="list-group p-2 border border-2 rounded-3 mb-4" style="border-color: #ced4da; background-color: #f8f9fa;">
@@ -682,7 +618,6 @@
                 </ul>
             </div>
         </div>
-        
     {% endif %}
 </div>
 {% endblock %}
