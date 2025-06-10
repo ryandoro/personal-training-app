@@ -234,7 +234,7 @@
                                 `${selectedCategory.replaceAll(' ', '-').toLowerCase()}-workouts`
                             );
                             categoryDiv.innerHTML = `
-                                <div class="card w-100 shadow-sm mb-4">
+                                <div class="card w-100 mb-4 shadow-sm p-3 border border-3 rounded-2" style="border-color: #ced4da; background-color: #f8f9fa;">
                                     <div class="card-header bg-primary text-white">
                                         <h5 class="m-0">${selectedCategory}</h5>
                                     </div>
@@ -244,25 +244,25 @@
                                                 .map(
                                                     subcategory => `
                                                     <li class="list-group-item">
-                                                        <div class="card w-100 shadow-sm p-3 border border-1 rounded-3" style="border-color: #ced4da; background-color: #f8f9fa;">
+                                                        <div class="card w-100 mx-auto shadow-sm p-3 border border-2 rounded-3" style="border-color: #ced4da; background-color: #f8f9fa;">
                                                             <h6 class="text-primary fw-bold fs-5 mb-3">${subcategory.subcategory}</h6>
                                                             <ul class="list-unstyled mt-2">
                                                                 ${subcategory.exercises
                                                                     .map(
                                                                         exercise => `
                                                                             <li class="mb-4">
-                                                                                <div class="card shadow p-3 text-center border border-2 rounded-3" style="border-color: #20c997;">
+                                                                                <div class="card shadow p-3 text-center border border-1 rounded-4 mx-auto" style="border-color: #20c997; width: 100%;">
                                                                                     <h6 class="fw-bold mb-3">${exercise.name}</h6>
                                                                                     <p class="text-muted mb-1">Images</p>
                                                                                     <div class="d-flex justify-content-center flex-nowrap gap-3 mb-3 px-2">
-                                                                                        <img src="/static/images/${exercise.image_exercise_start}" alt="Start: ${exercise.name}" class="clickable-img rounded border border-2 p-1" style="border-color: #20c997; padding: 0.25rem; width: 50%; max-width: 150px;">
-                                                                                        <img src="/static/images/${exercise.image_exercise_end}" alt="End: ${exercise.name}" class="clickable-img rounded border border-2 p-1" style="border-color: #20c997; padding: 0.25rem; width: 50%; max-width: 150px;">
+                                                                                        <img src="/static/images/${exercise.image_exercise_start}" alt="Start: ${exercise.name}" class="clickable-img rounded border border-2 p-1 mx-auto d-block" style="border-color: #20c997; width: 50%; max-width: 150px;">
+                                                                                        <img src="/static/images/${exercise.image_exercise_end}" alt="End: ${exercise.name}" class="clickable-img rounded border border-2 p-1 mx-auto d-block" style="border-color: #20c997; width: 50%; max-width: 150px;">
                                                                                     </div>
 
                                                                                     ${exercise.video_demo ? (
                                                                                         `<p class="text-muted mb-1">Video Demonstration</p>
                                                                                         <div class="d-flex justify-content-center mb-3 px-2">
-                                                                                            <video controls class="video-clickable rounded border border-2 p-1" style="border-color: #20c997; padding: 0.25rem; width: 100%; max-width: 240px;">
+                                                                                            <video controls class="video-clickable rounded border border-2 p-1" style="border-color: #20c997; width: 100%; max-width: 240px;">
                                                                                                 <source src="/static/videos/${exercise.video_demo}" type="video/mp4">
                                                                                                 Your browser does not support the video tag.
                                                                                             </video>
