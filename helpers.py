@@ -4,6 +4,8 @@ import os, psycopg2
 from psycopg2 import connect
 from urllib.parse import urlparse
 from dotenv import load_dotenv
+from collections import OrderedDict
+from decimal import Decimal
 
 load_dotenv()
 ## Not using - DATABASE_PATH = os.getenv('DATABASE_URL', 'instance/health.db')
@@ -22,6 +24,20 @@ def login_required(f):
         print("User is logged in")
         return f(*args, **kwargs)
     return decorated_function
+
+
+def convert_decimals(obj):
+    if isinstance(obj, list):
+        return [convert_decimals(i) for i in obj]
+    elif isinstance(obj, dict):
+        return {k: convert_decimals(v) for k, v in obj.items()}
+    elif isinstance(obj, tuple):
+        return tuple(convert_decimals(i) for i in obj)
+    elif isinstance(obj, Decimal):
+        return float(obj)
+    else:
+        return obj
+
 
 
 def calculate_target_heart_rate(age):
@@ -83,7 +99,7 @@ def generate_workout(selected_category, user_level, user_id):
 
     # Fetch the workout structure for the selected category and user level
     subcategories = workout_structure.get(user_level, {}).get(selected_category, {})
-    workout_plan = {}
+    workout_plan = OrderedDict()
 
     ## Not using - with sqlite3.connect(DATABASE_PATH) as conn:
     with get_connection() as conn:

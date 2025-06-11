@@ -2,7 +2,8 @@ import os, logging, json
 # from dotenv import load_dotenv
 from flask import Flask, flash, redirect, render_template, request, session, jsonify
 from werkzeug.security import generate_password_hash, check_password_hash
-from helpers import login_required, calculate_target_heart_rate, generate_workout, get_guidelines, get_connection
+from helpers import login_required, convert_decimals, calculate_target_heart_rate, generate_workout, get_guidelines, get_connection
+from collections import OrderedDict
 
 # Utilized ChatGPT to help complete this web application 
 # Set up basic logging configuration
@@ -343,7 +344,7 @@ def generate_workout_route():
     # Save the exact workout and category to the session
     session['generated_workout'] = {
         'category': selected_category,
-        'workout': workout_plan  # Save the raw workout structure
+        'workout': json.dumps(convert_decimals(workout_plan))  # Save the randomly generated workout structure
     }
 
     # Format the workout for the response
@@ -388,11 +389,13 @@ def complete_workout():
     # Extract category and workout details
     workout_category = generated_workout['category']
     # Get fresh max values for all exercises in the generated workout
-    refreshed_workout = {}
+    refreshed_workout = OrderedDict()
 
     with get_connection() as conn:
         with conn.cursor() as cursor:
-            for subcat, exercises in generated_workout['workout'].items():
+            workout_data = json.loads(generated_workout['workout'], object_pairs_hook=OrderedDict)
+            for subcat, exercises in workout_data.items():
+            #for subcat, exercises in generated_workout['workout'].items():
                 refreshed_workout[subcat] = []
                 for ex in exercises:
                     workout_id = ex[0]  # assuming (id, name, desc) structure
@@ -449,21 +452,23 @@ def workout_details(category):
         return render_template('workout_details.html', category=category, workouts=None)
 
     # Parse the stored JSON workout details
-    raw_workouts = json.loads(result[0])
+    #raw_workouts = json.loads(result[0])
 
     # Reformat the data for the template
-    workouts = {
-        subcategory: [
-            {
-                "name": exercise["name"],
-                "description": exercise["description"],
-                "max_weight": exercise["max_weight"],
-                "max_reps": exercise["max_reps"]
-            }
-            for exercise in exercises
-        ]
-        for subcategory, exercises in raw_workouts.items()
-    }
+    #workouts = {
+    #    subcategory: [
+    #        {
+    #            "name": exercise["name"],
+    #            "description": exercise["description"],
+    #            "max_weight": exercise["max_weight"],
+    #            "max_reps": exercise["max_reps"]
+    #        }
+    #        for exercise in exercises
+    #    ]
+    #    for subcategory, exercises in raw_workouts.items()
+    #}
+    # Load and preserve subcategory order
+    workouts = json.loads(result[0], object_pairs_hook=OrderedDict)
 
     return render_template('workout_details.html', category=category, workouts=workouts)
 
