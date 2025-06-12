@@ -27,7 +27,11 @@ def home():
     ## Not using - with sqlite3.connect(DATABASE_PATH) as conn:
     with get_connection() as conn:
         with conn.cursor() as cursor:
-            cursor.execute("SELECT name, fitness_goals, workouts_completed, last_workout_completed FROM users WHERE id = %s", (user_id,))
+            cursor.execute("""
+                SELECT name, fitness_goals, workouts_completed, last_workout_completed, form_completed 
+                FROM users 
+                WHERE id = %s
+            """, (user_id,))
             user = cursor.fetchone()
         
     # Ensure the user exists
@@ -40,10 +44,11 @@ def home():
     fitness_goals = user[1] if user[1] else "Not set yet" # Default message if no goals yet
     workouts_completed = user[2] if user[2] is not None else 0  # Default to 0 if no value
     last_workout_completed = user[3] if user[3] else "No workouts completed yet"
+    form_completed = user[4]
 
     return render_template(
         'index.html', 
-        name=name, 
+        name=name if form_completed else None, 
         fitness_goals=fitness_goals, 
         workouts_completed=workouts_completed,
         last_workout_completed=last_workout_completed
