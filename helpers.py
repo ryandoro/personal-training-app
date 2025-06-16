@@ -1,6 +1,6 @@
 from functools import wraps
 from flask import session, redirect, url_for, flash
-import os, psycopg2
+import os, psycopg2, re
 from psycopg2 import connect
 from urllib.parse import urlparse
 from dotenv import load_dotenv
@@ -37,7 +37,6 @@ def convert_decimals(obj):
         return float(obj)
     else:
         return obj
-
 
 
 def calculate_target_heart_rate(age):
@@ -129,6 +128,37 @@ def generate_workout(selected_category, user_level, user_id):
     return workout_plan
 
 
+def parse_range(value):
+    """Extract numbers from a string like '8-12' or '30-60 seconds'."""
+    minutes = 'minute' in value
+    numbers = list(map(int, re.findall(r'\d+', value)))
+    return [n * 60 if minutes else n for n in numbers]
+
+def format_range(values, is_rest=False):
+    if not values:
+        return "N/A"
+    min_val = min(values)
+    max_val = max(values)
+
+    # Special formatting for Rest values
+    if is_rest:
+        if max_val < 90:
+            # Show both as seconds
+            return f"{min_val}–{max_val} seconds" if min_val != max_val else f"{min_val} seconds"
+        elif min_val >= 120:
+            # Show both in minutes
+            min_min = min_val // 60
+            max_min = max_val // 60
+            return f"{min_min}–{max_min} minutes" if min_min != max_min else f"{min_min} minutes"
+        else:
+            # Mixed case: seconds to minutes
+            max_min = max_val // 60
+            return f"{min_val} seconds – {max_min} minutes"
+    else:
+        # For Sets and Reps
+        return f"{min_val}–{max_val}" if min_val != max_val else f"{min_val}"
+
+
 def get_guidelines(exercise_history, fitness_goals):
     # Define guidelines based on exercise history and fitness goals
     level_map = {
@@ -139,34 +169,58 @@ def get_guidelines(exercise_history, fitness_goals):
     }
     level = level_map.get(exercise_history, 1)  # Default to Beginner (Level 1)
 
+    if isinstance(fitness_goals, str):
+        fitness_goals = [g.strip().title() for g in fitness_goals.split(",")]
+    else:
+        fitness_goals = [g.title() for g in fitness_goals]
+
     guidelines = {
         1: {  # Beginner
-            "Lose Weight": {"Sets": "2-3", "Reps": "8-12", "Rest": "60-90 seconds"},
-            "Gain Muscle": {"Sets": "3", "Reps": "8-12", "Rest": "30-90 seconds"},
-            "Tone Muscle": {"Sets": "3", "Reps": "8-12", "Rest": "30-60 seconds"},
-            "Abs": {"Sets": "3", "Reps": "10-15", "Rest": "30-60 seconds"},
-            "Increase Strength": {"Sets": "3", "Reps": "4-8", "Rest": "2-3 minutes"},
-            "Increase Endurance": {"Sets": "2-3", "Reps": "12-20", "Rest": "30-60 seconds"},
-            "Feel Better": {"Sets": "3", "Reps": "10-15", "Rest": "30-60 seconds"}
+            "Lose Weight": {"Sets": "2-3", "Reps": "10-15", "Rest": "30-60 seconds"},
+            "Gain Muscle": {"Sets": "3", "Reps": "8-12", "Rest": "60-90 seconds"},
+            "Tone Muscle": {"Sets": "3", "Reps": "8-12", "Rest": "45-60 seconds"},
+            "Abs": {"Sets": "2-3", "Reps": "12-20", "Rest": "30-45 seconds"},
+            "Increase Strength": {"Sets": "3", "Reps": "5-8", "Rest": "90-120 seconds"},
+            "Increase Endurance": {"Sets": "2-3", "Reps": "15-20", "Rest": "30-45 seconds"},
+            "Feel Better": {"Sets": "2-3", "Reps": "10-15", "Rest": "30-60 seconds"}
         },
         2: {  # Intermediate
-            "Lose Weight": {"Sets": "3-4", "Reps": "8-12", "Rest": "60 seconds"},
-            "Gain Muscle": {"Sets": "4", "Reps": "8-12", "Rest": "60 seconds"},
-            "Tone Muscle": {"Sets": "4", "Reps": "8-12", "Rest": "30-60 seconds"},
-            "Abs": {"Sets": "4", "Reps": "10-15", "Rest": "60 seconds"},
-            "Increase Strength": {"Sets": "4", "Reps": "4-8", "Rest": "2-3 minutes"},
-            "Increase Endurance": {"Sets": "3-4", "Reps": "12-20", "Rest": "60 seconds"},
-            "Feel Better": {"Sets": "3-4", "Reps": "10-15", "Rest": "60 seconds"}
+            "Lose Weight": {"Sets": "3-4", "Reps": "10-12", "Rest": "30-45 seconds"},
+            "Gain Muscle": {"Sets": "4", "Reps": "6-12", "Rest": "60 seconds"},
+            "Tone Muscle": {"Sets": "4", "Reps": "8-12", "Rest": "30-45 seconds"},
+            "Abs": {"Sets": "3-4", "Reps": "15-20", "Rest": "30-45 seconds"},
+            "Increase Strength": {"Sets": "4", "Reps": "4-6", "Rest": "2-3 minutes"},
+            "Increase Endurance": {"Sets": "3-4", "Reps": "15-25", "Rest": "30 seconds"},
+            "Feel Better": {"Sets": "3-4", "Reps": "10-15", "Rest": "30-45 seconds"}
         },
         3: {  # Advanced
-            "Lose Weight": {"Sets": "4-5", "Reps": "8-12", "Rest": "30-60 seconds"},
-            "Gain Muscle": {"Sets": "4-5", "Reps": "8-12", "Rest": "30-60 seconds"},
-            "Tone Muscle": {"Sets": "4-5", "Reps": "8-12", "Rest": "30-60 seconds"},
-            "Abs": {"Sets": "4-5", "Reps": "10-15", "Rest": "30-60 seconds"},
-            "Increase Strength": {"Sets": "4-5", "Reps": "4-8", "Rest": "2-4 minutes"},
-            "Increase Endurance": {"Sets": "4-5", "Reps": "12-20", "Rest": "30-60 seconds"},
-            "Feel Better": {"Sets": "4-5", "Reps": "10-15", "Rest": "30-60 seconds"}
+            "Lose Weight": {"Sets": "4-5", "Reps": "8-12", "Rest": "15-30 seconds"},
+            "Gain Muscle": {"Sets": "5", "Reps": "6-10", "Rest": "30-60 seconds"},
+            "Tone Muscle": {"Sets": "4-5", "Reps": "8-10", "Rest": "30 seconds"},
+            "Abs": {"Sets": "4-5", "Reps": "15-25", "Rest": "30 seconds"},
+            "Increase Strength": {"Sets": "5", "Reps": "3-5", "Rest": "3-5 minutes"},
+            "Increase Endurance": {"Sets": "4-5", "Reps": "20-30", "Rest": "15-30 seconds"},
+            "Feel Better": {"Sets": "4", "Reps": "12-15", "Rest": "30 seconds"}
         }
     }
 
-    return guidelines[level].get(fitness_goals, {})
+    goals = [g for g in fitness_goals if g in guidelines[level]]
+    if not goals:
+        return {}
+
+    sets = []
+    reps = []
+    rest = []
+
+    for goal in goals:
+        g = guidelines[level][goal]
+        sets += parse_range(g["Sets"])
+        reps += parse_range(g["Reps"])
+        rest += parse_range(g["Rest"])
+
+    return {
+        "Sets": format_range(sets),
+        "Reps": format_range(reps),
+        "Rest": format_range(rest, is_rest=True)
+    }
+    # Don't need this line? - return guidelines[level].get(fitness_goals, {})

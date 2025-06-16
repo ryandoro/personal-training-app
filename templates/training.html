@@ -106,33 +106,38 @@
 
                     <!-- Fitness Goals -->
                     <div class="mb-3">
-                        <label class="form-label fw-bold d-block">Fitness Goals (Select one)</label>
+                        <label class="form-label fw-bold d-block">Fitness Goals <small>(Select up to 2)</small></label>
+                        <small class="text-muted d-block mb-2">
+                            We recommend selecting 1 or 2 goals to help keep your training focused and effective.
+                        </small>
+
+                        <!-- Goal Checkboxes -->
                         <div class="form-check">
-                            <input type="radio" class="form-check-input" id="lose-weight" name="fitness_goals" value="Lose Weight">
+                            <input type="checkbox" class="form-check-input goal-checkbox" id="lose-weight" name="fitness_goals" value="Lose Weight">
                             <label class="form-check-label" for="lose-weight">Lose Weight</label>
                         </div>
                         <div class="form-check">
-                            <input type="radio" class="form-check-input" id="gain-muscle" name="fitness_goals" value="Gain Muscle">
+                            <input type="checkbox" class="form-check-input goal-checkbox" id="gain-muscle" name="fitness_goals" value="Gain Muscle">
                             <label class="form-check-label" for="gain-muscle">Gain Muscle</label>
                         </div>
                         <div class="form-check">
-                            <input type="radio" class="form-check-input" id="tone-muscle" name="fitness_goals" value="Tone Muscle">
+                            <input type="checkbox" class="form-check-input goal-checkbox" id="tone-muscle" name="fitness_goals" value="Tone Muscle">
                             <label class="form-check-label" for="tone-muscle">Tone Muscle</label>
                         </div>
                         <div class="form-check">
-                            <input type="radio" class="form-check-input" id="abs" name="fitness_goals" value="Abs">
+                            <input type="checkbox" class="form-check-input goal-checkbox" id="abs" name="fitness_goals" value="Abs">
                             <label class="form-check-label" for="abs">Abs</label>
                         </div>
                         <div class="form-check">
-                            <input type="radio" class="form-check-input" id="strength" name="fitness_goals" value="Increase Strength">
+                            <input type="checkbox" class="form-check-input goal-checkbox" id="strength" name="fitness_goals" value="Increase Strength">
                             <label class="form-check-label" for="strength">Increase Strength</label>
                         </div>
                         <div class="form-check">
-                            <input type="radio" class="form-check-input" id="endurance" name="fitness_goals" value="Increase Endurance">
+                            <input type="checkbox" class="form-check-input goal-checkbox" id="endurance" name="fitness_goals" value="Increase Endurance">
                             <label class="form-check-label" for="endurance">Increase Endurance</label>
                         </div>
                         <div class="form-check">
-                            <input type="radio" class="form-check-input" id="feel-better" name="fitness_goals" value="Feel Better">
+                            <input type="checkbox" class="form-check-input goal-checkbox" id="feel-better" name="fitness_goals" value="Feel Better">
                             <label class="form-check-label" for="feel-better">Feel Better</label>
                         </div>
                     </div>
@@ -176,15 +181,24 @@
                     <!-- Submit Button -->
                     <button type="submit" class="btn btn-primary w-100">Submit</button>
                 </form>
-            </div>
+            </div>        
     {% else %} <!-- Show guidelines and workout options after the form is submitted -->
         <!-- Guidelines Box -->
         {% if guidelines %}
         <div class="card w-100 mx-auto shadow-sm p-3 border border-2 rounded-3 mb-4" style="border-color: #ced4da; background-color: #f8f9fa;">
             <div class="card-body">
                 <h4 class="card-title text-center mb-3">Guidelines</h4>
-                <p>Based on your current goal - <strong>{{ fitness_goals }}</strong> - the following is recommended for each exercise:</p>
-                
+        
+                {% set goal_list = fitness_goals.split(',') %}
+                <p>
+                    Based on your selected goal{{ goal_list | length > 1 and 's' or '' }} —
+                    <strong>
+                        {% for goal in goal_list %}
+                            {{ goal.strip() }}{% if not loop.last %}, {% endif %}
+                        {% endfor %}
+                    </strong> — here are your recommended targets per exercise:
+                </p>
+        
                 <ul class="list-group p-2 border border-2 rounded-3 mb-4" style="border-color: #ced4da; background-color: #f8f9fa;">
                     <li class="list-group-item shadow-sm p-3 border border-1 rounded-4 mb-3" style="border-color: #20c997; background-color: #ffffff;">
                         <strong>Sets:</strong> {{ guidelines.Sets }}
@@ -197,17 +211,34 @@
                     </li>
                 </ul>
         
+                <p class="text-muted small">
+                    These ranges reflect the combination of your selected goals. Adjust within the range based on how you feel each day.
+                </p>
+                <details class="mb-3">
+                    <summary class="text-primary" style="cursor: pointer;"><strong>Pro Tip 💡</strong></summary>
+                    <p class="mt-2 mb-0">
+                        To get the best results, aim for the lower end of the rest range and the higher end of the sets and 
+                        repetitions <strong>when you're feeling strong and well-recovered</strong>. Your effort should feel like an 
+                        <strong>8 out of 10</strong> — challenging, but doable with good form. If things start to feel too easy within the guidelines,
+                        increase the weight or difficulty of the exercise, or shift to a different part of the rep range or time target than you used last time. 
+                        That’s where real results are made: consistent, focused effort.
+                    </p>
+                </details>
+
                 <ul class="list-group p-2 border border-2 rounded-3" style="border-color: #ced4da; background-color: #f8f9fa;">
                     <li class="list-group-item shadow-sm p-3 border border-1 rounded-4 mb-3" style="border-color: #20c997; background-color: #ffffff;">
-                        <strong>Resistance Training:</strong> Minimum 2 days per week
+                        <strong>Resistance Training:</strong> At least 2 non-consecutive days per week, targeting all major muscle groups.
                     </li>
                     <li class="list-group-item shadow-sm p-3 border border-1 rounded-4" style="border-color: #20c997; background-color: #ffffff;">
-                        <strong>Cardio Training:</strong> Minimum 3 days per week, 10 minutes per exercise
+                        <strong>Cardio Training:</strong> Minimum 3 days per week. Start with 10 minutes per session and build up to 20–30 minutes as you progress.
                     </li>
                 </ul>
             </div>
         </div>
         {% endif %}
+        
+
+
         <hr>
         <div class="mb-4">
             <h3 class="text-center mb-3 fw-bold">Choose Your Workout</h3>
@@ -433,7 +464,7 @@
             <span id="modalClose" style="position:absolute; top:20px; right:30px; font-size:2rem; color:white; cursor:pointer;">&times;</span>
             <img id="modalImage" style="margin:auto; display:block; max-width:90%; max-height:90%; position:absolute; top:0; bottom:0; left:0; right:0;">
         </div>
-
+            
         <script>
         document.addEventListener('click', function (e) {
             const toggle = e.target.closest('.toggle-description');
@@ -637,6 +668,25 @@
         </div>
     {% endif %}
 </div>
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const checkboxes = document.querySelectorAll('.goal-checkbox');
+
+        function updateCheckboxStates() {
+            const checkedBoxes = Array.from(checkboxes).filter(cb => cb.checked);
+
+            checkboxes.forEach(cb => {
+                cb.disabled = checkedBoxes.length >= 2 && !cb.checked;
+            });
+        }
+
+        checkboxes.forEach(cb => {
+            cb.addEventListener('change', updateCheckboxStates);
+        });
+
+        updateCheckboxStates();
+    });
+</script>    
 {% endblock %}
 
 

@@ -1,6 +1,6 @@
 import os, logging, json
 # from dotenv import load_dotenv
-from flask import Flask, flash, redirect, render_template, request, session, jsonify
+from flask import Flask, flash, redirect, render_template, request, session, jsonify, url_for
 from werkzeug.security import generate_password_hash, check_password_hash
 from helpers import login_required, convert_decimals, calculate_target_heart_rate, generate_workout, get_guidelines, get_connection
 from collections import OrderedDict
@@ -51,7 +51,8 @@ def home():
         name=name if form_completed else None, 
         fitness_goals=fitness_goals, 
         workouts_completed=workouts_completed,
-        last_workout_completed=last_workout_completed
+        last_workout_completed=last_workout_completed,
+        form_completed=form_completed
     )
 
 
@@ -222,6 +223,11 @@ def training():
             flash("Please fill out all required fields.", "danger")
             return render_template('training.html', form_completed=False)
 
+        # Server-side validation for number of goals
+        if len(fitness_goals) < 1:
+            flash("Please select at least 1 fitness goal.", "danger")
+            return render_template('training.html', form_completed=False)
+        
         # Connect to the database and update user information
         try:
             ## Not using - with sqlite3.connect(DATABASE_PATH) as conn:
@@ -524,6 +530,35 @@ def search():
     results = cursor.fetchall()
 
     return render_template("search_results.html", query=query, results=results)
+
+
+@app.route('/update_goals', methods=['POST'])
+@login_required
+def update_goals():
+    user_id = session['user_id']
+    fitness_goals = request.form.getlist('fitness_goals')
+
+    if len(fitness_goals) < 1 or len(fitness_goals) > 2:
+        flash("Please select 1 or 2 goals.", "danger")
+        return redirect(url_for('home'))
+
+    fitness_goals_str = ", ".join([goal.title() for goal in fitness_goals])
+
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("""
+                    UPDATE users
+                    SET fitness_goals = %s
+                    WHERE id = %s
+                """, (fitness_goals_str, user_id))
+                conn.commit()
+
+        flash("Your goals have been updated!", "success")
+    except Exception as e:
+        flash(f"An error occurred: {e}", "danger")
+
+    return redirect(url_for('home'))
 
 
 if __name__ == '__main__':
