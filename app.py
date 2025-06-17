@@ -64,6 +64,7 @@ def register():
     
     if request.method == 'POST':
         username = request.form.get('username')
+        email = request.form.get('email') or None
         password = request.form.get('password')
         confirmation = request.form.get('confirmation')
 
@@ -117,7 +118,7 @@ def register():
 
                 # Hash the password and insert the new user
                 hashed_password = generate_password_hash(password)
-                cursor.execute("INSERT INTO users (username, hash) VALUES (%s, %s)", (username, hashed_password))
+                cursor.execute("INSERT INTO users (username, hash, email) VALUES (%s, %s, %s)", (username, hashed_password, email))
                 conn.commit()
 
         flash("Registration successful! Please log in.", "success")
@@ -559,6 +560,57 @@ def update_goals():
         flash(f"An error occurred: {e}", "danger")
 
     return redirect(url_for('home'))
+
+
+@app.route('/forgot_password', methods=['GET', 'POST'])
+def forgot_password():
+    if request.method == 'POST':
+        username = request.form['username']
+
+        with get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("SELECT id FROM users WHERE username = %s", (username,))
+                user = cursor.fetchone()
+
+        if user:
+            return redirect(url_for('reset_password', username=username))
+        else:
+            flash("No account found with that username.", "danger")
+            return render_template("forgot_password.html")
+
+    return render_template("forgot_password.html")
+
+
+@app.route('/reset_password/<username>', methods=['GET', 'POST'])
+def reset_password(username):
+    # Confirm user exists before showing reset form
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT id FROM users WHERE username = %s", (username,))
+            user = cursor.fetchone()
+
+    if not user:
+        flash("No user found with that username.", "danger")
+        return redirect('/forgot_password')
+    
+    if request.method == 'POST':
+        password = request.form['password']
+        confirmation = request.form['confirmation']
+
+        if password != confirmation:
+            flash("Passwords do not match", "danger")
+            return render_template("reset_password.html", username=username)
+
+        hashed = generate_password_hash(password)
+        with get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("UPDATE users SET hash = %s WHERE username = %s", (hashed, username))
+                conn.commit()
+
+        flash("Password reset successful. Please log in.", "success")
+        return redirect('/login')
+
+    return render_template("reset_password.html", username=username)
 
 
 if __name__ == '__main__':
