@@ -52,8 +52,14 @@
                 <form action="/training" method="post" class="needs-validation" novalidate>
                     <!-- Name -->
                     <div class="mb-3">
-                        <label for="name" class="form-label fw-bold">Name</label>
-                        <input type="text" class="form-control" id="name" name="name" placeholder="Enter your name" required>
+                        <label for="name" class="form-label fw-bold">First Name</label>
+                        <input type="text" class="form-control" id="name" name="name" placeholder="Enter your first name" required>
+                    </div>
+                    
+                    <!-- Last Name -->
+                    <div class="mb-3">
+                        <label for="last_name" class="form-label fw-bold">Last Name</label>
+                        <input type="text" class="form-control" id="last_name" name="last_name" placeholder="Enter your last name" required>
                     </div>
 
                     <!-- Age -->
@@ -442,7 +448,7 @@
 
         <!-- Success Toast -->
         <div id="toastSuccess" class="text-success text-center fw-bold"
-            style="display: none; position: fixed; top: 10px; left: 50%; transform: translateX(-50%);
+            style="display: none; position: fixed; top: 65px; left: 50%; transform: translateX(-50%);
                 z-index: 10000; background: #d4edda; padding: 10px 20px; border-radius: 5px; box-shadow: 0 0 10px rgba(0,0,0,0.2);">
             Max updated!
         </div>

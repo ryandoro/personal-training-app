@@ -33,6 +33,9 @@
                             <a class="nav-link" href="/training">Personal Training</a>
                         </li>
                         <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('settings') }}">Account Settings</a>
+                        </li>                        
+                        <li class="nav-item">
                             <a href="/logout" class="nav-link" onclick="return confirmLogout()">Logout</a>
                             <script>
                                 // JavaScript function to confirm logout
@@ -54,19 +57,14 @@
         </div>
     </nav>
 
-    <!-- Flash Messages -->
-    {% with messages = get_flashed_messages(with_categories=True) %}
-        {% if messages %}
-            <div class="container-fluid mt-3">
-                {% for category, message in messages %}
-                    <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
-                        {{ message }}
-                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                    </div>
-                {% endfor %}
-            </div>
-        {% endif %}
-    {% endwith %}
+    <!-- Custom Global Toast -->
+    <div id="globalToast" class="text-center fw-bold"
+        style="display: none; position: fixed; top: 65px; left: 50%; transform: translateX(-50%);
+                z-index: 1050; background: #d1e7dd; color: #0f5132;
+                padding: 10px 20px; border-radius: 5px; box-shadow: 0 0 10px rgba(0,0,0,0.2);">
+        <span id="toastMessage" class="me-3 w-100 text-center"></span>
+        <button type="button" class="btn-close" aria-label="Close" onclick="document.getElementById('globalToast').style.display='none';"></button>
+    </div>
 
     <!-- Main Content -->
     <div class="container content mt-3">
@@ -83,5 +81,50 @@
 
     <!-- Include Bootstrap JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script id="flashed-messages" type="application/json">
+        {{ get_flashed_messages(with_categories=true)|tojson }}
+    </script>    
+    <script>
+        window.addEventListener('DOMContentLoaded', () => {
+            const toast = document.getElementById('globalToast');
+            const rawData = document.getElementById('flashed-messages')?.textContent;
+    
+            if (!rawData || !toast) return;
+    
+            let messages = [];
+            try {
+                messages = JSON.parse(rawData);
+            } catch (e) {
+                console.error("Failed to parse flash messages", e);
+            }
+    
+            if (messages.length > 0) {
+                const [category, message] = messages[0]; // Only show the first
+    
+                document.getElementById('toastMessage').textContent = message;
+    
+                // Apply color scheme based on category
+                if (category === "danger") {
+                    toast.style.background = "#f8d7da";
+                    toast.style.color = "#842029";
+                } else if (category === "warning") {
+                    toast.style.background = "#fff3cd";
+                    toast.style.color = "#664d03";
+                } else {
+                    toast.style.background = "#d1e7dd";
+                    toast.style.color = "#0f5132";
+                }
+    
+                toast.style.display = 'block';
+    
+                if (category !== 'danger') {
+                    setTimeout(() => {
+                        toast.style.display = 'none';
+                    }, 4000);
+                }
+            }
+        });
+    </script>           
 </body>
 </html>

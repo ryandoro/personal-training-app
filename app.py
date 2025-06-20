@@ -134,10 +134,10 @@ def login():
     if 'user_id' in session:
         return redirect('/')
 
-    # Forget any user_id
-    session.clear()
-
     if request.method == 'POST':
+        # Clear the session when someone tries to log in
+        session.clear()
+
         username = request.form.get('username')
         password = request.form.get('password')
 
@@ -204,6 +204,7 @@ def training():
     if request.method == 'POST' and not form_completed:
         # Get form data
         name = request.form.get('name')
+        last_name = request.form.get('last_name')
         age = request.form.get('age')
         weight = request.form.get('weight')
         height_feet = request.form.get('height_feet')
@@ -220,7 +221,7 @@ def training():
         fitness_goals_str = ", ".join(fitness_goals)
 
         # Validate required fields
-        if not all([name, age, weight, height_feet, height_inches, gender, exercise_history, commitment]):
+        if not all([name, last_name, age, weight, height_feet, height_inches, gender, exercise_history, commitment]):
             flash("Please fill out all required fields.", "danger")
             return render_template('training.html', form_completed=False)
 
@@ -240,12 +241,12 @@ def training():
                             age = %s, weight = %s, height_feet = %s, height_inches = %s, 
                             gender = %s, exercise_history = %s, fitness_goals = %s, 
                             injury = %s, injury_details = %s, commitment = %s, additional_notes = %s, 
-                            name = %s, form_completed = TRUE
+                            name = %s, last_name = %s, form_completed = TRUE
                         WHERE id = %s
                     """, (
                         age, weight, height_feet, height_inches, gender, 
                         exercise_history, fitness_goals_str, injury, injury_details, 
-                        commitment, additional_notes, name, user_id
+                        commitment, additional_notes, name, last_name, user_id
                     ))
                     conn.commit()
 
@@ -607,10 +608,141 @@ def reset_password(username):
                 cursor.execute("UPDATE users SET hash = %s WHERE username = %s", (hashed, username))
                 conn.commit()
 
-        flash("Password reset successful. Please log in.", "success")
+        flash("Password successfully updated! Please log in.", "success")
         return redirect('/login')
 
     return render_template("reset_password.html", username=username)
+
+
+@app.route('/settings', methods=['GET', 'POST'])
+@login_required
+def settings():
+    user_id = session['user_id']
+
+    # Fetch user info to pre-fill the form
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("""
+                SELECT username, name, last_name, email, age, weight, height_feet, height_inches,
+                       gender, exercise_history, fitness_goals, injury, injury_details,
+                       commitment, additional_notes
+                FROM users
+                WHERE id = %s
+            """, (user_id,))
+            user = cursor.fetchone()
+    columns = ['username', 'name', 'last_name', 'email', 'age', 'weight', 'height_feet', 'height_inches',
+                'gender', 'exercise_history', 'fitness_goals', 'injury', 'injury_details',
+                'commitment', 'additional_notes']
+
+    if user:
+        user = dict(zip(columns, user))    
+
+    if request.method == 'POST':
+        # Collect updated form values
+        username = request.form.get('username')
+        name = request.form.get('name')
+        last_name = request.form.get('last_name')
+        email = request.form.get('email') or None
+        age = request.form.get('age')
+        weight = request.form.get('weight')
+        height_feet = request.form.get('height_feet')
+        height_inches = request.form.get('height_inches')
+        gender = request.form.get('gender')
+        exercise_history = request.form.get('exercise_history')
+        fitness_goals = request.form.getlist('fitness_goals')
+        fitness_goals_cleaned = ", ".join(goal.strip() for goal in fitness_goals if goal.strip())
+        injury = request.form.get('injury')
+        injury_details = request.form.get('injury_details')
+        commitment = request.form.get('commitment')
+        additional_notes = request.form.get('additional_notes')
+        password = request.form.get('password')
+        confirm_password = request.form.get('confirm_password')
+
+        # Validate required fields (excluding optional email/password)
+        if not all([username, name, last_name, age, weight, height_feet, height_inches, gender, exercise_history, commitment]):
+            flash("Please fill out all required fields.", "danger")
+            return render_template('settings.html', user=user)
+
+        # Validate fitness goals (must select 1 or 2)
+        if not (1 <= len(fitness_goals) <= 2):
+            flash("Please select 1 or 2 fitness goals.", "danger")
+            return render_template('settings.html', user=user)
+
+        # Validate password if provided
+        if password:
+            if password != confirm_password:
+                flash("Passwords do not match.", "danger")
+                return render_template('settings.html', user=user)
+            
+            if len(password) < 8:
+                flash("Password must be at least 8 characters long.", "danger")
+                return render_template('settings.html', user=user)
+
+            if not any(char.isupper() for char in password):
+                flash("Password must include at least one uppercase letter.", "danger")
+                return render_template('settings.html', user=user)
+
+            if not any(char in "!@#$%^&*()-_+=<>?/{}~" for char in password):
+                flash("Password must include at least one special character.", "danger")
+                return render_template('settings.html', user=user)
+    
+            hashed_password = generate_password_hash(password)
+        else:
+            hashed_password = None
+
+        # Check for duplicate username or email
+        with get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("SELECT id FROM users WHERE username = %s AND id != %s", (username, user_id))
+                if cursor.fetchone():
+                    flash("That username is already taken.", "danger")
+                    return render_template('settings.html', user=user)
+
+                if email:
+                    cursor.execute("SELECT id FROM users WHERE email = %s AND id != %s", (email, user_id))
+                    if cursor.fetchone():
+                        flash("That email is already in use.", "danger")
+                        return render_template('settings.html', user=user)
+
+        # Update the user
+        with get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("""
+                    UPDATE users
+                    SET username = %s, name = %s, last_name = %s, email = %s,
+                        age = %s, weight = %s, height_feet = %s, height_inches = %s,
+                        gender = %s, exercise_history = %s, fitness_goals = %s,
+                        injury = %s, injury_details = %s, commitment = %s,
+                        additional_notes = %s
+                    WHERE id = %s
+                """, (
+                    username, name, last_name, email, age, weight, height_feet,
+                    height_inches, gender, exercise_history, fitness_goals_cleaned,
+                    injury, injury_details, commitment, additional_notes, user_id
+                ))
+
+                if hashed_password:
+                    cursor.execute("UPDATE users SET hash = %s WHERE id = %s", (hashed_password, user_id))
+
+                conn.commit()
+
+        flash("Settings updated successfully!", "success")
+
+        # Refetch updated data
+        with get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("""
+                    SELECT username, name, last_name, email, age, weight, height_feet, height_inches,
+                           gender, exercise_history, fitness_goals, injury, injury_details,
+                           commitment, additional_notes
+                    FROM users
+                    WHERE id = %s
+                """, (user_id,))
+                user = cursor.fetchone()
+        if user:
+            user = dict(zip(columns, user))
+
+    return render_template('settings.html', user=user)
 
 
 if __name__ == '__main__':
