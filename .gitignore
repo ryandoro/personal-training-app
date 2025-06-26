@@ -10,6 +10,7 @@ backup_*.*
 /backups/
 instance/
 *.db
+
 # Image scripts
 batch_crop.py
 crop_one.py
@@ -19,3 +20,6 @@ db_image_columns_update.py
 # Temporary image folders
 static/cropped_images/
 static/uncropped_images/
+
+# Video scripts
+update_youtube_ids.py

@@ -369,7 +369,7 @@ def generate_workout_route():
                     'workout_id': exercise[0],
                     'name': exercise[1],
                     'description': exercise[2],
-                    'video_demo': exercise[3],
+                    'youtube_id': exercise[3],
                     'image_exercise_start': exercise[4],
                     'image_exercise_end': exercise[5],
                     'max_weight': exercise[6],

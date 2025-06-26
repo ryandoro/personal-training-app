@@ -108,7 +108,7 @@ def generate_workout(selected_category, user_level, user_id):
                         w.id AS workout_id,
                         w.name,
                         w.description,
-                        w.video_demo,
+                        w.youtube_id,
                         w.image_exercise_start,
                         w.image_exercise_end,
                         uep.max_weight,
