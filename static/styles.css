@@ -12,6 +12,7 @@ html, body {
     padding: 0;
     display: flex;
     flex-direction: column;
+    overflow-x: hidden;
 }
 
 /* Set up the main layout container */
@@ -113,3 +114,13 @@ footer {
     font-size: 0.9rem;
     color: #6c757d;
 }
+
+iframe.fullscreen-sim {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 9999;
+  }
+  
