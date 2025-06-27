@@ -329,15 +329,15 @@
                                                 .map(
                                                     subcategory => `
                                                     <li class="list-group-item">
-                                                        <div class="card w-100 mx-auto shadow-sm p-3 border border-2 rounded-3" style="border-color: #ced4da; background-color: #f8f9fa;">
+                                                        <div class="card w-100 shadow-sm p-3 border border-2 rounded-3" style="border-color: #ced4da; background-color: #f8f9fa;">
                                                             <h6 class="text-primary fw-bold fs-5 mb-3">${subcategory.subcategory}</h6>
-                                                            <div class="container px-3">
+                                                            <div class="px-0">
                                                                 <ul class="list-unstyled mt-2">
                                                                     ${subcategory.exercises
                                                                         .map(
                                                                             exercise => `
                                                                                 <li class="mb-4">
-                                                                                    <div class="card shadow p-3 text-center border border-1 rounded-4 mx-auto" style="border-color: #20c997; width: 100%; max-width: 600px">
+                                                                                    <div class="card shadow p-3 text-center border border-1 rounded-4 w-100" style="border-color: #20c997;">
                                                                                         <h6 class="fw-bold mb-3">${exercise.name}</h6>
                                                                                         <p class="text-muted mb-1">Images</p>
                                                                                         <div class="d-flex justify-content-center flex-nowrap gap-3 mb-3 px-2">
