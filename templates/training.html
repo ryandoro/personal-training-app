@@ -320,8 +320,8 @@
                             );
                             categoryDiv.innerHTML = `
                                 <div class="card w-100 mb-4 shadow-sm p-3 border border-3 rounded-2" style="border-color: #ced4da; background-color: #f8f9fa;">
-                                    <div class="card-header shadow p-3 bg-primary text-white">
-                                        <h5 class="m-0">${selectedCategory}</h5>
+                                    <div class="card-header shadow p-3 fitbaseblue-bg text-white">
+                                        <h5 class="m-0 text-uppercase">${selectedCategory}</h5>
                                     </div>
                                     <div class="card-body px-0">
                                         <ul class="list-group">
@@ -330,7 +330,7 @@
                                                     subcategory => `
                                                     <li class="list-group-item">
                                                         <div class="card w-100 shadow-sm p-3 border border-2 rounded-3" style="border-color: #ced4da; background-color: #f8f9fa;">
-                                                            <h6 class="text-primary fw-bold fs-5 mb-3">${subcategory.subcategory}</h6>
+                                                            <h6 class="fitbaseblue-text fw-bold fs-5 mb-3">${subcategory.subcategory}</h6>
                                                             <div class="px-0">
                                                                 <ul class="list-unstyled mt-2">
                                                                     ${subcategory.exercises
@@ -338,7 +338,7 @@
                                                                             exercise => `
                                                                                 <li class="mb-4">
                                                                                     <div class="card shadow p-3 text-center border border-1 rounded-4 w-100" style="border-color: #20c997;">
-                                                                                        <h6 class="fw-bold mb-3">${exercise.name}</h6>
+                                                                                        <h6 class="fw-bold mb-3 text-uppercase" style="color: #F7931A; border-bottom: 2px solid #4D4D4D; display: inline-block; padding-bottom: 2px;">${exercise.name}</h6>
                                                                                         <div class="d-flex justify-content-center flex-nowrap gap-3 mb-3 px-2">
                                                                                             <div class="d-flex flex-column align-items-center">
                                                                                                 <p class="mb-1 fw-semibold">Start:</p>

@@ -124,3 +124,10 @@ iframe.fullscreen-sim {
     z-index: 9999;
   }
   
+  .fitbaseblue-bg {
+    background-color: #0096C7;
+}
+
+.fitbaseblue-text {
+    color: #0096C7;
+}
