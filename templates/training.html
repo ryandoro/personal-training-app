@@ -339,15 +339,14 @@
                                                                                 <li class="mb-4">
                                                                                     <div class="card shadow p-3 text-center border border-1 rounded-4 w-100" style="border-color: #20c997;">
                                                                                         <h6 class="fw-bold mb-3">${exercise.name}</h6>
-                                                                                        <p class="text-muted mb-1">Images</p>
                                                                                         <div class="d-flex justify-content-center flex-nowrap gap-3 mb-3 px-2">
                                                                                             <div class="d-flex flex-column align-items-center">
                                                                                                 <p class="mb-1 fw-semibold">Start:</p>
-                                                                                                <img src="/static/images/${exercise.image_exercise_start}" alt="Start: ${exercise.name}" class="clickable-img rounded border border-2 p-1" style="border-color: #20c997; width: 100%; max-width: 140px;">
+                                                                                                <img src="/static/images/${exercise.image_exercise_start}" alt="Start: ${exercise.name}" class="clickable-img rounded border border-2 p-1 shadow-sm" style="border-color: #20c997; width: 100%; max-width: 140px;">
                                                                                             </div>
                                                                                             <div class="d-flex flex-column align-items-center">
                                                                                                 <p class="mb-1 fw-semibold">End:</p>
-                                                                                                <img src="/static/images/${exercise.image_exercise_end}" alt="End: ${exercise.name}" class="clickable-img rounded border border-2 p-1" style="border-color: #20c997; width: 100%; max-width: 140px;">
+                                                                                                <img src="/static/images/${exercise.image_exercise_end}" alt="End: ${exercise.name}" class="clickable-img rounded border border-2 p-1 shadow-sm" style="border-color: #20c997; width: 100%; max-width: 140px;">
                                                                                             </div>
                                                                                         </div>
 
@@ -355,15 +354,16 @@
                                                                                         `<p class="text-muted mb-1">Video Demonstration</p>
                                                                                         <div class="d-flex justify-content-center mb-3 px-2">
                                                                                             <div style="width: 100%; max-width: 240px;">
-                                                                                                <iframe
-                                                                                                    class="rounded border border-2 p-1"
-                                                                                                    style="border-color: #20c997; width: 100%; aspect-ratio: 9 / 16;"
-                                                                                                    src="https://www.youtube.com/embed/${exercise.youtube_id}?playsinline=1&modestbranding=1&rel=0"
-                                                                                                    title="FitBase Demo"
-                                                                                                    frameborder="0"
-                                                                                                    allow="fullscreen; accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                                                                                                    allowfullscreen
-                                                                                                ></iframe>
+                                                                                                <div class="bg-light rounded border shadow-sm mb-3 mx-auto" style="border-color: #20c997; padding: 5px; max-width: 240px;">
+                                                                                                    <iframe
+                                                                                                        style="border-color: #20c997; width: 100%; aspect-ratio: 9 / 16; border: none; display: block;"
+                                                                                                        src="https://www.youtube.com/embed/${exercise.youtube_id}?playsinline=1&modestbranding=1&rel=0"
+                                                                                                        title="FitBase Demo"
+                                                                                                        frameborder="0"
+                                                                                                        allow="fullscreen; accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                                                                                        allowfullscreen
+                                                                                                    ></iframe>
+                                                                                                </div>
                                                                                             </div>
                                                                                         </div>`
                                                                                         ) : ''}
