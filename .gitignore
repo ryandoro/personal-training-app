@@ -10,6 +10,7 @@ backup_*.*
 /backups/
 instance/
 *.db
+static/images/
 
 # Image scripts
 batch_crop.py
