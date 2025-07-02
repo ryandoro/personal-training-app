@@ -26,11 +26,15 @@
                 <span class="navbar-toggler-icon"></span>
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav ms-auto">
-                    <form class="d-flex ms-3" role="search" action="/search" method="GET">
-                        <input class="form-control me-2 bitcoin-search" type="search" placeholder="Search exercises..." name="q" aria-label="Search">
-                        <button class="btn bitcoin-btn" type="submit">Search</button>
-                    </form>                    
+                {% if 'user_id' in session %}
+                    <!-- Search bar only visible when menu is expanded -->
+                    <form class="d-flex ms-lg-auto me-3 mt-2 mt-lg-0" role="search" action="/search" method="GET">
+                    <input class="form-control me-2 bitcoin-search"
+                            type="search" placeholder="Search exercises..." name="q" aria-label="Search">
+                    <button class="btn bitcoin-btn" type="submit">Search</button>
+                    </form>
+                {% endif %}
+                <ul class="navbar-nav ms-auto">                 
                     {% if 'user_id' in session %}
                         <li class="nav-item">
                             <a class="nav-link" aria-current="page" href="/">Home</a>
