@@ -13,21 +13,27 @@
 </head>
 <body>
     <!-- Navigation Bar -->
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+    <nav class="navbar navbar-expand-lg" style="background-color: #3a3a3a;">
         <div class="container-fluid">
-            <a class="navbar-brand" href="/">FitBase</a>
+            <a class="navbar-brand d-flex align-items-center" href="/">
+                <img src="{{ url_for('static', filename='images/fitbase_orange_gray_monogram_logo.png') }}" 
+                     alt="FitBase Logo" 
+                     height="32" 
+                     class="me-2">
+                <span class="fw-bold" style="color: #F7931A;">FITBASE</span>
+            </a>            
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
                 <span class="navbar-toggler-icon"></span>
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav ms-auto">
                     <form class="d-flex ms-3" role="search" action="/search" method="GET">
-                        <input class="form-control me-2" type="search" placeholder="Search exercises..." name="q" aria-label="Search">
-                        <button class="btn btn-outline-light" type="submit">Search</button>
+                        <input class="form-control me-2 bitcoin-search" type="search" placeholder="Search exercises..." name="q" aria-label="Search">
+                        <button class="btn bitcoin-btn" type="submit">Search</button>
                     </form>                    
                     {% if 'user_id' in session %}
                         <li class="nav-item">
-                            <a class="nav-link active" aria-current="page" href="/">Home</a>
+                            <a class="nav-link" aria-current="page" href="/">Home</a>
                         </li>
                         <li class="nav-item">
                             <a class="nav-link" href="/training">Training</a>

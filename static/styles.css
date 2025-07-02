@@ -131,3 +131,53 @@ iframe.fullscreen-sim {
 .fitbaseblue-text {
     color: #0096C7;
 }
+
+/* Bitcoin Orange Styles */
+.bitcoin-orange {
+    color: #f7931a !important;
+    font-weight: 500;
+    transition: color 0.2s ease-in-out;
+  }
+  
+  .bitcoin-orange:hover {
+    color: #ffa94d !important; /* optional: lighter orange on hover */
+  }
+
+  .bitcoin-orange.active {
+    color: #f7931a !important;
+    border-bottom: 2px solid #f7931a;
+  }
+  
+.bitcoin-search {
+    background-color: #3a3a3a;
+    border: 1px solid #f7931a;
+    color: #f7931a;
+  }
+  
+  .bitcoin-search::placeholder {
+    color: #ccc;
+  }
+  
+  .bitcoin-btn {
+    color: #f7931a;
+    border: 1px solid #f7931a;
+    background-color: transparent;
+    transition: all 0.3s ease;
+  }
+  
+  .bitcoin-btn:hover {
+    background-color: #f7931a;
+    color: #3a3a3a;
+  }
+  
+  .nav-link {
+    color: #e0e0e0 !important; /* light gray for neutral look */
+    transition: color 0.2s ease;
+  }
+  
+  .nav-link:hover,
+  .nav-link:focus,
+  .nav-link.active {
+    color: #f7931a !important; /* Bitcoin Orange */
+  }
+  

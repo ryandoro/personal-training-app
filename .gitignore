@@ -16,6 +16,7 @@ batch_crop.py
 crop_one.py
 png_to_jpg.py
 db_image_columns_update.py
+PNG_to_png.py
 
 # Temporary image folders
 static/cropped_images/
