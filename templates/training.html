@@ -492,7 +492,21 @@
 
         <!-- Image Modal -->
         <div id="imageModal" style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(0,0,0,0.8);">
-            <span id="modalClose" style="position:absolute; top:20px; right:30px; font-size:2rem; color:white; cursor:pointer;">&times;</span>
+            <span id="modalClose" style="position:absolute; top:20px; right:30px; font-size:2rem; color:white; cursor:pointer; z-index:10001;">&times;</span>
+            <div id="swipeOverlay" style="
+                position: absolute;
+                bottom: 60px;
+                width: 100%;
+                text-align: center;
+                color: rgba(220, 220, 220, 0.8);
+                font-size: 1rem;
+                font-weight: bold;
+                opacity: 0.85;
+                text-shadow: 0 0 8px rgba(0,0,0,0.8);
+                pointer-events: none;
+                transition: opacity 0.5s ease;
+                z-index: 10000;">&lt;&nbsp;&nbsp;&nbsp;Swipe&nbsp;&nbsp;&nbsp;&gt;
+            </div>
             <img id="modalImage" style="margin:auto; display:block; max-width:90%; max-height:90%; position:absolute; top:0; bottom:0; left:0; right:0; cursor:pointer;">
         </div>
             
