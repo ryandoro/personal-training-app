@@ -342,16 +342,24 @@
                                                                                         <div class="d-flex justify-content-center flex-nowrap gap-3 mb-3 px-2">
                                                                                             <div class="d-flex flex-column align-items-center">
                                                                                                 <p class="mb-1 fw-semibold">Start:</p>
-                                                                                                <img src="/static/images/${exercise.image_exercise_start}" alt="Start: ${exercise.name}" class="clickable-img rounded border border-2 p-1 shadow-sm" style="border-color: #20c997; width: 100%; max-width: 140px;">
+                                                                                                <img src="/static/images/${exercise.image_exercise_start}" 
+                                                                                                    alt="Start: ${exercise.name}" 
+                                                                                                    class="clickable-img rounded border border-2 p-1 shadow-sm"
+                                                                                                    data-group="${exercise.name}" data-index="0" 
+                                                                                                    style="border-color: #20c997; width: 100%; max-width: 140px;">
                                                                                             </div>
                                                                                             <div class="d-flex flex-column align-items-center">
                                                                                                 <p class="mb-1 fw-semibold">End:</p>
-                                                                                                <img src="/static/images/${exercise.image_exercise_end}" alt="End: ${exercise.name}" class="clickable-img rounded border border-2 p-1 shadow-sm" style="border-color: #20c997; width: 100%; max-width: 140px;">
+                                                                                                <img src="/static/images/${exercise.image_exercise_end}" 
+                                                                                                    alt="End: ${exercise.name}" 
+                                                                                                    class="clickable-img rounded border border-2 p-1 shadow-sm"
+                                                                                                    data-group="${exercise.name}" data-index="1" 
+                                                                                                    style="border-color: #20c997; width: 100%; max-width: 140px;">
                                                                                             </div>
                                                                                         </div>
 
                                                                                         ${exercise.youtube_id ? (
-                                                                                        `<p class="text-muted mb-1">Video Demonstration</p>
+                                                                                        `<p class="fw-semibold mb-1">Video Demonstration:</p>
                                                                                         <div class="d-flex justify-content-center mb-3 px-2">
                                                                                             <div style="width: 100%; max-width: 240px;">
                                                                                                 <div class="bg-light rounded border shadow-sm mb-3 mx-auto" style="border-color: #20c997; padding: 5px; max-width: 240px;">
@@ -407,6 +415,8 @@
                                 </div>
                             `;
                             categoryDiv.classList.remove('d-none');
+
+                            bindImageClickEvents();
         
                             // Show the "Complete Workout" button
                             completeWorkoutBtn.style.display = 'block';
@@ -483,10 +493,11 @@
         <!-- Image Modal -->
         <div id="imageModal" style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(0,0,0,0.8);">
             <span id="modalClose" style="position:absolute; top:20px; right:30px; font-size:2rem; color:white; cursor:pointer;">&times;</span>
-            <img id="modalImage" style="margin:auto; display:block; max-width:90%; max-height:90%; position:absolute; top:0; bottom:0; left:0; right:0;">
+            <img id="modalImage" style="margin:auto; display:block; max-width:90%; max-height:90%; position:absolute; top:0; bottom:0; left:0; right:0; cursor:pointer;">
         </div>
             
         <script>
+        // Toggle Description JS 
         document.addEventListener('click', function (e) {
             const toggle = e.target.closest('.toggle-description');
             if (!toggle) return;
@@ -521,22 +532,79 @@
                 toggle.textContent = 'View Description';
             }
         });
-        document.addEventListener('click', function (e) {
-            // Image modal
-            if (e.target && e.target.classList.contains('clickable-img')) {
-                const modal = document.getElementById('imageModal');
-                const modalImg = document.getElementById('modalImage');
-                modalImg.src = e.target.src;
+
+        document.addEventListener('DOMContentLoaded', function () {
+            bindImageClickEvents();
+        });
+
+        // Clickable Image JS 
+        function bindImageClickEvents() {
+            const modal = document.getElementById('imageModal');
+            const modalImg = document.getElementById('modalImage');
+            let currentGroup = null;
+            let currentIndex = 0;
+            let groupImages = [];
+
+            document.querySelectorAll('.clickable-img').forEach(img => {
+                img.addEventListener('click', () => {
+                    console.log('Image clicked:', img.src);
+                    console.log('Group:', img.dataset.group);
+                    console.log('Index:', img.dataset.index);
+
+                    currentGroup = img.dataset.group;
+                    currentIndex = parseInt(img.dataset.index);
+                    groupImages = Array.from(document.querySelectorAll(`.clickable-img[data-group="${currentGroup}"]`));
+                    const selectedImage = groupImages[currentIndex];
+                    console.log('Selected image for modal:', selectedImage);
+
+                    showModal(selectedImage?.src || '');
+                });
+            });
+
+            function showModal(src) {
+                console.log('Opening modal with image src:', src);  // Add this
+                if (!src) {
+                    console.warn('Modal image src is missing!');
+                    return;
+                }
+                modalImg.src = src;
                 modal.style.display = 'block';
             }
 
-            if (
-                e.target.id === 'modalClose' ||
-                (e.target.id === 'imageModal' && e.target.tagName !== 'IMG')
-            ) {
-                document.getElementById('imageModal').style.display = 'none';
+            function hideModal() {
+                modal.style.display = 'none';
             }
-        });
+
+            modal.addEventListener('click', hideModal);
+            modalImg.addEventListener('click', hideModal); // tap image to close
+
+            // Swipe support
+            let touchStartX = 0;
+
+            modal.addEventListener('touchstart', (e) => {
+                touchStartX = e.changedTouches[0].screenX;
+            });
+
+            modal.addEventListener('touchend', (e) => {
+                const touchEndX = e.changedTouches[0].screenX;
+                const deltaX = touchEndX - touchStartX;
+
+                if (Math.abs(deltaX) > 50) {
+                    // swipe left/right
+                    if (deltaX > 0) {
+                        // swipe right: previous
+                        currentIndex = (currentIndex - 1 + groupImages.length) % groupImages.length;
+                    } else {
+                        // swipe left: next
+                        currentIndex = (currentIndex + 1) % groupImages.length;
+                    }
+                    showModal(groupImages[currentIndex].src);
+                }
+            });
+        }
+
+
+        // Video Clickable JS 
         document.addEventListener('click', function (e) {
             const video = e.target;
             if (video.tagName === 'VIDEO' && video.classList.contains('video-clickable')) {
@@ -549,6 +617,9 @@
                 }
             }
         });
+
+
+        // Update Max JS 
         document.addEventListener('DOMContentLoaded', function () {
             let currentWorkoutId = null;
 
