@@ -637,6 +637,10 @@ def settings():
     if user:
         user = dict(zip(columns, user))    
 
+        for key in columns:
+            if user.get(key) is None:
+                user[key] = ""
+
     if request.method == 'POST':
         # Collect updated form values
         username = request.form.get('username')

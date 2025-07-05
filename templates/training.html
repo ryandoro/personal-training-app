@@ -286,10 +286,13 @@
             {% endfor %}
         </div>
         
-        <div class="text-center mt-4">
-            <button id="complete-workout-btn" class="btn btn-success btn-lg" style="display: none;">
+        <div class="mt-4">
+            <button id="complete-workout-btn" class="btn btn-success btn-lg mb-2 mx-auto" style="display: none;">
                 Complete Workout
             </button>
+            <div id="progress-tracking-note" class="text-muted small text-center mb-2" style="display: none;">
+                <em>After clicking Complete Workout, you’ll be able to track your progress and view past workouts from the homepage.</em>
+            </div>
         </div>
         <hr>
 
@@ -298,8 +301,10 @@
             const workoutDetails = document.getElementById('workout-details');
             const completeWorkoutBtn = document.getElementById('complete-workout-btn');
         
-            // Initially hide the "Complete Workout" button
+            // Initially hide the "Complete Workout" button and progress tracking note 
             completeWorkoutBtn.style.display = 'none';
+            document.getElementById('progress-tracking-note').style.display = 'none';
+
         
             categorySelect.addEventListener('change', async () => {
                 const selectedCategory = categorySelect.value;
@@ -418,8 +423,10 @@
 
                             bindImageClickEvents();
         
-                            // Show the "Complete Workout" button
+                            // Show the "Complete Workout" button and progress tracking note 
                             completeWorkoutBtn.style.display = 'block';
+                            document.getElementById('progress-tracking-note').style.display = 'block';
+
         
                             // Attach the selected category to the button's dataset for later use
                             completeWorkoutBtn.dataset.category = selectedCategory;
@@ -433,6 +440,7 @@
                     }
                 } else {
                     completeWorkoutBtn.style.display = 'none'; // Hide the button if no category is selected
+                    document.getElementById('progress-tracking-note').style.display = 'none'; // Hide the progress tracking note if no category is selected
                 }
             });
         

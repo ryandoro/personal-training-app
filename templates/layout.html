@@ -11,7 +11,7 @@
     <!-- Include Custom CSS -->
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
 </head>
-<body>
+<body class="d-flex flex-column min-vh-100">
     <!-- Navigation Bar -->
     <nav class="navbar navbar-expand-lg" style="background-color: #3a3a3a;">
         <div class="container-fluid">
@@ -77,10 +77,12 @@
     </div>
 
     <!-- Main Content -->
-    <div class="container content mt-3">
-        {% block content %}
-        {% endblock %}
-    </div>
+     <main class="flex-grow-1">
+        <div class="container content mt-3">
+            {% block content %}
+            {% endblock %}
+        </div>
+    </main>
 
     <!-- Footer -->
     <footer style="width: 100%; background-color: #f1f3f5; padding: 1.25rem 0;">
