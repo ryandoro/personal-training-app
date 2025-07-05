@@ -13,6 +13,7 @@ html, body {
     display: flex;
     flex-direction: column;
     overflow-x: hidden;
+    overscroll-behavior-y: none;
 }
 
 /* Set up the main layout container */
@@ -38,6 +39,8 @@ html, body {
 /* Make the main content area take up remaining space */
 .content {
     flex-grow: 1; /* Pushes footer to the bottom when content is short */
+    padding-top: 40px;
+    padding-bottom: 80px;
 }
 
 /* Footer styles */
