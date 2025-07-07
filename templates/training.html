@@ -7,7 +7,7 @@
 {% block content %}
 <div class="container-fluid training-container px-0">
     {% if not form_completed %}   
-        <div class="card shadow p-4 mb-5 bg-white rounded">
+        <div class="card shadow p-4 mb-5 rounded">
             <div class="card-body">
                 <h3 class="card-title text-center fw-bold mb-4">Welcome to your personalized training journey!</h3>
             
@@ -191,7 +191,7 @@
     {% else %} <!-- Show guidelines and workout options after the form is submitted -->
         <!-- Guidelines Box -->
         {% if guidelines %}
-        <div class="card w-100 mx-auto shadow-sm p-3 border border-2 rounded-3 mb-4" style="border-color: #ced4da; background-color: #f8f9fa;">
+        <div class="card w-100 mx-auto shadow-sm p-3 border border-2 rounded-3 mb-4" style="border-color: #ced4da;">
             <div class="card-body">
                 <h4 class="card-title text-center mb-3">Guidelines</h4>
         
@@ -205,7 +205,7 @@
                     </strong> — here are your recommended targets per exercise:
                 </p>
         
-                <ul class="list-group p-2 border border-2 rounded-3 mb-4" style="border-color: #ced4da; background-color: #f8f9fa;">
+                <ul class="list-group p-2 border border-2 rounded-3 mb-4" style="border-color: #ced4da;">
                     <li class="list-group-item shadow-sm p-3 border border-1 rounded-4 mb-3" style="border-color: #20c997; background-color: #ffffff;">
                         <strong>Sets:</strong> {{ guidelines.Sets }}
                     </li>
@@ -231,7 +231,7 @@
                     </p>
                 </details>
 
-                <ul class="list-group p-2 border border-2 rounded-3" style="border-color: #ced4da; background-color: #f8f9fa;">
+                <ul class="list-group p-2 border border-2 rounded-3" style="border-color: #ced4da;">
                     <li class="list-group-item shadow-sm p-3 border border-1 rounded-4 mb-3" style="border-color: #20c997; background-color: #ffffff;">
                         <strong>Resistance Training:</strong> At least 2 non-consecutive days per week, targeting all major muscle groups.
                     </li>
@@ -324,7 +324,7 @@
                                 `${selectedCategory.replaceAll(' ', '-').toLowerCase()}-workouts`
                             );
                             categoryDiv.innerHTML = `
-                                <div class="card w-100 mb-4 shadow-sm p-3 border border-3 rounded-2" style="border-color: #ced4da; background-color: #f8f9fa;">
+                                <div class="card w-100 mb-4 shadow-sm p-3 border border-3 rounded-2" style="border-color: #ced4da;">
                                     <div class="card-header shadow p-3 fitbaseblue-bg text-white">
                                         <h5 class="m-0 text-uppercase">${selectedCategory}</h5>
                                     </div>
@@ -334,7 +334,7 @@
                                                 .map(
                                                     subcategory => `
                                                     <li class="list-group-item">
-                                                        <div class="card w-100 shadow-sm p-3 border border-2 rounded-3" style="border-color: #ced4da; background-color: #f8f9fa;">
+                                                        <div class="card w-100 shadow-sm p-3 border border-2 rounded-3" style="border-color: #ced4da;">
                                                             <h6 class="fitbaseblue-text fw-bold fs-5 mb-3">${subcategory.subcategory}</h6>
                                                             <div class="px-0">
                                                                 <ul class="list-unstyled mt-2">
@@ -770,14 +770,14 @@
         
         <!-- Target Heart Rate Zone -->
         {% if target_heart_rate_zone %}
-        <div class="card w-100 mx-auto shadow-sm p-3 border border-2 rounded-3 mb-4" style="border-color: #ced4da; background-color: #f8f9fa;">
+        <div class="card w-100 mx-auto shadow-sm p-3 border border-2 rounded-3 mb-4" style="border-color: #ced4da;">
             <div class="card-body">
                 <h4 class="card-title text-center mb-3">Your Target Heart Rate Zone</h4>
                 <p class="card-text">
                     Based on your age, the recommended heart rate ranges for your optimal cardiovascular activity are:
                 </p>
                 
-                <ul class="list-group p-2 border border-2 rounded-3 mb-3" style="border-color: #ced4da; background-color: #f8f9fa;">
+                <ul class="list-group p-2 border border-2 rounded-3 mb-3" style="border-color: #ced4da;">
                     <li class="list-group-item shadow-sm p-3 border border-1 rounded-4 mb-3" style="border-color: #20c997; background-color: #ffffff;">
                         <strong>Target Heart Rate Zone:</strong> {{ target_heart_rate_zone.lower_bound }} - {{ target_heart_rate_zone.upper_bound }} bpm
                     </li>
@@ -795,12 +795,12 @@
         {% endif %}
 
         <!-- Key Section -->
-        <div class="card w-100 mx-auto shadow-sm p-3 border border-2 rounded-3 mb-4" style="border-color: #ced4da; background-color: #f8f9fa;">
+        <div class="card w-100 mx-auto shadow-sm p-3 border border-2 rounded-3 mb-4" style="border-color: #ced4da;">
             <div class="card-body">
                 <h4 class="card-title text-center mb-3">Key</h4>
                 
                 <h5><strong>5 Point Rule:</strong></h5>
-                <ul class="list-group p-2 border border-2 rounded-3 mb-4" style="border-color: #ced4da; background-color: #f8f9fa;">
+                <ul class="list-group p-2 border border-2 rounded-3 mb-4" style="border-color: #ced4da;">
                     <li class="list-group-item shadow-sm p-3 border border-1 rounded-4 mb-3" style="border-color: #20c997; background-color: #ffffff;">1. Left foot flat on the floor</li>
                     <li class="list-group-item shadow-sm p-3 border border-1 rounded-4 mb-3" style="border-color: #20c997; background-color: #ffffff;">2. Right foot flat on the floor</li>
                     <li class="list-group-item shadow-sm p-3 border border-1 rounded-4 mb-3" style="border-color: #20c997; background-color: #ffffff;">3. Butt on bench</li>
@@ -809,7 +809,7 @@
                 </ul>
         
                 <h5><strong>4 Point Rule:</strong></h5>
-                <ul class="list-group p-2 border border-2 rounded-3" style="border-color: #ced4da; background-color: #f8f9fa;">
+                <ul class="list-group p-2 border border-2 rounded-3" style="border-color: #ced4da;">
                     <li class="list-group-item shadow-sm p-3 border border-1 rounded-4 mb-3" style="border-color: #20c997; background-color: #ffffff;">1. Left foot flat on the floor</li>
                     <li class="list-group-item shadow-sm p-3 border border-1 rounded-4 mb-3" style="border-color: #20c997; background-color: #ffffff;">2. Right foot flat on the floor</li>
                     <li class="list-group-item shadow-sm p-3 border border-1 rounded-4 mb-3" style="border-color: #20c997; background-color: #ffffff;">3. Butt on bench</li>

@@ -6,7 +6,7 @@
 
 {% block content %}
 <div class="container">
-    <div class="card w-100 shadow-sm p-3 border border-2 rounded-3 mb-4" style="border-color: #ced4da; background-color: #f8f9fa;">
+    <div class="card w-100 shadow-sm p-3 border border-2 rounded-3 mb-4" style="border-color: #ced4da;">
         <div class="card-body">
             {% if name %}
                 <h2 class="text-center mb-4">Welcome back, {{ name }}!</h2>
@@ -24,7 +24,7 @@
         
             <hr>
             <h5><strong>Your Stats:</strong></h5>
-            <ul class="list-group p-2 border border-2 rounded-3 mb-4" style="border-color: #ced4da; background-color: #f8f9fa;">
+            <ul class="list-group p-2 border border-2 rounded-3 mb-4" style="border-color: #ced4da;">
                 <li class="list-group-item shadow-sm p-3 border border-1 rounded-4 mb-3" style="border-color: #20c997; background-color: #ffffff;">
                     <strong>Workouts Completed:</strong> {{ workouts_completed }}
                 </li>

@@ -13,6 +13,11 @@ html, body {
     display: flex;
     flex-direction: column;
     overflow-x: hidden;
+    background-image: url('/static/images/background6.png');
+    background-size: cover;         /* Scales to cover entire screen */
+    background-repeat: no-repeat;   /* Prevents tiling */
+    background-position: center;    /* Centers the image */
+    background-attachment: fixed;   /* Optional: makes background stay in place on scroll */
 }
 
 /* Set up the main layout container */
@@ -36,7 +41,7 @@ html, body {
 }
 
 main {
-  padding-top: 60px;
+  padding-top: 50px;
   padding-bottom: 100px;
 }
 
@@ -54,14 +59,26 @@ footer {
     margin-top: auto; /* Pushes footer to the bottom */
 }
 
+.card,
 .welcome-message {
-    background-color: #f9f9f9; /* Light gray background */
-    border: 1px solid #ddd; /* Light border */
-    border-radius: 5px; /* Rounded corners */
-    padding: 20px; /* Spacing inside */
-    margin-bottom: 20px; /* Space below the message */
-    font-size: 1.1em; /* Slightly larger text for readability */
-    line-height: 1.6; /* Improve spacing between lines */
+    background-color: rgba(255, 255, 255, 0.75); /* subtle frosted white */
+    border: 2px solid rgba(255, 255, 255, 0.2);
+    border-radius: 12px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    padding: 20px;
+    margin-bottom: 20px;
+    color: #1a1a1a;
+    font-size: 1.1em;
+    line-height: 1.6;
+}
+
+.card:hover,
+.welcome-message:hover {
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.12);
+    transform: translateY(-2px);
+    transition: all 0.3s ease-in-out;
 }
 
 .welcome-message h3 {
@@ -86,15 +103,10 @@ footer {
     font-size: 1.1em; /* Slightly larger text */
 }
 
-.card {
-    border: none;
-    border-radius: 8px;
-    background-color: #f9f9f9;
-}
-
 .card-title {
     color: #007bff;
     font-weight: bold;
+    font-size: 1.25rem;
 }
 
 .list-group-item {
@@ -111,9 +123,6 @@ footer {
     display: flex !important;
 }
 
-.card-title {
-    font-size: 1.25rem;
-}
 
 .card-text {
     font-size: 0.9rem;
