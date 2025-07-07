@@ -23,7 +23,7 @@
             {% endif %}    
         
             <hr>
-            <h5><strong>Your Stats:</strong></h5>
+            <h5 class="card-title text-center mb-3">Your Stats:</h5>
             <ul class="list-group p-2 border border-2 rounded-3 mb-4" style="border-color: #ced4da;">
                 <li class="list-group-item shadow-sm p-3 border border-1 rounded-4 mb-3" style="border-color: #20c997; background-color: #ffffff;">
                     <strong>Workouts Completed:</strong> {{ workouts_completed }}
@@ -65,35 +65,6 @@
                     {% endif %}
                 </li>                       
             </ul>
-            
-            <!-- Modal -->
-            <div class="modal fade" id="updateGoalsModal" tabindex="-1" aria-labelledby="updateGoalsModalLabel" aria-hidden="true">
-            <div class="modal-dialog">
-                <form method="POST" action="{{ url_for('update_goals') }}">
-                <div class="modal-content">
-                    <div class="modal-header">
-                    <h5 class="modal-title" id="updateGoalsModalLabel">Update Your Fitness Goals</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                    </div>
-                    <div class="modal-body">
-                    {% set goal_options = ["Lose Weight", "Gain Muscle", "Tone Muscle", "Abs", "Increase Strength", "Increase Endurance", "Feel Better"] %}
-                    {% for goal in goal_options %}
-                        <div class="form-check">
-                            <input class="form-check-input update-goal-checkbox" type="checkbox" name="fitness_goals" value="{{ goal }}" id="goal_{{ loop.index }}">
-                            <label class="form-check-label" for="goal_{{ loop.index }}">
-                                {{ goal }}
-                            </label>
-                        </div>
-                    {% endfor %}
-                    <div class="text-danger small mt-2" id="goalError" style="display: none;">Please select 1 or 2 goals.</div>
-                    </div>
-                    <div class="modal-footer">
-                    <button type="submit" class="btn btn-success">Save Changes</button>
-                    </div>
-                </div>
-                </form>
-            </div>
-            </div>        
 
             <p>
                 Ready for your next workout? Head over to the training page and get started with your personalized plan.
@@ -104,6 +75,35 @@
         </div>
     </div>
 </div>
+
+<!-- Update Goals Modal -->
+<div class="modal fade" id="updateGoalsModal" tabindex="-1" aria-labelledby="updateGoalsModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <form method="POST" action="{{ url_for('update_goals') }}">
+        <div class="modal-content">
+            <div class="modal-header">
+            <h5 class="modal-title" id="updateGoalsModalLabel">Update Your Fitness Goals</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+            {% set goal_options = ["Lose Weight", "Gain Muscle", "Tone Muscle", "Abs", "Increase Strength", "Increase Endurance", "Feel Better"] %}
+            {% for goal in goal_options %}
+                <div class="form-check">
+                    <input class="form-check-input update-goal-checkbox" type="checkbox" name="fitness_goals" value="{{ goal }}" id="goal_{{ loop.index }}">
+                    <label class="form-check-label" for="goal_{{ loop.index }}">
+                        {{ goal }}
+                    </label>
+                </div>
+            {% endfor %}
+            <div class="text-danger small mt-2" id="goalError" style="display: none;">Please select 1 or 2 goals.</div>
+            </div>
+            <div class="modal-footer">
+            <button type="submit" class="btn btn-success">Save Changes</button>
+            </div>
+        </div>
+        </form>
+    </div>
+    </div>        
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
