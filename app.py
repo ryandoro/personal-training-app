@@ -1,16 +1,23 @@
 import os, logging, json
-# from dotenv import load_dotenv
 from flask import Flask, flash, redirect, render_template, request, session, jsonify, url_for
 from werkzeug.security import generate_password_hash, check_password_hash
 from helpers import login_required, convert_decimals, calculate_target_heart_rate, generate_workout, get_guidelines, get_connection
 from collections import OrderedDict
+from dotenv import load_dotenv
 
 # Utilized ChatGPT to help complete this web application 
 # Set up basic logging configuration
 logging.basicConfig(level=logging.INFO)
 
+load_dotenv()
+
 app = Flask(__name__)
-app.secret_key = os.urandom(24) # Required for flash messages
+# app.secret_key = os.urandom(24) # Required for flash messages
+
+secret = os.getenv("SECRET_KEY")
+if not secret:
+    raise RuntimeError("SECRET_KEY is not set!")
+app.secret_key = secret
 
 # Define database path based on environment
 ## Not using - DATABASE_PATH = os.getenv('DATABASE_URL', 'instance/health.db')
