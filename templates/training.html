@@ -285,26 +285,15 @@
             </div>
             {% endfor %}
         </div>
-        
-        <div class="mt-4">
-            <button id="complete-workout-btn" class="btn btn-success btn-lg mb-2 mx-auto" style="display: none;">
-                Complete Workout
-            </button>
-            <div id="progress-tracking-note" class="text-muted small text-center mb-2" style="display: none;">
-                <em>After clicking Complete Workout, you’ll be able to track your progress and view past workouts from the homepage.</em>
-            </div>
-        </div>
-        <hr>
 
         <script>
             const categorySelect = document.getElementById('workout-category-select');
             const workoutDetails = document.getElementById('workout-details');
-            const completeWorkoutBtn = document.getElementById('complete-workout-btn');
-        
-            // Initially hide the "Complete Workout" button and progress tracking note 
-            completeWorkoutBtn.style.display = 'none';
-            document.getElementById('progress-tracking-note').style.display = 'none';
+            const earlyBtn = document.getElementById('complete-workout-btn');
+            const earlyNote = document.getElementById('progress-tracking-note');
 
+            if (earlyBtn) earlyBtn.style.display = 'none';
+            if (earlyNote) earlyNote.style.display = 'none';
         
             categorySelect.addEventListener('change', async () => {
                 const selectedCategory = categorySelect.value;
@@ -416,6 +405,15 @@
                                                 )
                                                 .join('')}
                                         </ul>
+
+                                        <div class="card mt-4 border border-success shadow-sm p-3 text-center">
+                                            <button id="complete-workout-btn" class="btn btn-success btn-lg mb-3" style="display: none;">
+                                                Complete Workout
+                                            </button>
+                                            <div id="progress-tracking-note" class="text-muted small" style="display: none;">
+                                                <em>After clicking Complete Workout, you’ll be able to track your progress and view past workouts from the homepage.</em>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             `;
@@ -424,12 +422,38 @@
                             bindImageClickEvents();
         
                             // Show the "Complete Workout" button and progress tracking note 
-                            completeWorkoutBtn.style.display = 'block';
-                            document.getElementById('progress-tracking-note').style.display = 'block';
+                            const completeWorkoutBtn = document.getElementById('complete-workout-btn');
+                            const progressTrackingNote = document.getElementById('progress-tracking-note');
 
-        
-                            // Attach the selected category to the button's dataset for later use
-                            completeWorkoutBtn.dataset.category = selectedCategory;
+                            if (completeWorkoutBtn && progressTrackingNote) {
+                                completeWorkoutBtn.style.display = 'block';
+                                progressTrackingNote.style.display = 'block';
+                                completeWorkoutBtn.dataset.category = selectedCategory;
+
+                                completeWorkoutBtn.addEventListener('click', async () => {
+                                    try {
+                                        const response = await fetch('/complete_workout', {
+                                            method: 'POST',
+                                            headers: {
+                                                'Content-Type': 'application/json',
+                                            },
+                                            body: JSON.stringify({ category: selectedCategory })
+                                        });
+
+                                        const data = await response.json();
+
+                                        if (data.success) {
+                                            alert('Workout marked as complete!');
+                                            window.location.href = '/';
+                                        } else {
+                                            alert(data.error || 'An error occurred. Please try again.');
+                                        }
+                                    } catch (err) {
+                                        console.error('Error completing workout:', err);
+                                        alert('An error occurred. Please try again.');
+                                    }
+                                });
+                            }
                         } else {
                             alert('Could not generate workout. Please try again.');
                             completeWorkoutBtn.style.display = 'none'; // Hide the button if no workout is generated
@@ -441,40 +465,6 @@
                 } else {
                     completeWorkoutBtn.style.display = 'none'; // Hide the button if no category is selected
                     document.getElementById('progress-tracking-note').style.display = 'none'; // Hide the progress tracking note if no category is selected
-                }
-            });
-        
-            // Handle the "Complete Workout" button click
-            completeWorkoutBtn.addEventListener('click', async () => {
-                try {
-                    // Get the selected category from the dropdown
-                    const selectedCategory = document.getElementById('workout-category-select').value;
-
-                    if (!selectedCategory) {
-                        alert('Please select a workout category before completing the workout.');
-                        return;
-                    }
-
-                    // Send the category in the request body
-                    const response = await fetch('/complete_workout', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json', // Set content type to JSON
-                        },
-                        body: JSON.stringify({ category: selectedCategory }) // Include the selected category
-                    });
-
-                    const data = await response.json();
-
-                    if (data.success) {
-                        alert('Workout marked as complete!');
-                        window.location.href = '/';
-                    } else {
-                        alert(data.error || 'An error occurred. Please try again.');
-                    }
-                } catch (err) {
-                    console.error('Error completing workout:', err);
-                    alert('An error occurred. Please try again.');
                 }
             });
         </script>
