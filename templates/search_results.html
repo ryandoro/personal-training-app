@@ -22,7 +22,9 @@
                                         <span class="text-dark">{{ max_weight|float|round(1) }} lbs × {{ max_reps }} reps</span>
                                     {% else %}
                                         <span class="text-muted fst-italic">Not yet recorded</span>
-                                    {% endif %}                        
+                                    {% endif %}
+                                </div>
+                                <div class="mt-2">                        
                                     <button class="btn btn-outline-primary btn-sm mt-2 update-max-btn" 
                                             data-id="{{ workout_id }}"
                                             data-weight="{{ max_weight or '' }}"
