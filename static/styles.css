@@ -52,10 +52,9 @@ main {
 
 /* Footer styles */
 footer {
-    background-color: #f8f9fa;
     text-align: center;
     padding: 10px 0; /* Adjust padding for desired spacing */
-    border-top: 1px solid #ddd;
+    border-top: 1px solid #444;
     margin-top: auto; /* Pushes footer to the bottom */
 }
 

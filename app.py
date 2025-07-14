@@ -4,6 +4,8 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from helpers import login_required, convert_decimals, calculate_target_heart_rate, generate_workout, get_guidelines, get_connection
 from collections import OrderedDict
 from dotenv import load_dotenv
+from datetime import datetime
+
 
 # Utilized ChatGPT to help complete this web application 
 # Set up basic logging configuration
@@ -754,6 +756,11 @@ def settings():
             user = dict(zip(columns, user))
 
     return render_template('settings.html', user=user)
+
+
+@app.context_processor
+def inject_current_year():
+    return {"current_year": datetime.now().year}
 
 
 if __name__ == '__main__':

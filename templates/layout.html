@@ -13,10 +13,10 @@
 </head>
 <body class="d-flex flex-column min-vh-100">
     <!-- Navigation Bar -->
-    <nav class="navbar navbar-expand-lg" style="background-color: #383838;">
+    <nav class="navbar navbar-expand-lg" style="background-color: #303030;">
         <div class="container-fluid">
             <a class="navbar-brand d-flex align-items-center" href="/">
-                <img src="{{ url_for('static', filename='images/fitbase_orange_gray_monogram_text_right_logo.png') }}" 
+                <img src="{{ url_for('static', filename='images/fitbasehq_orange_gray_monogram_text_right_logo.png') }}" 
                      alt="FitBase Logo" 
                      style="height: 36px; width: auto;" />
             </a>            
@@ -83,9 +83,16 @@
     </main>
 
     <!-- Footer -->
-    <footer style="width: 100%; background-color: #f1f3f5; padding: 1.25rem 0;">
+    <footer style="width: 100%; background-color: #303030; padding: 1.25rem 0;">
         <div class="footer text-center" style="color: #6c757d;">
-            <p class="mb-0">&copy; 2025 <strong style="color: #343a40;">FitBase</strong>. All Rights Reserved.</p>
+            <p class="mb-0">
+                Powered by 
+                <strong>
+                    <a href="{{ url_for('home') }}" style="color: #F7931A; text-decoration: none;">
+                        FitBaseHQ
+                    </a>
+                </strong> 
+                &copy; {{ current_year }}</p>
         </div>
     </footer>
 
