@@ -10,119 +10,125 @@ Account Settings
     <div class="card-body">
 
         <form method="post">
-            <!-- Account Info -->
-            <h5 class="mt-4">Account Info</h5>
-            {% for field in ['username', 'name', 'last_name', 'email'] %}
-            <div class="mb-3">
-                <label class="form-label fw-bold">{{ field.replace('_', ' ').title() }}</label>
-                <input type="text" class="form-control" name="{{ field }}" value="{{ user.get(field, '') }}">
-            </div>
-            {% endfor %}
-
-            <!-- Training Info -->
-            <h5 class="mt-4">Personal & Training Info</h5>
-
-            <!-- Age -->
-            <div class="mb-3">
-                <label class="form-label fw-bold">Age</label>
-                <input type="number" class="form-control" name="age" value="{{ user.get('age', '') }}">
-            </div>
-
-            <!-- Weight -->
-            <div class="mb-3">
-                <label class="form-label fw-bold">Weight (Pounds)</label>
-                <input type="number" class="form-control" name="weight" value="{{ user.get('weight', '') }}">
-            </div>
-
-            <!-- Height -->
-            <div class="mb-3 row">
-                <label class="form-label fw-bold">Height</label>
-                <div class="col">
-                    <input type="number" class="form-control" name="height_feet" placeholder="Feet" value="{{ user.get('height_feet', '') }}">
+            {% if form_completed %}
+                <!-- Account Info -->
+                <h5 class="mt-4">Account Info</h5>
+                {% for field in ['username', 'name', 'last_name', 'email'] %}
+                <div class="mb-3">
+                    <label class="form-label fw-bold">{{ field.replace('_', ' ').title() }}</label>
+                    <input type="text" class="form-control" name="{{ field }}" value="{{ user.get(field, '') }}">
                 </div>
-                <div class="col">
-                    <input type="number" class="form-control" name="height_inches" placeholder="Inches" value="{{ user.get('height_inches', '') }}">
-                </div>
-            </div>
+                {% endfor %}
 
-            <!-- Gender -->
-            <div class="mb-3">
-                <label class="form-label fw-bold d-block">Gender</label>
-                <div class="form-check form-check-inline">
-                    <input class="form-check-input" type="radio" name="gender" id="gender-male" value="Male" {% if user.get('gender') == 'Male' %}checked{% endif %}>
-                    <label class="form-check-label" for="gender-male">Male</label>
-                </div>
-                <div class="form-check form-check-inline">
-                    <input class="form-check-input" type="radio" name="gender" id="gender-female" value="Female" {% if user.get('gender') == 'Female' %}checked{% endif %}>
-                    <label class="form-check-label" for="gender-female">Female</label>
-                </div>
-            </div>
+                <!-- Training Info -->
+                <h5 class="mt-4">Personal & Training Info</h5>
 
-            <!-- Exercise History -->
-            <div class="mb-3">
-                <label class="form-label fw-bold">Exercise History</label>
-                <select class="form-select" name="exercise_history">
-                    <option value="" disabled>Select an option</option>
-                    {% for option in ['No Exercise History', 'Exercise less than 1 year', 'Exercise 1-5 years', 'Exercise 5+ years'] %}
-                        <option value="{{ option }}" {% if user.get('exercise_history') == option %}selected{% endif %}>{{ option }}</option>
-                    {% endfor %}
-                </select>
-            </div>
+                <!-- Age -->
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Age</label>
+                    <input type="number" class="form-control" name="age" value="{{ user.get('age', '') }}">
+                </div>
 
-            <!-- Fitness Goals -->
-            <div class="mb-3">
-                <label class="form-label fw-bold d-block">Fitness Goals <small>(Select up to 2)</small></label>
-                <small class="text-muted d-block mb-2">
-                    We recommend selecting 1 or 2 goals to help keep your training focused and effective.
-                </small>
-                <div id="fitness-goals-group">
-                    {% set goals_list = user.get('fitness_goals', '').split(',') | map('trim') | list %}
-                    {% for goal in ['Lose Weight', 'Gain Muscle', 'Tone Muscle', 'Abs', 'Increase Strength', 'Increase Endurance', 'Feel Better'] %}
-                    <div class="form-check">
-                        <input type="checkbox" class="form-check-input goal-checkbox" id="{{ goal | lower | replace(' ', '-') }}" name="fitness_goals" value="{{ goal }}"
-                            {% if goal in goals_list %}checked{% endif %}>
-                        <label class="form-check-label" for="{{ goal | lower | replace(' ', '-') }}">{{ goal }}</label>
+                <!-- Weight -->
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Weight (Pounds)</label>
+                    <input type="number" class="form-control" name="weight" value="{{ user.get('weight', '') }}">
+                </div>
+
+                <!-- Height -->
+                <div class="mb-3 row">
+                    <label class="form-label fw-bold">Height</label>
+                    <div class="col">
+                        <input type="number" class="form-control" name="height_feet" placeholder="Feet" value="{{ user.get('height_feet', '') }}">
                     </div>
-                    {% endfor %}
+                    <div class="col">
+                        <input type="number" class="form-control" name="height_inches" placeholder="Inches" value="{{ user.get('height_inches', '') }}">
+                    </div>
                 </div>
-                <div class="text-danger small mt-1" id="goal-warning" style="display: none;"></div>
-            </div>
 
-            <!-- Injury -->
-            <div class="mb-3">
-                <label class="form-label fw-bold d-block">Do you have, or have you had any recent injuries or illnesses?</label>
-                <div class="form-check form-check-inline">
-                    <input class="form-check-input" type="radio" name="injury" id="injury-yes" value="Yes" {% if user.get('injury') == 'Yes' %}checked{% endif %}>
-                    <label class="form-check-label" for="injury-yes">Yes</label>
+                <!-- Gender -->
+                <div class="mb-3">
+                    <label class="form-label fw-bold d-block">Gender</label>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="gender" id="gender-male" value="Male" {% if user.get('gender') == 'Male' %}checked{% endif %}>
+                        <label class="form-check-label" for="gender-male">Male</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="gender" id="gender-female" value="Female" {% if user.get('gender') == 'Female' %}checked{% endif %}>
+                        <label class="form-check-label" for="gender-female">Female</label>
+                    </div>
                 </div>
-                <div class="form-check form-check-inline">
-                    <input class="form-check-input" type="radio" name="injury" id="injury-no" value="No" {% if user.get('injury') == 'No' %}checked{% endif %}>
-                    <label class="form-check-label" for="injury-no">No</label>
+
+                <!-- Exercise History -->
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Exercise History</label>
+                    <select class="form-select" name="exercise_history">
+                        <option value="" disabled>Select an option</option>
+                        {% for option in ['No Exercise History', 'Exercise less than 1 year', 'Exercise 1-5 years', 'Exercise 5+ years'] %}
+                            <option value="{{ option }}" {% if user.get('exercise_history') == option %}selected{% endif %}>{{ option }}</option>
+                        {% endfor %}
+                    </select>
                 </div>
-            </div>
 
-            <!-- Injury Details -->
-            <div class="mb-3">
-                <label class="form-label fw-bold">If yes, please describe your injury/illness:</label>
-                <textarea class="form-control" name="injury_details" rows="3">{{ user.get('injury_details', '') }}</textarea>
-            </div>
+                <!-- Fitness Goals -->
+                <div class="mb-3">
+                    <label class="form-label fw-bold d-block">Fitness Goals <small>(Select up to 2)</small></label>
+                    <small class="text-muted d-block mb-2">
+                        We recommend selecting 1 or 2 goals to help keep your training focused and effective.
+                    </small>
+                    <div id="fitness-goals-group">
+                        {% set goals_list = user.get('fitness_goals', '').split(',') | map('trim') | list %}
+                        {% for goal in ['Lose Weight', 'Gain Muscle', 'Tone Muscle', 'Abs', 'Increase Strength', 'Increase Endurance', 'Feel Better'] %}
+                        <div class="form-check">
+                            <input type="checkbox" class="form-check-input goal-checkbox" id="{{ goal | lower | replace(' ', '-') }}" name="fitness_goals" value="{{ goal }}"
+                                {% if goal in goals_list %}checked{% endif %}>
+                            <label class="form-check-label" for="{{ goal | lower | replace(' ', '-') }}">{{ goal }}</label>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    <div class="text-danger small mt-1" id="goal-warning" style="display: none;"></div>
+                </div>
 
-            <!-- Commitment -->
-            <div class="mb-3">
-                <label class="form-label fw-bold">How many days per week are you willing to commit to your goals?</label>
-                <select class="form-select" name="commitment">
-                    <option value="" disabled>Select an option</option>
-                    {% for option in ['1 day per week', '2 days per week', '3 days per week'] %}
-                        <option value="{{ option }}" {% if user.get('commitment') == option %}selected{% endif %}>{{ option }}</option>
-                    {% endfor %}
-                </select>
-            </div>
+                <!-- Injury -->
+                <div class="mb-3">
+                    <label class="form-label fw-bold d-block">Do you have, or have you had any recent injuries or illnesses?</label>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="injury" id="injury-yes" value="Yes" {% if user.get('injury') == 'Yes' %}checked{% endif %}>
+                        <label class="form-check-label" for="injury-yes">Yes</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="injury" id="injury-no" value="No" {% if user.get('injury') == 'No' %}checked{% endif %}>
+                        <label class="form-check-label" for="injury-no">No</label>
+                    </div>
+                </div>
 
-            <!-- Additional Notes -->
-            <div class="mb-3">
-                <label class="form-label fw-bold">Anything else you'd like to share?</label>
-                <textarea class="form-control" name="additional_notes" rows="3">{{ user.get('additional_notes', '') }}</textarea>
-            </div>
+                <!-- Injury Details -->
+                <div class="mb-3">
+                    <label class="form-label fw-bold">If yes, please describe your injury/illness:</label>
+                    <textarea class="form-control" name="injury_details" rows="3">{{ user.get('injury_details', '') }}</textarea>
+                </div>
+
+                <!-- Commitment -->
+                <div class="mb-3">
+                    <label class="form-label fw-bold">How many days per week are you willing to commit to your goals?</label>
+                    <select class="form-select" name="commitment">
+                        <option value="" disabled>Select an option</option>
+                        {% for option in ['1 day per week', '2 days per week', '3 days per week'] %}
+                            <option value="{{ option }}" {% if user.get('commitment') == option %}selected{% endif %}>{{ option }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <!-- Additional Notes -->
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Anything else you'd like to share?</label>
+                    <textarea class="form-control" name="additional_notes" rows="3">{{ user.get('additional_notes', '') }}</textarea>
+                </div>
+            {% else %}
+                <div class="alert alert-info">
+                    To personalize your experience, please complete the <a href="{{ url_for('training') }}" class="alert-link">Personal Training Questionnaire</a> first.
+                </div>
+            {% endif %}
 
             <!-- Password Update -->
             <h5 class="mt-4">Change Password (Optional)</h5>

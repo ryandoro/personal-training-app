@@ -650,8 +650,61 @@ def settings():
             if user.get(key) is None:
                 user[key] = ""
 
+    form_completed = all([
+        user.get('age'),
+        user.get('weight'),
+        user.get('height_feet'),
+        user.get('height_inches'),
+        user.get('gender'),
+        user.get('exercise_history'),
+        user.get('fitness_goals'),
+        user.get('commitment')
+    ])
+
     if request.method == 'POST':
-        # Collect updated form values
+            # Get form fields
+        password = request.form.get('password')
+        confirm_password = request.form.get('confirm_password')
+
+        # Check if user is trying to change password only (and hasn't completed form)
+        password_only = password and not all([
+            request.form.get('username'),
+            request.form.get('name'),
+            request.form.get('last_name'),
+            request.form.get('age'),
+            request.form.get('weight'),
+            request.form.get('height_feet'),
+            request.form.get('height_inches'),
+            request.form.get('gender'),
+            request.form.get('exercise_history'),
+            request.form.get('commitment'),
+        ])
+
+        # Handle password-only update (regardless of form_completed status)
+        if password_only:
+            if password != confirm_password:
+                flash("Passwords do not match.", "danger")
+                return render_template('settings.html', user=user, form_completed=form_completed)
+            if len(password) < 8:
+                flash("Password must be at least 8 characters long.", "danger")
+                return render_template('settings.html', user=user, form_completed=form_completed)
+            if not any(char.isupper() for char in password):
+                flash("Password must include at least one uppercase letter.", "danger")
+                return render_template('settings.html', user=user, form_completed=form_completed)
+            if not any(char in "!@#$%^&*()-_+=<>?/{}~" for char in password):
+                flash("Password must include at least one special character.", "danger")
+                return render_template('settings.html', user=user, form_completed=form_completed)
+
+            hashed_password = generate_password_hash(password)
+            with get_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute("UPDATE users SET hash = %s WHERE id = %s", (hashed_password, user_id))
+                    conn.commit()
+
+            flash("Password updated successfully!", "success")
+            return render_template('settings.html', user=user, form_completed=form_completed)
+    
+        # Get all other form fields
         username = request.form.get('username')
         name = request.form.get('name')
         last_name = request.form.get('last_name')
@@ -668,57 +721,49 @@ def settings():
         injury_details = request.form.get('injury_details')
         commitment = request.form.get('commitment')
         additional_notes = request.form.get('additional_notes')
-        password = request.form.get('password')
-        confirm_password = request.form.get('confirm_password')
 
-        # Validate required fields (excluding optional email/password)
+        # Validate required fields
         if not all([username, name, last_name, age, weight, height_feet, height_inches, gender, exercise_history, commitment]):
             flash("Please fill out all required fields.", "danger")
-            return render_template('settings.html', user=user)
+            return render_template('settings.html', user=user, form_completed=form_completed)
 
-        # Validate fitness goals (must select 1 or 2)
         if not (1 <= len(fitness_goals) <= 2):
             flash("Please select 1 or 2 fitness goals.", "danger")
-            return render_template('settings.html', user=user)
+            return render_template('settings.html', user=user, form_completed=form_completed)
 
         # Validate password if provided
+        hashed_password = None
         if password:
             if password != confirm_password:
                 flash("Passwords do not match.", "danger")
-                return render_template('settings.html', user=user)
-            
+                return render_template('settings.html', user=user, form_completed=form_completed)
             if len(password) < 8:
                 flash("Password must be at least 8 characters long.", "danger")
-                return render_template('settings.html', user=user)
-
+                return render_template('settings.html', user=user, form_completed=form_completed)
             if not any(char.isupper() for char in password):
                 flash("Password must include at least one uppercase letter.", "danger")
-                return render_template('settings.html', user=user)
-
+                return render_template('settings.html', user=user, form_completed=form_completed)
             if not any(char in "!@#$%^&*()-_+=<>?/{}~" for char in password):
                 flash("Password must include at least one special character.", "danger")
-                return render_template('settings.html', user=user)
-    
-            hashed_password = generate_password_hash(password)
-        else:
-            hashed_password = None
+                return render_template('settings.html', user=user, form_completed=form_completed)
 
-        # Check for duplicate username or email
+            hashed_password = generate_password_hash(password)
+
+        # Check for duplicate username/email
         with get_connection() as conn:
             with conn.cursor() as cursor:
                 cursor.execute("SELECT id FROM users WHERE username = %s AND id != %s", (username, user_id))
                 if cursor.fetchone():
                     flash("That username is already taken.", "danger")
-                    return render_template('settings.html', user=user)
+                    return render_template('settings.html', user=user, form_completed=form_completed)
 
                 if email:
                     cursor.execute("SELECT id FROM users WHERE email = %s AND id != %s", (email, user_id))
                     if cursor.fetchone():
                         flash("That email is already in use.", "danger")
-                        return render_template('settings.html', user=user)
+                        return render_template('settings.html', user=user, form_completed=form_completed)
 
-        # Update the user
-        with get_connection() as conn:
+            # Update everything (account info, training info, and optionally password)
             with conn.cursor() as cursor:
                 cursor.execute("""
                     UPDATE users
@@ -741,13 +786,13 @@ def settings():
 
         flash("Settings updated successfully!", "success")
 
-        # Refetch updated data
+        # Refetch updated user data
         with get_connection() as conn:
             with conn.cursor() as cursor:
                 cursor.execute("""
                     SELECT username, name, last_name, email, age, weight, height_feet, height_inches,
-                           gender, exercise_history, fitness_goals, injury, injury_details,
-                           commitment, additional_notes
+                        gender, exercise_history, fitness_goals, injury, injury_details,
+                        commitment, additional_notes
                     FROM users
                     WHERE id = %s
                 """, (user_id,))
@@ -755,7 +800,8 @@ def settings():
         if user:
             user = dict(zip(columns, user))
 
-    return render_template('settings.html', user=user)
+
+    return render_template('settings.html', user=user, form_completed=form_completed)
 
 
 @app.context_processor
