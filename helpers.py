@@ -197,7 +197,7 @@ def get_guidelines(exercise_history, fitness_goals):
             "Gain Muscle": {"Sets": "5", "Reps": "6-10", "Rest": "30-60 seconds"},
             "Tone Muscle": {"Sets": "4-5", "Reps": "8-10", "Rest": "30 seconds"},
             "Abs": {"Sets": "4-5", "Reps": "15-25", "Rest": "30 seconds"},
-            "Increase Strength": {"Sets": "5", "Reps": "3-5", "Rest": "3-5 minutes"},
+            "Increase Strength": {"Sets": "5", "Reps": "3-5", "Rest": "2-3minutes"},
             "Increase Endurance": {"Sets": "4-5", "Reps": "20-30", "Rest": "15-30 seconds"},
             "Feel Better": {"Sets": "4", "Reps": "12-15", "Rest": "30 seconds"}
         }
