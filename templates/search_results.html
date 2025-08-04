@@ -8,7 +8,7 @@
 
         {% if results %}
             <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
-                {% for workout_id, name, description, max_weight, max_reps in results %}
+                {% for workout_id, name, description, category, max_weight, max_reps in results %}
                     <div class="col">
                         <div class="card h-100 shadow-sm border border-primary rounded-3">
                             <div class="card-body">
@@ -16,19 +16,33 @@
                                 <p class="card-text text-muted small">{{ description }}</p>
                                 <div class="mt-3">
                                     <span class="fw-semibold">Your Max:</span>
-                                    {% if ('bodyweight' in name|lower) or max_weight == 0 %}
-                                    <span class="text-dark">Bodyweight × {{ max_reps if max_reps else '–' }} reps</span>
-                                    {% elif max_weight and max_reps %}
+                                    {% set is_cardio = 'cardio' in category|lower %}
+                                    {% set is_bodyweight = 'bodyweight' in name|lower or max_weight == 0 %}
+                                    
+                                    {% if is_cardio %}
+                                        {% if max_reps is not none %}
+                                            <span class="text-dark">Bodyweight × {{ max_reps }} min</span>
+                                        {% else %}
+                                            <span class="text-muted fst-italic">No max recorded</span>
+                                        {% endif %}
+                                    {% elif is_bodyweight %}
+                                        {% if max_reps is not none %}
+                                            <span class="text-dark">Bodyweight × {{ max_reps }} reps</span>
+                                        {% else %}
+                                            <span class="text-muted fst-italic">No max recorded</span>
+                                        {% endif %}
+                                    {% elif max_weight is not none and max_reps is not none %}
                                         <span class="text-dark">{{ max_weight|float|round(1) }} lbs × {{ max_reps }} reps</span>
                                     {% else %}
-                                        <span class="text-muted fst-italic">Not yet recorded</span>
-                                    {% endif %}
+                                        <span class="text-muted fst-italic">No max recorded</span>
+                                    {% endif %}                                    
                                 </div>
                                 <div class="mt-2">                        
                                     <button class="btn btn-outline-primary btn-sm mt-2 update-max-btn" 
                                             data-id="{{ workout_id }}"
                                             data-weight="{{ max_weight or '' }}"
-                                            data-reps="{{ max_reps or '' }}">
+                                            data-reps="{{ max_reps or '' }}"
+                                            data-category="{{ category }}">
                                         Update Max
                                     </button>
                                 </div>
@@ -70,15 +84,19 @@
                     const weight = btn.dataset.weight;
                     const reps = btn.dataset.reps;
                     const workoutName = btn.closest('.card-body').querySelector('.card-title').textContent || '';
+                    const category = btn.dataset.category || '';
+                    const isCardio = category.toLowerCase() === 'cardio';
                     const isBodyweight = workoutName.toLowerCase().includes('bodyweight');
 
                     workoutIdInput.value = btn.dataset.id;
-                    weightInput.value = isBodyweight ? '' : (parseFloat(weight) || '');
-                    weightInput.disabled = isBodyweight;
-                    weightInput.placeholder = isBodyweight ? 'Bodyweight exercise' : 'Max Weight (lbs)';
+                    weightInput.value = (isBodyweight || isCardio) ? '' : (parseFloat(weight) || '');
+                    weightInput.disabled = isBodyweight || isCardio;
+                    weightInput.placeholder = isBodyweight || isCardio ? 'Bodyweight exercise' : 'Max Weight (lbs)';
                     weightInput.title = weightInput.placeholder;
 
                     repsInput.value = parseInt(reps) || '';
+                    repsInput.placeholder = isCardio ? 'Minutes' : 'Reps';
+                    repsInput.title = repsInput.placeholder;
 
                     modal.style.display = 'flex';
                 });
@@ -93,6 +111,10 @@
                 const max_reps = parseInt(repsInput.value);
                 const isBodyweight = weightInput.disabled;
                 const workout_id = workoutIdInput.value;
+
+                const btn = document.querySelector(`.update-max-btn[data-id="${workout_id}"]`);
+                const category = btn?.dataset.category || '';
+                const isCardio = category.toLowerCase() === 'cardio';
 
                 if (isNaN(max_reps) || (!isBodyweight && isNaN(max_weight))) {
                     alert("Please enter valid values.");
@@ -115,9 +137,11 @@
                     if (maxTextSpan) {
                         maxTextSpan.classList.remove('text-muted', 'fst-italic');
                         maxTextSpan.classList.add('text-dark');
-                        maxTextSpan.textContent = isBodyweight
-                            ? `Bodyweight × ${max_reps} reps`
-                            : `${max_weight.toFixed(1)} lbs × ${max_reps} reps`;
+                        maxTextSpan.textContent = isCardio
+                            ? `Bodyweight × ${max_reps} min`
+                            : (isBodyweight
+                                ? `Bodyweight × ${max_reps} reps`
+                                : `${max_weight.toFixed(1)} lbs × ${max_reps} reps`);
                     }
                     // Show success toast
                     const toast = document.getElementById('toastSuccess');
@@ -135,7 +159,7 @@
 
     <!-- Success Toast -->
     <div id="toastSuccess" class="text-success text-center fw-bold"
-    style="display: none; position: fixed; top: 65px; left: 50%; transform: translateX(-50%);
+    style="display: none; position: fixed; top: 80px; left: 50%; transform: translateX(-50%);
         z-index: 10000; background: #d4edda; padding: 10px 20px; border-radius: 5px; box-shadow: 0 0 10px rgba(0,0,0,0.2);">
     Max updated!
     </div>

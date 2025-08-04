@@ -373,15 +373,21 @@
                                                                                         <div class="personal-best bg-light p-3 rounded text-center mb-3 shadow-sm border border-2 mx-auto d-block" style="border-color: #20c997; width: fit-content;" data-id="${exercise.workout_id}">
                                                                                             <small class="text-muted d-block mb-1">Your Max:</small>
                                                                                             <div class="fw-bold personal-max-text">
-                                                                                                ${exercise.name.toLowerCase().includes('bodyweight') || exercise.max_weight === 0
+                                                                                                ${exercise.category.toLowerCase() === 'cardio'
                                                                                                     ? 'Bodyweight'
-                                                                                                    : (exercise.max_weight
-                                                                                                        ? `${parseFloat(exercise.max_weight).toFixed(1)} lbs`
-                                                                                                        : '–')
+                                                                                                    : (exercise.name.toLowerCase().includes('bodyweight') || exercise.max_weight === 0
+                                                                                                        ? 'Bodyweight'
+                                                                                                        : (exercise.max_weight
+                                                                                                            ? `${parseFloat(exercise.max_weight).toFixed(1)} lbs`
+                                                                                                            : '–')
+                                                                                                    )
                                                                                                 } × 
-                                                                                                ${exercise.max_reps ? `${exercise.max_reps} reps` : '–'}
+                                                                                                ${exercise.category.toLowerCase() === 'cardio'
+                                                                                                    ? (exercise.max_reps != null ? `${exercise.max_reps} min` : '–')
+                                                                                                    : (exercise.max_reps != null ? `${exercise.max_reps} reps` : '–')
+                                                                                                }
                                                                                             </div>
-                                                                                            <button class="btn btn-outline-primary btn-sm mt-2 update-pr-link" data-id="${exercise.workout_id}">
+                                                                                            <button class="btn btn-outline-primary btn-sm mt-2 update-pr-link" data-id="${exercise.workout_id}" data-category="${exercise.category}">
                                                                                                 Update Max
                                                                                             </button>
                                                                                         </div>
@@ -678,8 +684,8 @@
 
                     currentWorkoutId = e.target.dataset.id;
                     const container = document.querySelector(`.personal-best[data-id="${currentWorkoutId}"] .personal-max-text`);
+                    const isCardio = e.target.dataset.category.toLowerCase() === 'cardio';
                     const [weightText, repsText] = container.textContent.split('×').map(val => val.trim());
-
                     const isBodyweight = weightText.toLowerCase().includes('bodyweight');
 
                     const weightInput = document.getElementById('maxWeightInput');
@@ -690,8 +696,10 @@
                         : 'Max Weight (lbs)';
                     weightInput.title = weightInput.placeholder;
 
-                    document.getElementById('maxRepsInput').value = parseInt(repsText) || '';
-
+                    const repsInput = document.getElementById('maxRepsInput');
+                    repsInput.value = parseInt(repsText) || '';
+                    repsInput.placeholder = isCardio ? 'Minutes' : 'Reps';
+                    repsInput.title = repsInput.placeholder;
 
                     document.getElementById('prModal').classList.add('show');
                 }
@@ -705,8 +713,11 @@
             // Handle modal "Save" button
             document.getElementById('submitPrBtn').addEventListener('click', function () {
                 const maxWeightInput = document.getElementById('maxWeightInput');
+                const maxRepsInput = document.getElementById('maxRepsInput');
+
                 const maxWeight = parseFloat(maxWeightInput.value);
-                const maxReps = parseInt(document.getElementById('maxRepsInput').value);
+                const maxReps = parseInt(maxRepsInput.value);
+                const isCardio = document.getElementById('maxRepsInput').placeholder.toLowerCase().includes('minute');
 
                 // Validation: allow 0 weight if it's a bodyweight exercise (disabled input)
                 if (isNaN(maxReps) || (maxWeightInput.disabled === false && isNaN(maxWeight))) {
@@ -728,11 +739,14 @@
                     if (data.success) {
                         const container = document.querySelector(`.personal-best[data-id="${currentWorkoutId}"] .personal-max-text`);
                         if (container) {
-                            const displayWeight = document.getElementById('maxWeightInput').disabled
+                            const displayWeight = maxWeightInput.disabled
                                 ? 'Bodyweight'
-                                : `${parseFloat(document.getElementById('maxWeightInput').value).toFixed(1)} lbs`;
+                                : `${parseFloat(maxWeight).toFixed(1)} lbs`;
+                            const displayReps = isCardio
+                                ? `${maxReps} min`
+                                : `${maxReps} reps`;
 
-                            container.textContent = `${displayWeight} × ${maxReps} reps`;
+                            container.textContent = `${displayWeight} × ${displayReps}`;
                         }
                         // Hide modal
                         document.getElementById('prModal').classList.remove('show');

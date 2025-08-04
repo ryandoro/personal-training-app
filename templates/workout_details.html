@@ -21,17 +21,32 @@
                             <li class="list-group-item shadow-sm p-3 border border-1 rounded-4 mb-3" style="border-color: #20c997; background-color: #ffffff;">
                                 <h6 class="mb-2 fw-semibold text-center">{{ exercise.name }}</h6>
                                 
-                                {% if (exercise.name and 'bodyweight' in exercise.name|lower) or exercise.max_weight == 0 %}
-                                    <p class="mb-0 text-dark small text-center">
-                                        Max: Bodyweight × {{ exercise.max_reps if exercise.max_reps else '–' }} reps
-                                    </p>
-                                {% elif exercise.max_weight and exercise.max_reps %}
+                                {% set is_cardio = category.lower() == 'cardio' %}
+                                {% set is_bodyweight = 'bodyweight' in exercise.name|lower or exercise.max_weight == 0 %}
+                                
+                                {% if is_cardio %}
+                                    {% if exercise.max_reps is not none %}
+                                        <p class="mb-0 text-dark small text-center">
+                                            Max: Bodyweight × {{ exercise.max_reps }} min
+                                        </p>
+                                    {% else %}
+                                        <p class="mb-0 text-muted small fst-italic text-center">No max recorded</p>
+                                    {% endif %}
+                                {% elif is_bodyweight %}
+                                    {% if exercise.max_reps is not none %}
+                                        <p class="mb-0 text-dark small text-center">
+                                            Max: Bodyweight × {{ exercise.max_reps }} reps
+                                        </p>
+                                    {% else %}
+                                        <p class="mb-0 text-muted small fst-italic text-center">No max recorded</p>
+                                    {% endif %}
+                                {% elif exercise.max_weight is not none and exercise.max_reps is not none %}
                                     <p class="mb-0 text-dark small text-center">
                                         Max: {{ exercise.max_weight|float|round(1) }} lbs × {{ exercise.max_reps }} reps
                                     </p>
                                 {% else %}
                                     <p class="mb-0 text-muted small fst-italic text-center">No max recorded</p>
-                                {% endif %}
+                                {% endif %}           
 
                                 <div class="text-center mt-2">
                                     <button class="btn btn-sm btn-outline-primary toggle-description"

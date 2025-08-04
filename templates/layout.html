@@ -13,12 +13,12 @@
 </head>
 <body class="d-flex flex-column min-vh-100">
     <!-- Navigation Bar -->
-    <nav class="navbar navbar-expand-lg" style="background-color: #303030;">
+    <nav class="navbar navbar-expand-lg" style="background-color: #2E2D2C;">
         <div class="container-fluid">
             <a class="navbar-brand d-flex align-items-center" href="/">
-                <img src="{{ url_for('static', filename='images/fitbasehq_orange_gray_monogram_text_right_logo.png') }}" 
+                <img src="{{ url_for('static', filename='images/fitbaseai_orange_gray_monogram_text_right_logo.png') }}" 
                      alt="FitBase Logo" 
-                     style="height: 36px; width: auto;" />
+                     style="height: 44px; width: auto;" />
             </a>            
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
                 <span class="navbar-toggler-icon"></span>
@@ -67,7 +67,7 @@
 
     <!-- Custom Global Toast -->
     <div id="globalToast" class="text-center fw-bold"
-        style="display: none; position: fixed; top: 70px; left: 50%; transform: translateX(-50%);
+        style="display: none; position: fixed; top: 80px; left: 50%; transform: translateX(-50%);
                 z-index: 1050; background: #d1e7dd; color: #0f5132;
                 padding: 10px 20px; border-radius: 5px; box-shadow: 0 0 10px rgba(0,0,0,0.2);">
         <span id="toastMessage" class="me-3 w-100 text-center"></span>
@@ -83,13 +83,13 @@
     </main>
 
     <!-- Footer -->
-    <footer style="width: 100%; background-color: #303030; padding: 1.25rem 0;">
+    <footer style="width: 100%; background-color: #2E2D2C; padding: 1.25rem 0;">
         <div class="footer text-center" style="color: #6c757d;">
             <p class="mb-0">
                 Powered by 
                 <strong>
                     <a href="{{ url_for('home') }}" style="color: #F7931A; text-decoration: none;">
-                        FitBaseHQ
+                        FitBaseAI
                     </a>
                 </strong> 
                 &copy; {{ current_year }}</p>

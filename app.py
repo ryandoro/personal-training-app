@@ -382,7 +382,8 @@ def generate_workout_route():
                     'image_exercise_start': exercise[4],
                     'image_exercise_end': exercise[5],
                     'max_weight': exercise[6],
-                    'max_reps': exercise[7]
+                    'max_reps': exercise[7],
+                    'category': selected_category
                 }
                 for exercise in exercises
             ]
@@ -532,7 +533,7 @@ def search():
     db = get_connection()
     cursor = db.cursor()
     cursor.execute("""
-        SELECT w.id, w.name, w.description, uep.max_weight, uep.max_reps
+        SELECT w.id, w.name, w.description, w.category, uep.max_weight, uep.max_reps
         FROM workouts w
         LEFT JOIN user_exercise_progress uep
         ON w.id = uep.workout_id AND uep.user_id = %s
