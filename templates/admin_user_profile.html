@@ -1,0 +1,325 @@
+{% extends "layout.html" %}
+
+{% block title %}
+Edit User Profile
+{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div class="card w-100 shadow-sm border border-2 rounded-3 mt-4 mb-4" style="border-color:#ced4da;">
+    <div class="card-body p-4">
+
+      <!-- Header / Summary -->
+      <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3 mb-4">
+        <div class="d-flex align-items-center gap-3">
+          <!-- Avatar (initials) -->
+          <div class="rounded-circle d-flex align-items-center justify-content-center"
+               style="width:56px;height:56px;background:#e9ecef;font-weight:700;">
+            {{ (user.name or '')[:1] ~ (user.last_name or '')[:1] or 'U' }}
+          </div>
+
+          <div>
+            <h3 class="mb-1">
+              {{ user.name or 'Unknown' }} {{ user.last_name or '' }}
+              <small class="text-muted d-block d-md-inline ms-md-2">@{{ user.username }}</small>
+            </h3>
+            <div class="d-flex flex-wrap gap-2 mt-2">
+              <!-- Role -->
+              <span class="badge
+                {% if user.role == 'admin' %} bg-danger
+                {% elif user.role == 'trainer' %} bg-primary
+                {% else %} bg-secondary
+                {% endif %}">
+                <i class="bi bi-person-badge me-1"></i>{{ (user.role or 'user')|capitalize }}
+              </span>
+
+              <!-- Subscription -->
+              <span class="badge
+                {% if user.subscription_type == 'premium' %} bg-success
+                {% elif user.subscription_type == 'pro' %} bg-warning text-dark
+                {% else %} bg-secondary
+                {% endif %}">
+                <i class="bi bi-gem me-1"></i>{{ (user.subscription_type or 'free')|capitalize }}
+              </span>
+
+              <!-- Email verified -->
+              {% if user.email_verified %}
+                <span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>Email Verified</span>
+              {% else %}
+                <span class="badge bg-secondary"><i class="bi bi-x-circle me-1"></i>Email Not Verified</span>
+              {% endif %}
+
+              <!-- Form completed -->
+              {% if user.form_completed %}
+                <span class="badge bg-success"><i class="bi bi-clipboard-check me-1"></i>Questionnaire Complete</span>
+              {% else %}
+                <span class="badge bg-secondary"><i class="bi bi-clipboard-x me-1"></i>Questionnaire Pending</span>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="d-flex gap-2">
+          <a href="{{ url_for('admin_users') }}" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left me-1"></i>Back
+          </a>
+          <button type="submit" form="admin-user-form" class="btn btn-primary">
+            <i class="bi bi-save me-1"></i>Update User
+          </button>
+        </div>
+      </div>
+
+      <!-- Admin Actions: Invite & Account State -->
+        <div class="d-flex flex-wrap gap-2 mt-2">
+            <!-- Resend Invite (email) -->
+            <form method="POST" action="{{ url_for('admin_resend_invite', user_id=user.id) }}" class="d-inline">
+            <button class="btn btn-outline-primary"
+                    {% if user.status not in ['invited','pending'] %}disabled title="Only for invited or pending users"{% endif %}>
+                <i class="bi bi-envelope me-1"></i>Resend Invite
+            </button>
+            </form>
+        
+            <!-- Copy Invite Link (no email) -->
+            <form method="POST" action="{{ url_for('admin_copy_invite', user_id=user.id) }}" class="d-inline">
+            <button class="btn btn-outline-primary"
+                    {% if user.status not in ['invited','pending'] %}disabled title="Only for invited or pending users"{% endif %}>
+                <i class="bi bi-link-45deg me-1"></i>Copy Invite Link
+            </button>
+            </form>
+        
+            <!-- Disable / Reactivate -->
+            {% if user.status == 'disabled' %}
+            <form method="POST" action="{{ url_for('admin_reactivate_user', user_id=user.id) }}" class="d-inline">
+                <button class="btn btn-success">
+                <i class="bi bi-unlock me-1"></i>Reactivate
+                </button>
+            </form>
+            {% else %}
+            <form method="POST" action="{{ url_for('admin_disable_user', user_id=user.id) }}" class="d-inline"
+                    onsubmit="return confirm('Disable this user? This will sign them out.');">
+                <button class="btn btn-outline-danger">
+                <i class="bi bi-lock me-1"></i>Disable
+                </button>
+            </form>
+            {% endif %}
+        </div>
+        
+        {% if invite_url %}
+            <div class="alert alert-info mt-3" role="alert">
+            Invite link created:
+            <input type="text" class="form-control mt-2" value="{{ invite_url }}" readonly onclick="this.select()">
+            <div class="form-text">Share this link directly. It expires in {{ invite_expires_in or '72 hours' }}.</div>
+            </div>
+        {% endif %}
+  
+      <form id="admin-user-form" method="POST">
+        <div class="row g-4">
+
+          <!-- Account -->
+          <div class="col-12">
+            <h5 class="mb-3"><i class="bi bi-person-lines-fill me-2"></i>Account Info</h5>
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label class="form-label">Username</label>
+                <input type="text" class="form-control" name="username" value="{{ user.username }}">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Email</label>
+                <input type="email" class="form-control" name="email" value="{{ user.email or '' }}">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">First Name</label>
+                <input type="text" class="form-control" name="name" value="{{ user.name or '' }}">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Last Name</label>
+                <input type="text" class="form-control" name="last_name" value="{{ user.last_name or '' }}">
+              </div>
+            </div>
+          </div>
+
+          <!-- Status & Access -->
+          <div class="col-12">
+            <hr class="my-2">
+            <h5 class="mb-3"><i class="bi bi-shield-lock me-2"></i>Status & Access</h5>
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label class="form-label">Role</label>
+                <select class="form-select" name="role">
+                  <option value="user" {% if user.role == 'user' %}selected{% endif %}>User</option>
+                  <option value="trainer" {% if user.role == 'trainer' %}selected{% endif %}>Trainer</option>
+                  <option value="admin" {% if user.role == 'admin' %}selected{% endif %}>Admin</option>
+                </select>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Subscription</label>
+                <select class="form-select" name="subscription_type">
+                  <option value="free" {% if user.subscription_type == 'free' %}selected{% endif %}>Free</option>
+                  <option value="premium" {% if user.subscription_type == 'premium' %}selected{% endif %}>Premium</option>
+                  <option value="pro" {% if user.subscription_type == 'pro' %}selected{% endif %}>Pro</option>
+                </select>
+              </div>
+
+              <div class="col-md-6 d-flex align-items-center gap-2">
+                <input type="checkbox" class="form-check-input" id="email_verified" name="email_verified"
+                       {% if user.email_verified %}checked{% endif %}>
+                <label for="email_verified" class="form-check-label">Email Verified</label>
+              </div>
+
+              <div class="col-md-6 d-flex align-items-center gap-2">
+                <input type="checkbox" class="form-check-input" id="form_completed" name="form_completed"
+                       {% if user.form_completed %}checked{% endif %}>
+                <label for="form_completed" class="form-check-label">Questionnaire Completed</label>
+              </div>
+            </div>
+          </div>
+
+          <!-- Profile (Vitals) -->
+          <div class="col-12">
+            <hr class="my-2">
+            <h5 class="mb-3"><i class="bi bi-activity me-2"></i>Vitals</h5>
+            <div class="row g-3">
+              <div class="col-6 col-md-3">
+                <label class="form-label">Age (years)</label>
+                <input type="number" class="form-control" name="age" value="{{ user.age or '' }}">
+              </div>
+              <div class="col-6 col-md-3">
+                <label class="form-label">Weight (lbs)</label>
+                <input type="number" class="form-control" name="weight" value="{{ user.weight or '' }}">
+              </div>
+              <div class="col-6 col-md-3">
+                <label class="form-label">Height (ft)</label>
+                <input type="number" class="form-control" name="height_feet" value="{{ user.height_feet or '' }}">
+              </div>
+              <div class="col-6 col-md-3">
+                <label class="form-label">Height (in)</label>
+                <input type="number" class="form-control" name="height_inches" value="{{ user.height_inches or '' }}">
+              </div>
+
+              <div class="col-md-6">
+                <label class="form-label d-block">Gender</label>
+                <div class="form-check form-check-inline">
+                  <input class="form-check-input" type="radio" name="gender" id="gender-male" value="Male" {% if user.gender == 'Male' %}checked{% endif %}>
+                  <label class="form-check-label" for="gender-male">Male</label>
+                </div>
+                <div class="form-check form-check-inline">
+                  <input class="form-check-input" type="radio" name="gender" id="gender-female" value="Female" {% if user.gender == 'Female' %}checked{% endif %}>
+                  <label class="form-check-label" for="gender-female">Female</label>
+                </div>
+              </div>
+
+              <div class="col-md-6">
+                <label class="form-label">Exercise History</label>
+                <select class="form-select" name="exercise_history">
+                  <option value="" disabled>Select an option</option>
+                  {% for option in ['No Exercise History','Exercise less than 1 year','Exercise 1-5 years','Exercise 5+ years'] %}
+                    <option value="{{ option }}" {% if user.exercise_history == option %}selected{% endif %}>{{ option }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- Training Profile -->
+          <div class="col-12">
+            <hr class="my-2">
+            <h5 class="mb-3"><i class="bi bi-clipboard-check me-2"></i>Training Profile</h5>
+            <div class="row g-3">
+              <div class="col-12">
+                <label class="form-label d-block">Fitness Goals <small>(Select up to 2)</small></label>
+                <small class="text-muted d-block mb-2">We recommend selecting 1 or 2 goals to keep training focused.</small>
+                <div id="fitness-goals-group">
+                  {% set goals_list = ((user.fitness_goals or '')).split(',') | map('trim') | list %}
+                  {% for goal in ['Lose Weight','Gain Muscle','Tone Muscle','Abs','Increase Strength','Increase Endurance','Feel Better'] %}
+                    <div class="form-check">
+                      <input type="checkbox" class="form-check-input goal-checkbox"
+                             id="{{ goal|lower|replace(' ','-') }}"
+                             name="fitness_goals" value="{{ goal }}"
+                             {% if goal in goals_list %}checked{% endif %}>
+                      <label class="form-check-label" for="{{ goal|lower|replace(' ','-') }}">{{ goal }}</label>
+                    </div>
+                  {% endfor %}
+                </div>
+                <div class="text-danger small mt-1" id="goal-warning" style="display:none;"></div>
+              </div>
+
+              <div class="col-md-6">
+                <label class="form-label">Commitment</label>
+                <select class="form-select" name="commitment">
+                  <option value="" disabled>Select an option</option>
+                  {% for option in ['1 day per week','2 days per week','3 days per week'] %}
+                    <option value="{{ option }}" {% if user.commitment == option %}selected{% endif %}>{{ option }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+
+              <div class="col-md-6">
+                <label class="form-label">Workouts Completed</label>
+                <input type="number" class="form-control" name="workouts_completed" value="{{ user.workouts_completed or 0 }}">
+              </div>
+
+              <div class="col-md-6">
+                <label class="form-label d-block">Injury Status</label>
+                <div class="form-check form-check-inline">
+                  <input class="form-check-input" type="radio" name="injury" id="injury-yes" value="Yes"
+                         {% if user.injury == 'Yes' %}checked{% endif %}>
+                  <label class="form-check-label" for="injury-yes">Yes</label>
+                </div>
+                <div class="form-check form-check-inline">
+                  <input class="form-check-input" type="radio" name="injury" id="injury-no" value="No"
+                         {% if user.injury == 'No' %}checked{% endif %}>
+                  <label class="form-check-label" for="injury-no">No</label>
+                </div>
+              </div>
+              
+              <div class="col-md-6">
+                <label class="form-label">Injury Details</label>
+                <input type="text" class="form-control" name="injury_details" value="{{ user.injury_details or '' }}">
+              </div>
+
+              <div class="col-12">
+                <label class="form-label">Additional Notes</label>
+                <textarea class="form-control" name="additional_notes" rows="3">{{ user.additional_notes or '' }}</textarea>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Bottom action bar (mobile friendly) -->
+        <div class="d-flex justify-content-between flex-wrap gap-2 mt-4">
+          <a href="{{ url_for('admin_users') }}" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left me-1"></i>Back
+          </a>
+          <button type="submit" class="btn btn-primary">
+            <i class="bi bi-save me-1"></i>Update User
+          </button>
+        </div>
+      </form>
+
+    </div>
+  </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  const goalCheckboxes = document.querySelectorAll('.goal-checkbox');
+  const goalWarning = document.getElementById('goal-warning');
+  const form = document.getElementById('admin-user-form');
+
+  goalCheckboxes.forEach(cb => {
+    cb.addEventListener('change', () => {
+      const checked = Array.from(goalCheckboxes).filter(c => c.checked);
+      if (checked.length > 2) {
+        cb.checked = false;
+        goalWarning.style.display = 'block';
+        goalWarning.textContent = "You can only select up to 2 fitness goals.";
+      } else {
+        goalWarning.style.display = 'none';
+      }
+    });
+  });
+});
+</script>
+{% endblock %}
+

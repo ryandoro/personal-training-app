@@ -26,23 +26,23 @@ Account Settings
                 <!-- Age -->
                 <div class="mb-3">
                     <label class="form-label fw-bold">Age</label>
-                    <input type="number" class="form-control" name="age" value="{{ user.get('age', '') }}">
+                    <input type="number" class="form-control" name="age" step="1" inputmode="numeric" value="{{ user.get('age', '') }}">
                 </div>
 
                 <!-- Weight -->
                 <div class="mb-3">
                     <label class="form-label fw-bold">Weight (Pounds)</label>
-                    <input type="number" class="form-control" name="weight" value="{{ user.get('weight', '') }}">
+                    <input type="number" class="form-control" name="weight" step="0.1" min="0" max="999.9" inputmode="decimal" value="{{ user.get('weight', '') }}">
                 </div>
 
                 <!-- Height -->
                 <div class="mb-3 row">
                     <label class="form-label fw-bold">Height</label>
                     <div class="col">
-                        <input type="number" class="form-control" name="height_feet" placeholder="Feet" value="{{ user.get('height_feet', '') }}">
+                        <input type="number" class="form-control" name="height_feet" placeholder="Feet" step="1" min="0" inputmode="numeric" value="{{ user.get('height_feet', '') }}">
                     </div>
                     <div class="col">
-                        <input type="number" class="form-control" name="height_inches" placeholder="Inches" value="{{ user.get('height_inches', '') }}">
+                        <input type="number" class="form-control" name="height_inches" placeholder="Inches" value="{{ user.get('height_inches', '') }}" min="0" max="11" step="1" inputmode="numeric">
                     </div>
                 </div>
 

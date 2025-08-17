@@ -1,0 +1,116 @@
+{% extends "layout.html" %}
+
+{% block title %}
+    Admin Dashboard
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="card w-100 shadow-sm p-3 border border-2 rounded-3 mb-4" style="border-color: #ced4da;">
+        <div class="card-body">
+            <h2 class="text-center text-white mb-4" style="background-color: #1EA4E6;">Admin Dashboard</h2>
+
+            <!-- Add User Button -->
+            <div class="d-flex justify-content-center mt-4 mb-4">
+                <a href="{{ url_for('admin_add_user') }}" class="btn btn-success">Add User</a>
+            </div>            
+            
+            <!-- Search Bar -->
+            <form method="GET" action="{{ url_for('admin_users') }}" class="mb-4">
+                <div class="input-group">
+                    <input type="text" name="search" class="form-control" placeholder="Search by first name, last name, or email" value="{{ search_term }}">
+                    <button class="btn btn-outline-secondary" type="submit">Search</button>
+                </div>
+            </form>
+
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                            {{ message }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+
+            <div class="table-responsive">
+                <table class="table table-bordered table-hover align-middle mt-2">
+                    <thead class="table-light text-center">
+                        <tr>
+                            <th>ID</th>
+                            <th>Username</th>
+                            <th>Name</th>
+                            <th>Email</th>
+                            <th>Role</th>
+                            <th>Subscription</th>
+                            <th>Email Verified</th>
+                            <th>Form Completed</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for user in users %}
+                        <tr>
+                            <td 
+                                class="text-center">{{ user[0] }}
+                            </td>
+                            <td>
+                                <a href="{{ url_for('admin_user_profile', user_id=user[0]) }}" class="text-decoration-none">
+                                    {{ user[1] }}
+                                </a>
+                            </td>
+                            <td>
+                                <a href="{{ url_for('admin_user_profile', user_id=user[0]) }}" class="text-decoration-none">
+                                    {{ user[2] }} {{ user[3] }}
+                                </a>
+                            </td>                                  
+                            <td>
+                                <a href="{{ url_for('admin_user_profile', user_id=user[0]) }}" class="text-decoration-none">
+                                    {{ user[4] }}
+                                </a>
+                            </td>
+                            <td>
+                                <span class="badge 
+                                    {% if user[7] == 'admin' %}bg-danger
+                                    {% elif user[7] == 'trainer' %}bg-primary
+                                    {% else %}bg-secondary
+                                    {% endif %} mb-1">
+                                    {{ user[7]|capitalize }}
+                                </span>
+                            </td>                                
+                            <td>
+                                <span class="badge 
+                                    {% if user[5] == 'premium' %}bg-success
+                                    {% elif user[5] == 'pro' %}bg-warning text-dark
+                                    {% else %}bg-secondary
+                                    {% endif %} mb-1">
+                                    {{ user[5]|capitalize }}
+                                </span>
+                            </td>                                
+                            <td class="text-center">
+                                {% if user[6] %}
+                                    <i class="bi bi-check-circle-fill text-success"></i>
+                                {% else %}
+                                    <i class="bi bi-x-circle-fill text-secondary"></i>
+                                {% endif %}
+                            </td>                                
+                            <td class="text-center align-middle">
+                                {% if user[8] %}
+                                    <span class="badge bg-success">Yes</span>
+                                {% else %}
+                                    <span class="badge bg-secondary">No</span>
+                                {% endif %}
+                            </td>                                
+                        </tr>                        
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <p class="mt-4 text-center text-muted small">
+                Admin access powered by FitBaseAI.
+            </p>
+        </div>
+    </div>
+</div>
+{% endblock %}

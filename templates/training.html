@@ -49,66 +49,127 @@
         <div class="card shadow p-4 bg-light rounded mb-5">
             <h4 class="text-center fw-bold mb-4">Personal Training Questionnaire</h4>
             <div class="card-body">
-                <form action="/training" method="post" class="needs-validation" novalidate>
+                <form id="training-form" action="/training" method="post" class="needs-validation" novalidate>
                     <!-- Name -->
                     <div class="mb-3">
                         <label for="name" class="form-label fw-bold">First Name</label>
-                        <input type="text" class="form-control" id="name" name="name" placeholder="Enter your first name" required>
-                    </div>
-                    
+                        <input type="text"
+                               class="form-control {{ 'is-invalid' if errors and errors.get('name') }}"
+                               id="name" name="name"
+                               placeholder="Enter your first name"
+                               value="{{ (form_data.get('name') or '') if form_data is defined else '' }}"
+                               required>
+                        <div class="invalid-feedback">
+                            {{ errors.get('name') if errors and errors.get('name') else 'First name is required.' }}
+                        </div>
+                      </div>
+                      
                     <!-- Last Name -->
                     <div class="mb-3">
                         <label for="last_name" class="form-label fw-bold">Last Name</label>
-                        <input type="text" class="form-control" id="last_name" name="last_name" placeholder="Enter your last name" required>
+                        <input type="text"
+                                class="form-control {{ 'is-invalid' if errors and errors.get('last_name') }}"
+                                id="last_name" name="last_name"
+                                placeholder="Enter your last name"
+                                value="{{ (form_data.get('last_name') or '') if form_data is defined else '' }}"
+                                required>
+                        <div class="invalid-feedback">
+                            {{ errors.get('last_name') if errors and errors.get('last_name') else 'Last name is required.' }}
+                        </div>
                     </div>
 
                     <!-- Age -->
                     <div class="mb-3">
                         <label for="age" class="form-label fw-bold">Age (Years)</label>
-                        <input type="number" class="form-control" id="age" name="age" placeholder="Enter your age" required>
-                    </div>
+                        <input type="number"
+                               class="form-control {{ 'is-invalid' if errors and errors.get('age') }}"
+                               id="age" name="age" placeholder="Enter your age"
+                               step="1" min="0" inputmode="numeric" required
+                               value="{{ (form_data.get('age') or '') if form_data is defined else '' }}">
+                        <div class="invalid-feedback">
+                            {{ errors.get('age') if errors and errors.get('age') else 'Enter your age as a whole number (0 or more).' }}
+                        </div>
+                    </div>                      
 
                     <!-- Weight -->
                     <div class="mb-3">
                         <label for="weight" class="form-label fw-bold">Weight (Pounds)</label>
-                        <input type="number" class="form-control" id="weight" name="weight" placeholder="Enter your weight in pounds" required>
+                        <input type="number"
+                               class="form-control {{ 'is-invalid' if errors and errors.get('weight') }}"
+                               id="weight" name="weight" placeholder="Enter your weight in pounds"
+                               step="0.1" min="0" max="999.9" inputmode="decimal" required
+                               value="{{ (form_data.get('weight') or '') if form_data is defined else '' }}">
+                        <div class="invalid-feedback">
+                            {{ errors.get('weight') if errors and errors.get('weight') else 'Enter a number between 0 and 999.9 (decimals allowed).' }}
+                        </div>
                     </div>
 
                     <!-- Height -->
                     <div class="mb-3 row">
                         <label class="form-label fw-bold">Height</label>
                         <div class="col">
-                            <input type="number" class="form-control" id="height-feet" name="height_feet" placeholder="Feet" min="0" required>
+                          <input type="number"
+                                 class="form-control {{ 'is-invalid' if errors and errors.get('height_feet') }}"
+                                 id="height-feet" name="height_feet" placeholder="Feet"
+                                 min="0" step="1" inputmode="numeric" required
+                                 value="{{ (form_data.get('height_feet') or '') if form_data is defined else '' }}">
+                          <div class="invalid-feedback">
+                                {{ errors.get('height_feet') if errors and errors.get('height_feet') else 'Feet must be a whole number (0 or more).' }}
+                          </div>
                         </div>
                         <div class="col">
-                            <input type="number" class="form-control" id="height-inches" name="height_inches" placeholder="Inches" min="0" max="11" required>
+                          <input type="number"
+                                 class="form-control {{ 'is-invalid' if errors and errors.get('height_inches') }}"
+                                 id="height-inches" name="height_inches" placeholder="Inches"
+                                 min="0" max="11" step="1" inputmode="numeric" required
+                                 value="{{ (form_data.get('height_inches') or '') if form_data is defined else '' }}">
+                          <div class="invalid-feedback">
+                                {{ errors.get('height_inches') if errors and errors.get('height_inches') else 'Inches must be a whole number from 0 to 11.' }}
+                          </div>
                         </div>
-                    </div>
+                    </div>                      
 
                     <!-- Gender -->
                     <div class="mb-3">
                         <label class="form-label fw-bold d-block">Gender</label>
                         <div class="form-check form-check-inline">
-                            <input type="radio" class="form-check-input" id="male" name="gender" value="Male" required>
+                            <input type="radio"
+                                class="form-check-input {{ 'is-invalid' if errors and errors.get('gender') }}"
+                                id="male" name="gender" value="Male" required
+                                {% if form_data is defined and form_data.get('gender') == 'Male' %}checked{% endif %}>
                             <label class="form-check-label" for="male">Male</label>
                         </div>
                         <div class="form-check form-check-inline">
-                            <input type="radio" class="form-check-input" id="female" name="gender" value="Female" required>
+                            <input type="radio"
+                                class="form-check-input {{ 'is-invalid' if errors and errors.get('gender') }}"
+                                id="female" name="gender" value="Female" required
+                                {% if form_data is defined and form_data.get('gender') == 'Female' %}checked{% endif %}>
                             <label class="form-check-label" for="female">Female</label>
                         </div>
+                        {% if errors and errors.get('gender') %}
+                            <div class="invalid-feedback d-block">{{ errors.get('gender') }}</div>
+                        {% endif %}
                     </div>
 
                     <!-- Exercise History -->
                     <div class="mb-3">
                         <label for="exercise-history" class="form-label fw-bold">Exercise History</label>
-                        <select class="form-select" id="exercise-history" name="exercise_history" required>
-                            <option value="" disabled selected>Select an option</option>
-                            <option value="No Exercise History">No Exercise History</option>
-                            <option value="Exercise less than 1 year">Exercise less than 1 year</option>
-                            <option value="Exercise 1-5 years">Exercise 1-5 years</option>
-                            <option value="Exercise 5+ years">Exercise 5+ years</option>
+                        <select class="form-select {{ 'is-invalid' if errors and errors.get('exercise_history') }}"
+                                id="exercise-history" name="exercise_history" required>
+                            <option value="" disabled
+                                {% if not (form_data is defined and form_data.get('exercise_history')) %}selected{% endif %}>
+                                Select an option
+                            </option>
+                            {% set eh = form_data.get('exercise_history') if form_data is defined else '' %}
+                            <option value="No Exercise History" {% if eh == 'No Exercise History' %}selected{% endif %}>No Exercise History</option>
+                            <option value="Exercise less than 1 year" {% if eh == 'Exercise less than 1 year' %}selected{% endif %}>Exercise less than 1 year</option>
+                            <option value="Exercise 1-5 years" {% if eh == 'Exercise 1-5 years' %}selected{% endif %}>Exercise 1-5 years</option>
+                            <option value="Exercise 5+ years" {% if eh == 'Exercise 5+ years' %}selected{% endif %}>Exercise 5+ years</option>
                         </select>
-                    </div>
+                        <div class="invalid-feedback">
+                            {{ errors.get('exercise_history') if errors and errors.get('exercise_history') else 'Please select your exercise history.' }}
+                        </div>
+                      </div>                      
 
                     <!-- Fitness Goals -->
                     <div class="mb-3">
@@ -118,71 +179,117 @@
                         </small>
 
                         <!-- Goal Checkboxes -->
+                        {% set selected_goals = form_data.getlist('fitness_goals') if form_data is defined else [] %}
                         <div class="form-check">
-                            <input type="checkbox" class="form-check-input goal-checkbox" id="lose-weight" name="fitness_goals" value="Lose Weight">
+                            <input type="checkbox" class="form-check-input goal-checkbox {{ 'is-invalid' if errors and errors.get('fitness_goals') }}"
+                                    id="lose-weight" name="fitness_goals" value="Lose Weight"
+                                    {% if 'Lose Weight' in selected_goals %}checked{% endif %}>
                             <label class="form-check-label" for="lose-weight">Lose Weight</label>
                         </div>
+                        
                         <div class="form-check">
-                            <input type="checkbox" class="form-check-input goal-checkbox" id="gain-muscle" name="fitness_goals" value="Gain Muscle">
+                            <input type="checkbox" class="form-check-input goal-checkbox {{ 'is-invalid' if errors and errors.get('fitness_goals') }}"
+                                    id="gain-muscle" name="fitness_goals" value="Gain Muscle"
+                                    {% if 'Gain Muscle' in selected_goals %}checked{% endif %}>
                             <label class="form-check-label" for="gain-muscle">Gain Muscle</label>
                         </div>
+                        
                         <div class="form-check">
-                            <input type="checkbox" class="form-check-input goal-checkbox" id="tone-muscle" name="fitness_goals" value="Tone Muscle">
+                            <input type="checkbox" class="form-check-input goal-checkbox {{ 'is-invalid' if errors and errors.get('fitness_goals') }}"
+                                    id="tone-muscle" name="fitness_goals" value="Tone Muscle"
+                                    {% if 'Tone Muscle' in selected_goals %}checked{% endif %}>
                             <label class="form-check-label" for="tone-muscle">Tone Muscle</label>
                         </div>
+                        
                         <div class="form-check">
-                            <input type="checkbox" class="form-check-input goal-checkbox" id="abs" name="fitness_goals" value="Abs">
+                            <input type="checkbox" class="form-check-input goal-checkbox {{ 'is-invalid' if errors and errors.get('fitness_goals') }}"
+                                    id="abs" name="fitness_goals" value="Abs"
+                                    {% if 'Abs' in selected_goals %}checked{% endif %}>
                             <label class="form-check-label" for="abs">Abs</label>
                         </div>
+                        
                         <div class="form-check">
-                            <input type="checkbox" class="form-check-input goal-checkbox" id="strength" name="fitness_goals" value="Increase Strength">
+                            <input type="checkbox" class="form-check-input goal-checkbox {{ 'is-invalid' if errors and errors.get('fitness_goals') }}"
+                                    id="strength" name="fitness_goals" value="Increase Strength"
+                                    {% if 'Increase Strength' in selected_goals %}checked{% endif %}>
                             <label class="form-check-label" for="strength">Increase Strength</label>
                         </div>
+                        
                         <div class="form-check">
-                            <input type="checkbox" class="form-check-input goal-checkbox" id="endurance" name="fitness_goals" value="Increase Endurance">
+                            <input type="checkbox" class="form-check-input goal-checkbox {{ 'is-invalid' if errors and errors.get('fitness_goals') }}"
+                                    id="endurance" name="fitness_goals" value="Increase Endurance"
+                                    {% if 'Increase Endurance' in selected_goals %}checked{% endif %}>
                             <label class="form-check-label" for="endurance">Increase Endurance</label>
                         </div>
+                        
                         <div class="form-check">
-                            <input type="checkbox" class="form-check-input goal-checkbox" id="feel-better" name="fitness_goals" value="Feel Better">
+                            <input type="checkbox" class="form-check-input goal-checkbox {{ 'is-invalid' if errors and errors.get('fitness_goals') }}"
+                                    id="feel-better" name="fitness_goals" value="Feel Better"
+                                    {% if 'Feel Better' in selected_goals %}checked{% endif %}>
                             <label class="form-check-label" for="feel-better">Feel Better</label>
                         </div>
+
+                        {% if errors and errors.get('fitness_goals') %}
+                            <div class="invalid-feedback d-block">{{ errors.get('fitness_goals') }}</div>
+                        {% endif %}
                     </div>
 
                     <!-- Injury or Illness -->
                     <div class="mb-3">
                         <label class="form-label fw-bold d-block">Do you have, or have you had any recent injuries or illnesses?</label>
+                      
                         <div class="form-check form-check-inline">
-                            <input type="radio" class="form-check-input" id="injury-yes" name="injury" value="Yes" required>
+                            <input type="radio"
+                                    class="form-check-input {{ 'is-invalid' if errors and errors.get('injury') }}"
+                                    id="injury-yes" name="injury" value="Yes" required
+                                    {% if form_data is defined and form_data.get('injury') == 'Yes' %}checked{% endif %}>
                             <label class="form-check-label" for="injury-yes">Yes</label>
                         </div>
+                      
                         <div class="form-check form-check-inline">
-                            <input type="radio" class="form-check-input" id="injury-no" name="injury" value="No" required>
+                            <input type="radio"
+                                    class="form-check-input {{ 'is-invalid' if errors and errors.get('injury') }}"
+                                    id="injury-no" name="injury" value="No" required
+                                    {% if form_data is defined and form_data.get('injury') == 'No' %}checked{% endif %}>
                             <label class="form-check-label" for="injury-no">No</label>
                         </div>
+                      
+                        {% if errors and errors.get('injury') %}
+                            <div class="invalid-feedback d-block">{{ errors.get('injury') }}</div>
+                        {% endif %}
                     </div>
 
                     <!-- Injury/Illness Details -->
                     <div class="mb-3">
                         <label for="injury-details" class="form-label fw-bold">If yes, please describe your injury/illness:</label>
-                        <textarea class="form-control" id="injury-details" name="injury_details" rows="3"></textarea>
-                    </div>
+                        <textarea class="form-control {{ 'is-invalid' if errors and errors.get('injury_details') }}"
+                                id="injury-details" name="injury_details" rows="3">{{ (form_data.get('injury_details') or '') if form_data is defined else '' }}</textarea>
+                        <div class="invalid-feedback">
+                            {{ errors.get('injury_details') if errors and errors.get('injury_details') else '' }}
+                        </div>
+                    </div>                      
 
                     <!-- Commitment -->
                     <div class="mb-3">
                         <label for="commitment" class="form-label fw-bold">How many days per week are you willing to commit to your goals?</label>
-                        <select class="form-select" id="commitment" name="commitment" required>
-                            <option value="" disabled selected>Select an option</option>
-                            <option value="1 day per week">1 day per week</option>
-                            <option value="2 days per week">2 days per week</option>
-                            <option value="3 days per week">3 days per week</option>
+                        <select class="form-select {{ 'is-invalid' if errors and errors.get('commitment') }}"
+                                id="commitment" name="commitment" required>
+                            {% set cmt = form_data.get('commitment') if form_data is defined else '' %}
+                            <option value="" disabled {% if not cmt %}selected{% endif %}>Select an option</option>
+                            <option value="1 day per week" {% if cmt == '1 day per week' %}selected{% endif %}>1 day per week</option>
+                            <option value="2 days per week" {% if cmt == '2 days per week' %}selected{% endif %}>2 days per week</option>
+                            <option value="3 days per week" {% if cmt == '3 days per week' %}selected{% endif %}>3 days per week</option>
                         </select>
-                    </div>
+                        <div class="invalid-feedback">
+                            {{ errors.get('commitment') if errors and errors.get('commitment') else 'Please select your weekly commitment.' }}
+                        </div>
+                    </div>                      
 
                     <!-- Additional Notes -->
                     <div class="mb-3">
                         <label for="additional-notes" class="form-label fw-bold">Anything else you'd like to share?</label>
-                        <textarea class="form-control" id="additional-notes" name="additional_notes" rows="3"></textarea>
-                    </div>
+                        <textarea class="form-control" id="additional-notes" name="additional_notes" rows="3">{{ (form_data.get('additional_notes') or '') if form_data is defined else '' }}</textarea>
+                    </div>                      
 
                     <!-- Submit Button -->
                     <button type="submit" class="btn btn-primary w-100">Submit</button>
@@ -823,6 +930,22 @@
     {% endif %}
 </div>
 <script>
+    (() => {
+    'use strict';
+    const form = document.getElementById('training-form') || document.querySelector('form.needs-validation');
+    if (!form) return;
+    form.addEventListener('submit', (e) => {
+        if (!form.checkValidity()) {
+        e.preventDefault();
+        e.stopPropagation();
+        // focus first invalid control
+        const firstInvalid = form.querySelector(':invalid');
+        if (firstInvalid) firstInvalid.focus();
+        }
+        form.classList.add('was-validated');
+    });
+    })();
+
     document.addEventListener('DOMContentLoaded', () => {
         const checkboxes = document.querySelectorAll('.goal-checkbox');
 

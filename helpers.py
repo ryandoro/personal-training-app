@@ -1,17 +1,137 @@
 from functools import wraps
 from flask import session, redirect, url_for, flash
 import os, psycopg2, re
+import hmac, secrets, hashlib
 from psycopg2 import connect
+from psycopg2.extras import RealDictCursor
 from urllib.parse import urlparse
 from dotenv import load_dotenv
 from collections import OrderedDict
 from decimal import Decimal
+from datetime import datetime, timedelta, timezone
 
 load_dotenv()
-## Not using - DATABASE_PATH = os.getenv('DATABASE_URL', 'instance/health.db')
 
 def get_connection():
     return psycopg2.connect(os.getenv("DATABASE_URL"))
+
+ADMIN_EMAILS = [e.strip().lower() for e in os.getenv('ADMIN_EMAILS', '').split(',') if e.strip()]
+
+
+def is_admin(user_id):
+    """Admin if email is in .env bootstrap list OR role='admin' in DB."""
+    if not user_id:
+        return False
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT email, role FROM users WHERE id = %s", (user_id,))
+            row = cursor.fetchone()
+            if not row:
+                return False
+            email, role = row
+            return (email or '').lower() in ADMIN_EMAILS or role == 'admin'
+        
+
+def hash_token(raw: str) -> str:
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def validate_token(conn, raw_token: str, purpose: str):
+    """
+    Returns {"token_id": int, "user_id": int, "expires_at": datetime} if valid and unexpired; else None.
+    """
+    digest = hash_token(raw_token)
+    with conn.cursor() as cur:
+        cur.execute("""
+            SELECT ut.id, ut.user_id, ut.expires_at
+            FROM user_tokens ut
+            WHERE ut.purpose = %s
+              AND ut.token_digest = %s
+              AND ut.used_at IS NULL
+              AND ut.expires_at > now()
+            LIMIT 1
+        """, (purpose, digest))
+        row = cur.fetchone()
+        if not row:
+            return None
+        return {"token_id": row[0], "user_id": row[1], "expires_at": row[2]}
+
+
+def mark_token_used(conn, token_id: int):
+    with conn.cursor() as cur:
+        cur.execute("UPDATE user_tokens SET used_at = now() WHERE id = %s", (token_id,))
+
+def username_available(conn, username: str) -> bool:
+    with conn.cursor() as cur:
+        cur.execute("SELECT 1 FROM users WHERE lower(username) = lower(%s) LIMIT 1", (username,))
+        return cur.fetchone() is None
+    
+
+def normalize_email(email: str) -> str:
+    return (email or "").strip().lower()
+
+
+def issue_single_use_token(conn, user_id: int, purpose: str, ttl_hours: int):
+    raw_token = secrets.token_urlsafe(32)
+    digest = hash_token(raw_token)
+    expires_at = datetime.now(timezone.utc) + timedelta(hours=ttl_hours)
+    with conn.cursor() as cur:
+        # Invalidate ANY existing unused tokens for this purpose
+        cur.execute("""
+            UPDATE user_tokens
+               SET used_at = now()
+             WHERE user_id = %s
+               AND purpose = %s
+               AND used_at IS NULL
+        """, (user_id, purpose))
+        cur.execute("""
+            INSERT INTO user_tokens (user_id, purpose, token_digest, expires_at)
+            VALUES (%s, %s, %s, %s)
+        """, (user_id, purpose, digest, expires_at))
+    return raw_token, expires_at
+
+
+
+def upsert_invited_user(conn, *, email, first, last, role, subscription, invited_by) -> int:
+    now = datetime.now(timezone.utc)
+    with conn.cursor() as cur:
+        cur.execute("SELECT id, status FROM users WHERE lower(email) = %s", (email.lower(),))
+        row = cur.fetchone()
+
+        if row:
+            user_id, status = row
+            if status == "active":
+                raise ValueError("An active account already exists with this email.")
+            cur.execute("""
+                UPDATE users
+                   SET name=%s, last_name=%s, role=%s, subscription_type=%s,
+                       status='invited', email_verified=false,
+                       invited_by=%s, invited_at=%s,
+                       accepted_at=NULL, username=NULL, hash=NULL,
+                       updated_at=%s
+                 WHERE id=%s
+            """, (first or None, last or None, role, subscription,
+                  invited_by, now, now, user_id))
+            return user_id
+
+        cur.execute("""
+            INSERT INTO users
+                (email, name, last_name, role, subscription_type,
+                 status, email_verified, invited_by, invited_at,
+                 username, hash, created_at, updated_at)
+            VALUES
+                (%s, %s, %s, %s, %s,
+                 'invited', false, %s, %s,
+                 NULL, NULL, %s, %s)
+            RETURNING id
+        """, (email, first or None, last or None, role, subscription,
+              invited_by, now, now, now))
+        return cur.fetchone()[0]
+
+
+def send_invite_email(to_email: str, first_name: str, invite_url: str, admin_note: str | None = None):
+    # TODO: wire up your email provider; for now, leave as a no-op or log.
+    pass
 
 
 def login_required(f):
@@ -223,3 +343,25 @@ def get_guidelines(exercise_history, fitness_goals):
         "Rest": format_range(rest, is_rest=True)
     }
     # Don't need this line? - return guidelines[level].get(fitness_goals, {})
+
+
+def fmt_utc(dt):
+    """Render an aware datetime in a friendly UTC string."""
+    return dt.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+
+
+def int_or_none(v):
+    try: return int(str(v).strip())
+    except (TypeError, ValueError): return None
+
+
+def inches_0_11_or_none(v):
+    try: return max(0, min(11, int(float(str(v).strip()))))
+    except (TypeError, ValueError): return None
+
+
+def float_or_none(v):
+    try:
+        return float(str(v).strip())
+    except (TypeError, ValueError):
+        return None
