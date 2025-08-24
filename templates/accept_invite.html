@@ -14,7 +14,7 @@ Accept Invite
         <p class="text-muted">Invited email: <strong>{{ email }}</strong></p>
       {% endif %}
 
-      <form method="POST" action="{{ url_for('accept_invite') }}" id="acceptForm" novalidate>
+      <form method="POST" action="{{ url_for('accept_invite_post') }}" id="acceptForm" novalidate>
         <input type="hidden" name="token" value="{{ token }}">
 
         <div class="row g-3">

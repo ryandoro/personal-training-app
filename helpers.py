@@ -61,6 +61,7 @@ def mark_token_used(conn, token_id: int):
     with conn.cursor() as cur:
         cur.execute("UPDATE user_tokens SET used_at = now() WHERE id = %s", (token_id,))
 
+
 def username_available(conn, username: str) -> bool:
     with conn.cursor() as cur:
         cur.execute("SELECT 1 FROM users WHERE lower(username) = lower(%s) LIMIT 1", (username,))
@@ -127,11 +128,6 @@ def upsert_invited_user(conn, *, email, first, last, role, subscription, invited
         """, (email, first or None, last or None, role, subscription,
               invited_by, now, now, now))
         return cur.fetchone()[0]
-
-
-def send_invite_email(to_email: str, first_name: str, invite_url: str, admin_note: str | None = None):
-    # TODO: wire up your email provider; for now, leave as a no-op or log.
-    pass
 
 
 def login_required(f):

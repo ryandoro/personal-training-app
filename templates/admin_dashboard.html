@@ -8,7 +8,7 @@
 <div class="container">
     <div class="card w-100 shadow-sm p-3 border border-2 rounded-3 mb-4" style="border-color: #ced4da;">
         <div class="card-body">
-            <h2 class="text-center text-white mb-4" style="background-color: #1EA4E6;">Admin Dashboard</h2>
+            <h2 class="card-header text-center text-white mb-4 p-2" style="background-color: #1EA4E6;">Admin Dashboard</h2>
 
             <!-- Add User Button -->
             <div class="d-flex justify-content-center mt-4 mb-4">
@@ -46,6 +46,7 @@
                             <th>Subscription</th>
                             <th>Email Verified</th>
                             <th>Form Completed</th>
+                            <th>Workouts Completed</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -100,16 +101,15 @@
                                 {% else %}
                                     <span class="badge bg-secondary">No</span>
                                 {% endif %}
-                            </td>                                
+                            </td>         
+                            <td class="text-center align-middle">
+                                {{ user[9] }}
+                            </td>                       
                         </tr>                        
                         {% endfor %}
                     </tbody>
                 </table>
             </div>
-
-            <p class="mt-4 text-center text-muted small">
-                Admin access powered by FitBaseAI.
-            </p>
         </div>
     </div>
 </div>

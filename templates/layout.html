@@ -130,12 +130,15 @@
                 if (category === "danger") {
                     toast.style.background = "#f8d7da";
                     toast.style.color = "#842029";
+                    toast.style.border = "1px solid #842029"
                 } else if (category === "warning") {
                     toast.style.background = "#fff3cd";
                     toast.style.color = "#664d03";
+                    toast.style.border = "1px solid #664d03"
                 } else {
                     toast.style.background = "#d1e7dd";
                     toast.style.color = "#0f5132";
+                    toast.style.border = "1px solid #0f5132"
                 }
     
                 toast.style.display = 'block';
@@ -143,7 +146,7 @@
                 if (category !== 'danger') {
                     setTimeout(() => {
                         toast.style.display = 'none';
-                    }, 4000);
+                    }, 5000);
                 }
             }
         });

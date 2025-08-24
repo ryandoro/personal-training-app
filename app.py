@@ -1,10 +1,12 @@
-import os, logging, json, psycopg2, psycopg2.extras, psycopg2.errors
+import os, re, logging, json, psycopg2, psycopg2.extras, psycopg2.errors
 from flask import Flask, flash, redirect, render_template, request, session, jsonify, url_for, current_app
 from werkzeug.security import generate_password_hash, check_password_hash
-from helpers import login_required, convert_decimals, calculate_target_heart_rate, generate_workout, get_guidelines, get_connection, is_admin, normalize_email, upsert_invited_user, issue_single_use_token, send_invite_email, validate_token, mark_token_used, username_available, fmt_utc, int_or_none, inches_0_11_or_none, float_or_none  
+from helpers import login_required, convert_decimals, calculate_target_heart_rate, generate_workout, get_guidelines, get_connection, is_admin, normalize_email, upsert_invited_user, issue_single_use_token, validate_token, mark_token_used, username_available, fmt_utc, int_or_none, inches_0_11_or_none, float_or_none  
 from collections import OrderedDict
 from dotenv import load_dotenv
 from datetime import datetime
+from mail import send_email, send_password_reset_email, send_invite_email, send_verification_email
+from urllib.parse import urlencode 
 
 # Set up basic logging configuration
 logging.basicConfig(level=logging.INFO)
@@ -20,7 +22,8 @@ app.secret_key = secret
 
 ALLOWED_ROLES = {"user", "trainer", "admin"}
 ALLOWED_SUBS  = {"free", "premium", "pro"}
-INVITE_TTL_HOURS = 72
+INVITE_TTL_HOURS = 48
+VERIFY_TTL_HOURS = 24
 RESET_TTL_HOURS = 2
 
 @app.route('/')
@@ -75,9 +78,12 @@ def register():
         password = request.form.get('password') or ''
         confirmation = request.form.get('confirmation') or ''
 
-        # validations (unchanged from yours, trimmed a bit for brevity)
         if not username:
             flash("Username is required", "danger"); return render_template('register.html')
+        if not raw_email:
+            flash("Email is required", "danger"); return render_template('register.html')
+        if not re.match(r"^[^@]+@[^@]+\.[^@]+$", raw_email):
+            flash("Please enter a valid email address.", "danger"); return render_template('register.html')
         if not password or not confirmation:
             flash("Password and confirmation are required", "danger"); return render_template('register.html')
         if len(username) > 50 or len(username) < 3:
@@ -109,14 +115,21 @@ def register():
                 hashed_password = generate_password_hash(password)
 
                 try:
-                    # Insert; status defaults to 'active' so you can log in immediately
                     cur.execute("""
-                        INSERT INTO users (username, hash, email)
-                        VALUES (%s, %s, %s)
-                    """, (username, hashed_password, email))
+                        INSERT INTO users (username, hash, email, email_verified)
+                        VALUES (%s, %s, %s, %s)
+                        RETURNING id
+                    """, (username, hashed_password, email, False))
+                    user_row = cur.fetchone()
+                    user_id = user_row['id']
+
+                    # Issue verification token 
+                    raw_token, expires_at = issue_single_use_token(conn, user_id, "verify_email", VERIFY_TTL_HOURS)  
+                    verify_url = url_for("verify_email", token=raw_token, _external=True)
+
                     conn.commit()
+
                 except psycopg2.Error as e:
-                    # Friendly fallback if a unique constraint trips anyway
                     if isinstance(e, psycopg2.errors.UniqueViolation):
                         flash("That username or email is already in use", "danger")
                     else:
@@ -124,11 +137,50 @@ def register():
                     conn.rollback()
                     return render_template('register.html')
 
-        flash("Registration successful! Please log in.", "success")
+        # Send welcome + verify email
+        try:
+            send_verification_email(
+                to_email=email,
+                verify_url=verify_url,
+                first_name=username  
+            )
+        except Exception:
+            current_app.logger.exception("Failed sending welcome/verification email")
+
+        flash("Registration successful! Please check your email to verify your account.", "success")
         return redirect('/login')
 
     return render_template('register.html')
 
+
+@app.route('/verify_email')
+def verify_email():
+    token = request.args.get('token', '').strip()
+    if not token:
+        flash("Invalid verification link.", "danger")
+        return redirect(url_for('login'))
+
+    try:
+        with get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                # Validate and consume token using your existing helper
+                token_row = validate_token(conn, token, "verify_email")  # should raise/return None if invalid/expired
+                if not token_row:
+                    flash("That verification link is invalid or expired.", "danger")
+                    return redirect(url_for('login'))
+
+                user_id = token_row['user_id']
+                mark_token_used(conn, token_row["token_id"])
+                cur.execute("UPDATE users SET email_verified = TRUE WHERE id = %s", (user_id,))
+                conn.commit()
+
+        flash("Your email has been verified. You can now log in.", "success")
+        return redirect(url_for('login'))
+
+    except Exception:
+        current_app.logger.exception("Email verification error")
+        flash("Something went wrong verifying your email. Please try again.", "danger")
+        return redirect(url_for('login'))
 
 
 @app.route('/login', methods=['GET', 'POST'])
@@ -166,7 +218,7 @@ def login():
 
         # Basic auth check
         if not user or not user['hash'] or not check_password_hash(user['hash'], password):
-            flash("Invalid username/email and/or password", "danger")
+            flash("Invalid username and/or password", "danger")
             return render_template('login.html')
 
         # Account state gates
@@ -178,10 +230,10 @@ def login():
             flash("Please finish account setup using your invite/verification link.", "warning")
             return render_template('login.html')
 
-        # Optional: enforce email verification (turn on when you're ready)
-        # if user['email'] and not user['email_verified']:
-        #     flash("Please verify your email before logging in.", "warning")
-        #     return render_template('login.html')
+        # Enforce email verification to login
+        if user['email'] and not user['email_verified']:
+            flash("Please verify your email before logging in.", "warning")
+            return render_template('login.html')
 
         # Success → remember session
         session['user_id'] = user['id']
@@ -628,51 +680,47 @@ def update_goals():
 @app.route('/forgot_password', methods=['GET', 'POST'])
 def forgot_password():
     if request.method == 'POST':
-        identifier = (request.form.get('identifier') or '').strip()
+        email_input = (request.form.get('email') or '').strip().lower()
 
-        # Always show the same message (don't leak which accounts exist)
-        generic_msg = "If an account exists, a reset link has been sent."
+        # Uniform message to avoid account enumeration
+        generic_msg = "If an account with that email exists and is verified, a reset link has been sent."
 
-        if not identifier:
-            flash("Please enter a username or email.", "danger")
+        if not email_input:
+            flash("Please enter your email.", "danger")
             return render_template("forgot_password.html")
 
         try:
             with get_connection() as conn:
                 with conn.cursor() as cur:
-                    # Identify by username OR email (case-insensitive)
-                    if '@' in identifier:
-                        cur.execute("SELECT id, email FROM users WHERE lower(email) = lower(%s) LIMIT 1",
-                                    (identifier,))
-                    else:
-                        cur.execute("SELECT id, email FROM users WHERE lower(username) = lower(%s) LIMIT 1",
-                                    (identifier,))
-
+                    cur.execute("""
+                        SELECT id, email_verified
+                        FROM users
+                        WHERE lower(email) = lower(%s)
+                        LIMIT 1
+                    """, (email_input,))
                     row = cur.fetchone()
 
                 if not row:
-                    # Don't reveal existence
                     flash(generic_msg, "info")
                     return redirect(url_for('login'))
 
-                user_id, email = row
+                user_id, email_verified = row
 
-                # Must have an email to send a link. If no email on file, keep it generic.
-                if not email:
+                if not email_verified:
                     flash(generic_msg, "info")
                     return redirect(url_for('login'))
 
                 # Issue single-use reset token
-                raw_token, expires_at = issue_single_use_token(conn, user_id, "reset", RESET_TTL_HOURS)
+                raw_token, expires_at = issue_single_use_token(conn, user_id, "reset_password", RESET_TTL_HOURS)
                 reset_url = url_for("reset_password", token=raw_token, _external=True)
-
                 conn.commit()
 
                 try:
-                    send_password_reset_email(email, reset_url)
+                    # Send to the email the user entered (matches DB row)
+                    send_password_reset_email(email_input, reset_url)
                 except Exception:
                     current_app.logger.exception("Failed sending password reset email")
-                    # Still keep the message generic
+
                 flash(generic_msg, "info")
                 return redirect(url_for('login'))
 
@@ -694,7 +742,7 @@ def reset_password():
 
     if request.method == 'GET':
         with get_connection() as conn:
-            info = validate_token(conn, token, "reset")
+            info = validate_token(conn, token, "reset_password")
             if not info:
                 flash("Your reset link is invalid or has expired. Please request a new one.", "danger")
                 return redirect(url_for('forgot_password'))
@@ -710,7 +758,7 @@ def reset_password():
             conn.autocommit = False
 
             # Validate first so we always have expires_label for re-render
-            info = validate_token(conn, token, "reset")
+            info = validate_token(conn, token, "reset_password")
             if not info:
                 conn.rollback()
                 flash("Your reset link is invalid or has expired. Please request a new one.", "danger")
@@ -760,30 +808,21 @@ def settings():
             cursor.execute("""
                 SELECT username, name, last_name, email, age, weight, height_feet, height_inches,
                        gender, exercise_history, fitness_goals, injury, injury_details,
-                       commitment, additional_notes
+                       commitment, additional_notes, form_completed
                 FROM users
                 WHERE id = %s
             """, (user_id,))
             row = cursor.fetchone()
     columns = ['username', 'name', 'last_name', 'email', 'age', 'weight', 'height_feet', 'height_inches',
                 'gender', 'exercise_history', 'fitness_goals', 'injury', 'injury_details',
-                'commitment', 'additional_notes']
+                'commitment', 'additional_notes', 'form_completed']
 
     user = dict(zip(columns, row)) if row else {k: "" for k in columns}
     for k in columns:
         if user.get(k) is None:
             user[k] = ""
 
-    form_completed = all([
-        user.get('age'),
-        user.get('weight'),
-        user.get('height_feet'),
-        user.get('height_inches'),
-        user.get('gender'),
-        user.get('exercise_history'),
-        user.get('fitness_goals'),
-        user.get('commitment')
-    ])
+    form_completed = bool(user.get('form_completed'))
 
     if request.method == 'POST':
             # Get form fields
@@ -847,7 +886,20 @@ def settings():
         additional_notes = request.form.get('additional_notes')
 
         # Validate required fields
-        if not all([username, name, last_name, age, weight, height_feet, height_inches, gender, exercise_history, commitment]):
+        missing_required = (
+            not username or
+            not name or
+            not last_name or
+            age is None or
+            weight is None or
+            height_feet is None or
+            height_inches is None or  # <-- allows 0, only None fails
+            not gender or
+            not exercise_history or
+            not commitment
+        )
+
+        if missing_required:
             flash("Please fill out all required fields.", "danger")
             return render_template('settings.html', user=user, form_completed=form_completed)
 
@@ -960,7 +1012,7 @@ def admin_users():
             search_term = request.args.get('search', '')
             if search_term:
                 query = """
-                    SELECT id, username, name, last_name, email, subscription_type, email_verified, role, form_completed
+                    SELECT id, username, name, last_name, email, subscription_type, email_verified, role, form_completed, workouts_completed
                     FROM users
                     WHERE 
                         username ILIKE %s OR
@@ -974,7 +1026,7 @@ def admin_users():
                 cursor.execute(query, (like_term, like_term, like_term, like_term, like_term))
             else:
                 cursor.execute("""
-                    SELECT id, username, name, last_name, email, subscription_type, email_verified, role, form_completed
+                    SELECT id, username, name, last_name, email, subscription_type, email_verified, role, form_completed, workouts_completed
                     FROM users
                     ORDER BY id
                 """)
@@ -1104,7 +1156,7 @@ def admin_invite_user():
         return render_template("admin_add_user.html")
 
     # POST
-    action = request.form.get("action")  # "send_invite" or "copy_link"
+    action = (request.form.get("action") or "send_invite").strip().lower()
     name = (request.form.get("name") or "").strip()
     last_name = (request.form.get("last_name") or "").strip()
     email = normalize_email(request.form.get("email") or "")
@@ -1389,10 +1441,6 @@ def admin_reactivate_user(user_id):
     flash("User reactivated.", "success")
     return redirect(url_for('admin_user_profile', user_id=user_id))
 
-
-def send_password_reset_email(to_email: str, reset_url: str):
-    # TODO: integrate your email provider; for now you can log it.
-    pass
 
 @app.context_processor
 def inject_current_year():

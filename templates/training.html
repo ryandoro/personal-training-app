@@ -20,7 +20,7 @@
                 </p>
             
                 <p>
-                    Be consistent, stay hydrated, fuel your body right, and have some fun with it! If you ever have questions, we're here for you. Let’s get to work — your results start now!
+                    Be consistent, fuel your body right, and have fun with it! If you ever have questions, we're here for you. Let’s get to work — your results start now!
                 </p>
             
                 <hr class="my-4">
@@ -862,10 +862,13 @@
                         // Show toast
                         const toast = document.getElementById('toastSuccess');
                         toast.style.display = 'block';
+                        toast.style.background = "#d1e7dd";
+                        toast.style.color = "#0f5132";
+                        toast.style.border = '1px solid #5cb85c';
 
                         setTimeout(() => {
                             toast.style.display = 'none';
-                        }, 2000);
+                        }, 3000);
                     } else {
                         alert('Error updating max. Please try again.');
                     }
