@@ -1220,10 +1220,18 @@ def admin_invite_user():
 
     if action == "send_invite":
         try:
-            send_invite_email(to_email=email, first_name=name or "there",
-                               invite_url=invite_url, admin_note=admin_note)
+            send_invite_email(
+                to_email=email, 
+                first_name=name or "there",
+                invite_url=invite_url, 
+                admin_note=admin_note
+            )
             flash(f"Invite sent to {email}.", "success")
-            return redirect(url_for("admin_users"))
+            return redirect(url_for(
+                "admin_add_user",
+                invite_url=invite_url,
+                invite_expires_in=invite_expires_in
+            ))
         except Exception:
             current_app.logger.exception("Failed to send invite email")
             flash("Invite created, but email failed to send. Copy the link below and share it manually.", "warning")
@@ -1233,9 +1241,11 @@ def admin_invite_user():
 
     # Default (copy_link)
     flash("Invite link created.", "success")
-    return render_template("admin_add_user.html",
-                           invite_url=invite_url,
-                           invite_expires_in=invite_expires_in)
+    return redirect(url_for(
+        "admin_add_user",
+        invite_url=invite_url,
+        invite_expires_in=invite_expires_in
+    ))
 
 
 @app.get("/accept-invite")
