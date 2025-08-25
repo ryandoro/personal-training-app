@@ -1,7 +1,7 @@
 import os, re, logging, json, psycopg2, psycopg2.extras, psycopg2.errors
 from flask import Flask, flash, redirect, render_template, request, session, jsonify, url_for, current_app
 from werkzeug.security import generate_password_hash, check_password_hash
-from helpers import login_required, convert_decimals, calculate_target_heart_rate, generate_workout, get_guidelines, get_connection, is_admin, normalize_email, upsert_invited_user, issue_single_use_token, validate_token, mark_token_used, username_available, fmt_utc, int_or_none, inches_0_11_or_none, float_or_none  
+from helpers import login_required, convert_decimals, calculate_target_heart_rate, generate_workout, get_guidelines, get_connection, is_admin, normalize_email, upsert_invited_user, issue_single_use_token, validate_token, mark_token_used, username_available, fmt_utc, int_or_none, inches_0_11_or_none, float_or_none, hash_token  
 from collections import OrderedDict
 from dotenv import load_dotenv
 from datetime import datetime
@@ -166,7 +166,23 @@ def verify_email():
                 # Validate and consume token using your existing helper
                 token_row = validate_token(conn, token, "verify_email")  # should raise/return None if invalid/expired
                 if not token_row:
-                    flash("That verification link is invalid or expired.", "danger")
+                    digest = hash_token(token)
+
+                    cur.execute("""
+                        SELECT u.email_verified
+                          FROM user_tokens ut
+                          JOIN users u ON u.id = ut.user_id
+                         WHERE ut.purpose = %s
+                           AND ut.token_digest = %s
+                         LIMIT 1
+                    """, ("verify_email", digest))
+                    row = cur.fetchone()
+
+                    if row and bool(row['email_verified']):
+                        flash("Your email is verified. Please log in.", "success")
+                        return redirect(url_for('login'))
+                
+                    flash("That verification link is invalid or expired. Please try again.", "danger")
                     return redirect(url_for('login'))
 
                 user_id = token_row['user_id']

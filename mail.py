@@ -10,6 +10,7 @@ SERVER_TOKEN = os.getenv("POSTMARK_SERVER_TOKEN")
 
 postmark = PostmarkClient(server_token=SERVER_TOKEN)
 
+
 def send_email(*, to: str, subject: str, html: str, text: Optional[str] = None, **pm_kwargs):
     """Low-level sender via Postmark"""
     return postmark.emails.send(
@@ -21,6 +22,7 @@ def send_email(*, to: str, subject: str, html: str, text: Optional[str] = None, 
         MessageStream=STREAM,
         **pm_kwargs
     )
+
 
 # ---------- high-level helpers ----------
 
@@ -53,6 +55,7 @@ def send_password_reset_email(*args, **kwargs):
         TrackLinks="None"
     )
 
+
 def send_invite_email(*, to_email: str, first_name: str, invite_url: str, admin_note: Optional[str] = None):
     subject = "Your FitBaseAI invite"
     html = render_template(
@@ -61,7 +64,7 @@ def send_invite_email(*, to_email: str, first_name: str, invite_url: str, admin_
     )
     return send_email(to=to_email, subject=subject, html=html)
 
-# Optional future use if you add “verify email” later:
+
 def send_verification_email(*, to_email: str, first_name: str, verify_url: str):
     subject = "Welcome to FitBaseAI! - Verify your email"
     html = render_template("email/verify_email.html", first_name=first_name, verify_url=verify_url)
