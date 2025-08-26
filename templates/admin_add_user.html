@@ -8,7 +8,7 @@ Add New User
 <div class="container">
   <div class="card w-100 shadow-sm p-4 border border-2 rounded-3 mt-4 mb-4" style="border-color: #ced4da;">
     <div class="card-body">
-      <h2 class="text-center text-white mb-4" style="background-color: #1EA4E6;">Add New User</h2>
+      <h2 class="text-center text-white mb-4 p-3 rounded-3" style="background-color: #1EA4E6;">Add New User</h2>
 
       <form method="POST" action="{{ url_for('admin_invite_user') }}" id="inviteForm">
         {# If you use CSRF: <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"> #}
@@ -67,17 +67,19 @@ Add New User
           </div>
         </div>
 
+        <input type="hidden" name="action" id="inviteAction" value="copy_link">
+
         <div class="d-flex flex-wrap gap-2 justify-content-between mt-4">
           <a href="{{ url_for('admin_users') }}" class="btn btn-outline-secondary">Back</a>
 
           <div class="d-flex flex-wrap gap-2">
             <!-- Create user and send the invite email immediately -->
-            <button type="submit" name="action" value="send_invite" class="btn btn-primary">
+            <button type="submit" data-action="send_invite" class="btn btn-primary">
               Create &amp; Send Invite
             </button>
 
             <!-- Create user and return an invite URL (no email sent) -->
-            <button type="submit" name="action" value="copy_link" class="btn btn-outline-primary">
+            <button type="submit" data-action="copy_link" class="btn btn-outline-primary">
               Create &amp; Copy Invite Link
             </button>
           </div>
@@ -96,14 +98,32 @@ Add New User
 </div>
 
 <script>
-  // Prevent double submit & add a tiny UX polish.
   document.addEventListener('DOMContentLoaded', () => {
     const form = document.getElementById('inviteForm');
+    const actionField = document.getElementById('inviteAction');
+  
     form.addEventListener('submit', (e) => {
       if (!form.checkValidity()) return;
+  
+      // Ensure server gets intended action
+      if (e.submitter && e.submitter.dataset.action) {
+        actionField.value = e.submitter.dataset.action;
+      }
+  
+      setTimeout(() => { 
+        e.submitter.innerText = 'Working…'; 
+        e.submitter.disabled = true; 
+      }, 0);
+
+      // Disable the other button (avoid dropping submitter’s value)
       const buttons = form.querySelectorAll('button[type="submit"]');
-      buttons.forEach(b => { b.disabled = true; b.innerText = 'Working…'; });
+      buttons.forEach(b => {
+        if (b !== e.submitter) {
+          b.disabled = true;
+          b.innerText = 'Working…';
+        }
+      });
     });
   });
-</script>
+  </script>
 {% endblock %}

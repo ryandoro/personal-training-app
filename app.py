@@ -1172,7 +1172,9 @@ def admin_invite_user():
         return render_template("admin_add_user.html")
 
     # POST
-    action = (request.form.get("action") or "send_invite").strip().lower()
+    action = (request.form.get("action") or "copy_link").strip().lower()
+    if action not in {"send_invite", "copy_link"}:
+        action = "copy_link"
     name = (request.form.get("name") or "").strip()
     last_name = (request.form.get("last_name") or "").strip()
     email = normalize_email(request.form.get("email") or "")
@@ -1235,9 +1237,11 @@ def admin_invite_user():
         except Exception:
             current_app.logger.exception("Failed to send invite email")
             flash("Invite created, but email failed to send. Copy the link below and share it manually.", "warning")
-            return render_template("admin_add_user.html",
-                                   invite_url=invite_url,
-                                   invite_expires_in=invite_expires_in)
+            return redirect(url_for(
+                "admin_add_user",
+                invite_url=invite_url,
+                invite_expires_in=invite_expires_in
+            ))
 
     # Default (copy_link)
     flash("Invite link created.", "success")
