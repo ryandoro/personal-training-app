@@ -1,7 +1,7 @@
 import os, re, logging, json, psycopg2, psycopg2.extras, psycopg2.errors
 from flask import Flask, flash, redirect, render_template, request, session, jsonify, url_for, current_app
 from werkzeug.security import generate_password_hash, check_password_hash
-from helpers import login_required, convert_decimals, calculate_target_heart_rate, generate_workout, get_guidelines, get_connection, is_admin, normalize_email, upsert_invited_user, issue_single_use_token, validate_token, mark_token_used, username_available, fmt_utc, int_or_none, inches_0_11_or_none, float_or_none, hash_token  
+from helpers import login_required, convert_decimals, calculate_target_heart_rate, generate_workout, get_guidelines, get_connection, is_admin, normalize_email, upsert_invited_user, issue_single_use_token, validate_token, mark_token_used, username_available, fmt_utc, int_or_none, inches_0_11_or_none, float_or_none, hash_token, get_category_groups, get_user_level  
 from collections import OrderedDict
 from dotenv import load_dotenv
 from datetime import datetime
@@ -290,11 +290,12 @@ def training():
         # Check if the form has already been completed
         with get_connection() as conn:
             with conn.cursor() as cursor:
-                cursor.execute("SELECT form_completed, exercise_history, fitness_goals FROM users WHERE id = %s", (user_id,))
+                cursor.execute("SELECT form_completed, exercise_history, fitness_goals, workout_duration FROM users WHERE id = %s", (user_id,))
                 result = cursor.fetchone()
                 form_completed = bool(result[0])  # Retrieve form_completed status
                 exercise_history = result[1]  # Fetch exercise history
                 fitness_goals = result[2]  # Fetch fitness goals
+                workout_duration = result[3]
     except Exception as e:
         flash(f"An error occurred: {e}", "danger")
         return render_template('training.html', form_completed=False)
@@ -313,6 +314,7 @@ def training():
         fitness_goals = request.form.getlist('fitness_goals')  # List of selected goals
         injury = request.form.get('injury')
         injury_details = request.form.get('injury_details')
+        workout_duration_raw = request.form.get('workout_duration')
         commitment = request.form.get('commitment')
         additional_notes = request.form.get('additional_notes')
 
@@ -354,6 +356,10 @@ def training():
         if injury == "Yes" and not (injury_details or "").strip():
             errors['injury_details'] = "Please describe your injury/illness."
 
+        allowed_durations = {"20", "30", "45", "60"}
+        if workout_duration_raw not in allowed_durations:
+            errors['workout_duration'] = "Please select a valid workout duration."
+            
         if errors:
             flash("Please fix the highlighted fields.", "danger")
             # Re-render with what the user typed + which fields failed
@@ -364,6 +370,8 @@ def training():
                 errors=errors
             ), 400
         
+        workout_duration = int(workout_duration_raw)
+
         # Connect to the database and update user information
         try:
             with get_connection() as conn:
@@ -374,12 +382,12 @@ def training():
                             age = %s, weight = %s, height_feet = %s, height_inches = %s, 
                             gender = %s, exercise_history = %s, fitness_goals = %s, 
                             injury = %s, injury_details = %s, commitment = %s, additional_notes = %s, 
-                            name = %s, last_name = %s, form_completed = TRUE
+                            name = %s, last_name = %s, form_completed = TRUE, workout_duration = %s
                         WHERE id = %s
                     """, (
                         age, weight, height_feet, height_inches, gender, 
                         exercise_history, fitness_goals_str, injury, injury_details, 
-                        commitment, additional_notes, name, last_name, user_id
+                        commitment, additional_notes, name, last_name, workout_duration, user_id
                     ))
                     conn.commit()
 
@@ -390,17 +398,18 @@ def training():
             return render_template('training.html', form_completed=False)
         
     # Fetch and organize workouts into groupings
-    categories = {
-        "Chest and Triceps": ["CHEST", "TRICEPS"],
-        "Back and Biceps": ["BACK", "BICEPS"],
-        "Shoulders and Abs": ["SHOULDERS", "ABS"],
-        "Arms": ["BICEPS", "TRICEPS", "SHOULDERS"],
-        "Legs": ["LEGS"],
-        "Upper Body": ["BACK", "CHEST", "SHOULDERS", "BICEPS", "TRICEPS"],
-        "Full Body": ["BACK", "CHEST", "SHOULDERS", "BICEPS", "TRICEPS", "LEGS", "ABS"],
-        "Cardio": ["CARDIO"],
-    }
+   # categories = {
+     #   "Chest and Triceps": ["CHEST", "TRICEPS"],
+      #  "Back and Biceps": ["BACK", "BICEPS"],
+       # "Shoulders and Abs": ["SHOULDERS", "ABS"],
+        #"Arms": ["BICEPS", "TRICEPS", "SHOULDERS"],
+       # "Legs": ["LEGS"],
+       # "Upper Body": ["BACK", "CHEST", "SHOULDERS", "BICEPS", "TRICEPS"],
+        #"Full Body": ["BACK", "CHEST", "SHOULDERS", "BICEPS", "TRICEPS", "LEGS", "ABS"],
+        #"Cardio": ["CARDIO"],
+    #}
 
+    categories = get_category_groups()
     grouped_workouts = {}
     workouts = []
     target_heart_rate_zone = None
@@ -427,13 +436,15 @@ def training():
                     fitness_goals = user_data[2] if user_data[2] else "Not set yet"
 
                     # Mapping exercise history to numeric levels
-                    level_map = {
-                        "No Exercise History": 1,
-                        "Exercise less than 1 year": 1,
-                        "Exercise 1-5 years": 2,
-                        "Exercise 5+ years": 3
-                    }
-                    user_level = level_map.get(exercise_history, 1)  # Default to 1 if not found
+            #        level_map = {
+             #           "No Exercise History": 1,
+              #          "Exercise less than 1 year": 1,
+               #         "Exercise 1-5 years": 2,
+                #        "Exercise 5+ years": 3
+                 #   }
+                   #user_level = level_map.get(exercise_history, 1)  # Default to 1 if not found
+
+                    user_level = get_user_level(exercise_history)
 
                     # Calculate target heart rate zone
                     if age:
@@ -460,9 +471,27 @@ def training():
         target_heart_rate_zone=target_heart_rate_zone, 
         grouped_workouts=grouped_workouts, 
         guidelines=guidelines,
-        fitness_goals=fitness_goals
+        fitness_goals=fitness_goals, 
+        workout_duration=workout_duration
     )
 
+
+@app.route('/update_workout_duration', methods=['POST'])
+@login_required
+def update_workout_duration():
+    data = request.get_json(silent=True) or {}
+    raw = str(data.get('workout_duration', '')).strip()
+    allowed = {'20', '30', '45', '60'}
+    if raw not in allowed:
+        return jsonify({'success': False, 'error': 'Invalid duration'}), 400
+
+    user_id = session['user_id']
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("UPDATE users SET workout_duration = %s WHERE id = %s", (int(raw), user_id))
+            conn.commit()
+
+    return jsonify({'success': True})
 
 
 @app.route('/generate_workout')
@@ -477,17 +506,31 @@ def generate_workout_route():
     # Fetch the user's level
     with get_connection() as conn:
         with conn.cursor() as cursor:
-            cursor.execute("SELECT exercise_history FROM users WHERE id = %s", (user_id,))
-            exercise_history = cursor.fetchone()[0]
-            level_map = {"No Exercise History": 1, "Exercise less than 1 year": 1, "Exercise 1-5 years": 2, "Exercise 5+ years": 3}
+            cursor.execute("""
+                SELECT exercise_history, COALESCE(workout_duration, 60) AS workout_duration 
+                FROM users 
+                WHERE id = %s
+            """, (user_id,))
+            row = cursor.fetchone()
+            exercise_history = row[0]
+            duration_minutes = int(row[1])
+
+            level_map = {
+                "No Exercise History": 1, 
+                "Exercise less than 1 year": 1, 
+                "Exercise 1-5 years": 2, 
+                "Exercise 5+ years": 3
+            }
+            
             user_level = level_map.get(exercise_history, 1)
 
     # Generate the workout
-    workout_plan = generate_workout(selected_category, user_level, user_id)
+    workout_plan = generate_workout(selected_category, user_level, user_id, duration_minutes)
 
     # Save the exact workout and category to the session
     session['generated_workout'] = {
         'category': selected_category,
+        'duration_minutes': duration_minutes,
         'workout': json.dumps(convert_decimals(workout_plan))  # Save the randomly generated workout structure
     }
 
@@ -824,14 +867,14 @@ def settings():
             cursor.execute("""
                 SELECT username, name, last_name, email, age, weight, height_feet, height_inches,
                        gender, exercise_history, fitness_goals, injury, injury_details,
-                       commitment, additional_notes, form_completed
+                       commitment, additional_notes, form_completed, workout_duration
                 FROM users
                 WHERE id = %s
             """, (user_id,))
             row = cursor.fetchone()
     columns = ['username', 'name', 'last_name', 'email', 'age', 'weight', 'height_feet', 'height_inches',
                 'gender', 'exercise_history', 'fitness_goals', 'injury', 'injury_details',
-                'commitment', 'additional_notes', 'form_completed']
+                'commitment', 'additional_notes', 'form_completed', 'workout_duration']
 
     user = dict(zip(columns, row)) if row else {k: "" for k in columns}
     for k in columns:
@@ -900,6 +943,59 @@ def settings():
         injury_details = request.form.get('injury_details')
         commitment = request.form.get('commitment')
         additional_notes = request.form.get('additional_notes')
+
+        workout_duration_raw = request.form.get('workout_duration')
+        allowed_durations = {"20", "30", "45", "60"}
+        if workout_duration_raw not in allowed_durations:
+            flash("Please select a valid workout duration.", "danger")
+            return render_template('settings.html', user=user, form_completed=form_completed)
+        workout_duration = int(workout_duration_raw)
+
+        duration_only = (workout_duration_raw in allowed_durations) and not any([
+            request.form.get('username'),
+            request.form.get('name'),
+            request.form.get('last_name'),
+            request.form.get('age'),
+            request.form.get('weight'),
+            request.form.get('height_feet'),
+            request.form.get('height_inches'),
+            request.form.get('gender'),
+            request.form.get('exercise_history'),
+            request.form.get('commitment'),
+            len(request.form.getlist('fitness_goals')) > 0,  
+            request.form.get('injury'),
+            request.form.get('injury_details'),
+            request.form.get('additional_notes'),
+            password, confirm_password,
+        ])
+
+        if duration_only:
+            with get_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute("UPDATE users SET workout_duration = %s WHERE id = %s",
+                                (workout_duration, user_id))
+                    conn.commit()
+            flash("Preferred workout duration updated!", "success")
+
+            # Refetch to refresh the page with updated value
+            with get_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute("""
+                        SELECT username, name, last_name, email, age, weight, height_feet, height_inches,
+                            gender, exercise_history, fitness_goals, injury, injury_details,
+                            commitment, additional_notes, form_completed, workout_duration
+                        FROM users
+                        WHERE id = %s
+                    """, (user_id,))
+                    row = cursor.fetchone()
+
+            user = dict(zip(columns, row)) if row else {k: "" for k in columns}
+            for k in columns:
+                if user.get(k) is None:
+                    user[k] = ""
+            form_completed = bool(user.get('form_completed'))
+
+            return render_template('settings.html', user=user, form_completed=form_completed)
 
         # Validate required fields
         missing_required = (
@@ -980,12 +1076,14 @@ def settings():
                         age = %s, weight = %s, height_feet = %s, height_inches = %s,
                         gender = %s, exercise_history = %s, fitness_goals = %s,
                         injury = %s, injury_details = %s, commitment = %s,
-                        additional_notes = %s, form_completed = %s
+                        additional_notes = %s, form_completed = %s, workout_duration = %s
                     WHERE id = %s
                 """, (
                     username, name, last_name, email, age, weight, height_feet,
                     height_inches, gender, exercise_history, fitness_goals_cleaned,
-                    injury, injury_details, commitment, additional_notes, new_form_completed, user_id
+                    injury, injury_details, commitment, additional_notes, new_form_completed, 
+                    workout_duration, 
+                    user_id
                 ))
 
                 if hashed_password:
@@ -1001,7 +1099,7 @@ def settings():
                 cursor.execute("""
                     SELECT username, name, last_name, email, age, weight, height_feet, height_inches,
                         gender, exercise_history, fitness_goals, injury, injury_details,
-                        commitment, additional_notes
+                        commitment, additional_notes, form_completed, workout_duration
                     FROM users
                     WHERE id = %s
                 """, (user_id,))

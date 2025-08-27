@@ -1,7 +1,7 @@
 from functools import wraps
 from flask import session, redirect, url_for, flash
 import os, psycopg2, re
-import hmac, secrets, hashlib
+import hmac, secrets, hashlib, math
 from psycopg2 import connect
 from psycopg2.extras import RealDictCursor
 from urllib.parse import urlparse
@@ -16,6 +16,50 @@ def get_connection():
     return psycopg2.connect(os.getenv("DATABASE_URL"))
 
 ADMIN_EMAILS = [e.strip().lower() for e in os.getenv('ADMIN_EMAILS', '').split(',') if e.strip()]
+
+
+# Define the workout structure
+WORKOUT_STRUCTURE = {
+    1: {  # Beginner
+        "Chest and Triceps": {"CHEST": 4, "TRICEPS": 3},
+        "Back and Biceps": {"BACK": 4, "BICEPS": 3},
+        "Shoulders and Abs": {"SHOULDERS": 4, "ABS": 3},
+        "Arms": {"SHOULDERS": 3, "BICEPS": 3, "TRICEPS": 3},
+        "Legs": {"LEGS": 6},
+        "Upper Body": {"CHEST": 2, "BACK": 2, "SHOULDERS": 2, "BICEPS": 1, "TRICEPS": 1},
+        "Full Body": {"LEGS": 2, "CHEST": 2, "BACK": 2, "SHOULDERS": 2, "BICEPS": 1, "TRICEPS": 1, "ABS": 1},
+        "Cardio": {"CARDIO": 2},
+    },
+    2: {  # Intermediate
+        "Chest and Triceps": {"CHEST": 4, "TRICEPS": 3},
+        "Back and Biceps": {"BACK": 4, "BICEPS": 3},
+        "Shoulders and Abs": {"SHOULDERS": 4, "ABS": 3},
+        "Arms": {"SHOULDERS": 3, "BICEPS": 3, "TRICEPS": 3},
+        "Legs": {"LEGS": 6},
+        "Upper Body": {"CHEST": 2, "BACK": 2, "SHOULDERS": 2, "BICEPS": 1, "TRICEPS": 1},
+        "Full Body": {"LEGS": 2, "CHEST": 2, "BACK": 2, "SHOULDERS": 2, "BICEPS": 1, "TRICEPS": 1, "ABS": 1},
+        "Cardio": {"CARDIO": 2},
+    },
+    3: {  # Advanced
+        "Chest and Triceps": {"CHEST": 5, "TRICEPS": 4},
+        "Back and Biceps": {"BACK": 5, "BICEPS": 4},
+        "Shoulders and Abs": {"SHOULDERS": 5, "ABS": 4},
+        "Arms": {"SHOULDERS": 4, "BICEPS": 4, "TRICEPS": 4},
+        "Legs": {"LEGS": 6},
+        "Upper Body": {"CHEST": 2, "BACK": 2, "SHOULDERS": 2, "BICEPS": 2, "TRICEPS": 2},
+        "Full Body": {"LEGS": 2, "CHEST": 2, "BACK": 2, "SHOULDERS": 2, "BICEPS": 2, "TRICEPS": 2, "ABS": 2},
+        "Cardio": {"CARDIO": 3},
+    },
+}
+
+
+# --- Exercise history → numeric level mapping (single source of truth) ---
+LEVEL_MAP = {
+    "No Exercise History": 1,
+    "Exercise less than 1 year": 1,
+    "Exercise 1-5 years": 2,
+    "Exercise 5+ years": 3,
+}
 
 
 def is_admin(user_id):
@@ -170,55 +214,125 @@ def calculate_target_heart_rate(age):
     }
 
 
-def generate_workout(selected_category, user_level, user_id):
+def allocate_counts(subcategories: dict, scale: float, selected_category: str) -> dict:
     """
-    Generate a workout based on the selected category and user level.
+    Allocate a total exercise budget across subcategories with priority emphasis
+    for 'big movers' when time is short.
+    """
+    # ---- 1) Define priority per category (customize as you like) ----
+    PRIORITY_MAP = {
+        # Full Body: emphasize compounds / large muscle groups first
+        "Full Body": ["LEGS", "BACK", "CHEST", "SHOULDERS", "BICEPS", "TRICEPS", "ABS"],
+        # Upper Body day: prioritize multi-joint / larger movers
+        "Upper Body": ["BACK", "CHEST", "SHOULDERS", "BICEPS", "TRICEPS"],
+        # Legs is single bucket, but kept here for completeness
+        "Legs": ["LEGS"],
+        # Push/Pull splits
+        "Chest and Triceps": ["CHEST", "TRICEPS"],
+        "Back and Biceps": ["BACK", "BICEPS"],
+        "Shoulders and Abs": ["SHOULDERS", "ABS"],
+        "Arms": ["SHOULDERS", "BICEPS", "TRICEPS"],
+        "Cardio": ["CARDIO"],
+    }
+    priority = PRIORITY_MAP.get(selected_category, [])
+
+    # ---- 2) Budget math ----
+    base_total = sum(subcategories.values())
+    target_total = max(1, math.floor(base_total * scale))
+
+    # Edge cases
+    if base_total == 0 or not subcategories:
+        return {k: 0 for k in subcategories}
+
+    # Build ordered keys: priority first, then any remaining in original order
+    # (preserve original order input by using OrderedDict if you build it that way)
+    ordered_keys = [k for k in priority if k in subcategories] + \
+                   [k for k in subcategories.keys() if k not in priority]
+
+    # Fast lookup for tie-breaking: lower rank = higher priority
+    prio_rank = {k: i for i, k in enumerate(ordered_keys)}
+
+    # ---- 3) Start everyone at 0 ----
+    counts = {k: 0 for k in subcategories}
+
+    # ---- 4) Ensure representation in priority order ----
+    i = 0
+    while i < len(ordered_keys) and sum(counts.values()) < target_total:
+        counts[ordered_keys[i]] += 1
+        i += 1
+
+    # ---- 5) Distribute remaining based on "desire" (how far from base pattern),
+    #         tie-breaking by priority rank ----
+    while sum(counts.values()) < target_total:
+        best_key = max(
+            subcategories.keys(),
+            key=lambda k: (
+                subcategories[k] - counts[k],  # bigger gap to base gets more
+                (subcategories[k] / base_total) if base_total else 0.0,  # slight bias to bigger base_n
+                -prio_rank.get(k, 999)  # then priority (lower rank preferred)
+            )  
+        )
+        counts[best_key] += 1
+
+    return counts
+
+
+
+def get_category_groups() -> dict[str, list[str]]:
+    """
+    Returns a mapping of Category -> [Subcategory,...] derived from WORKOUT_STRUCTURE,
+    ensuring a single source of truth for UI or grouped queries.
+    """
+    groups: dict[str, list[str]] = {}
+    for level_map in WORKOUT_STRUCTURE.values():
+        for category, subs in level_map.items():
+            # preserve insertion order & remove dups across levels
+            if category not in groups:
+                groups[category] = list(subs.keys())
+            else:
+                for k in subs.keys():
+                    if k not in groups[category]:
+                        groups[category].append(k)
+    return groups
+
+
+def get_user_level(exercise_history: str | None) -> int:
+    """Map user's exercise history string to a program level (1–3)."""
+    if not exercise_history:
+        return 1
+    return LEVEL_MAP.get(exercise_history, 1)
+
+
+def generate_workout(selected_category, user_level, user_id, duration_minutes=60):
+    """
+    Generate a workout based on the selected category, user level, and preferred duration.
     :param selected_category: The category selected by the user (e.g., 'Chest and Triceps')
     :param user_level: The user's fitness level (1 = Beginner, 2 = Intermediate, 3 = Advanced)
     :return: A list of exercises grouped by subcategory.
     """
-    # Define the workout structure
-    workout_structure = {
-        1: {  # Beginner
-            "Chest and Triceps": {"CHEST": 3, "TRICEPS": 2},
-            "Back and Biceps": {"BACK": 3, "BICEPS": 2},
-            "Shoulders and Abs": {"SHOULDERS": 3, "ABS": 2},
-            "Arms": {"BICEPS": 2, "TRICEPS": 2, "SHOULDERS": 2},
-            "Legs": {"LEGS": 3},
-            "Upper Body": {"BACK": 1, "CHEST": 1, "SHOULDERS": 1, "BICEPS": 1, "TRICEPS": 1},
-            "Full Body": {"BACK": 1, "CHEST": 1, "SHOULDERS": 1, "BICEPS": 1, "TRICEPS": 1, "LEGS": 1, "ABS": 1},
-            "Cardio": {"CARDIO": 1},
-        },
-        2: {  # Intermediate
-            "Chest and Triceps": {"CHEST": 4, "TRICEPS": 3},
-            "Back and Biceps": {"BACK": 4, "BICEPS": 3},
-            "Shoulders and Abs": {"SHOULDERS": 4, "ABS": 3},
-            "Arms": {"BICEPS": 3, "TRICEPS": 3, "SHOULDERS": 3},
-            "Legs": {"LEGS": 4},
-            "Upper Body": {"BACK": 1, "CHEST": 1, "SHOULDERS": 1, "BICEPS": 2, "TRICEPS": 2},
-            "Full Body": {"BACK": 2, "CHEST": 2, "SHOULDERS": 1, "BICEPS": 1, "TRICEPS": 1, "LEGS": 1, "ABS": 1},
-            "Cardio": {"CARDIO": 2},
-        },
-        3: {  # Advanced
-            "Chest and Triceps": {"CHEST": 5, "TRICEPS": 4},
-            "Back and Biceps": {"BACK": 5, "BICEPS": 4},
-            "Shoulders and Abs": {"SHOULDERS": 5, "ABS": 4},
-            "Arms": {"BICEPS": 4, "TRICEPS": 4, "SHOULDERS": 4},
-            "Legs": {"LEGS": 6},
-            "Upper Body": {"BACK": 2, "CHEST": 2, "SHOULDERS": 2, "BICEPS": 2, "TRICEPS": 2},
-            "Full Body": {"BACK": 2, "CHEST": 2, "SHOULDERS": 2, "BICEPS": 2, "TRICEPS": 2, "LEGS": 2, "ABS": 2},
-            "Cardio": {"CARDIO": 3},
-        },
-    }
+    try:
+        duration_minutes = int(duration_minutes or 60)
+    except (TypeError, ValueError):
+        duration_minutes = 60
+
+    BASE_MINUTES = 60  # new baseline
+    scale = duration_minutes / BASE_MINUTES
+
+    # Clamp scale to avoid crazy extremes
+    scale = max(0.33, min(1.0, scale))
+    # → 20 mins = ~0.33x, 30 = 0.5x, 45 = 0.75x, 60 = 1.0x
 
     # Fetch the workout structure for the selected category and user level
-    subcategories = workout_structure.get(user_level, {}).get(selected_category, {})
+    subcategories = WORKOUT_STRUCTURE.get(user_level, {}).get(selected_category, {})
     workout_plan = OrderedDict()
 
-    ## Not using - with sqlite3.connect(DATABASE_PATH) as conn:
+    counts = allocate_counts(subcategories, scale, selected_category)
+
     with get_connection() as conn:
         with conn.cursor() as cursor:
-            for subcategory, num_exercises in subcategories.items():
+            for subcategory, n in counts.items():
+                if n <= 0:
+                    continue
                 query = """
                     SELECT
                         w.id AS workout_id,
@@ -236,7 +350,7 @@ def generate_workout(selected_category, user_level, user_id):
                     ORDER BY RANDOM()
                     LIMIT %s
                 """
-                cursor.execute(query, (user_id, subcategory, user_level, num_exercises))
+                cursor.execute(query, (user_id, subcategory, user_level, n))
                 exercises = cursor.fetchall()
                 workout_plan[subcategory] = exercises
 

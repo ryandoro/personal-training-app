@@ -108,6 +108,19 @@ Account Settings
                     <textarea class="form-control" name="injury_details" rows="3">{{ user.get('injury_details', '') }}</textarea>
                 </div>
 
+                <!-- Preferred Workout Duration -->
+                <div class="mb-3">
+                    <label class="form-label fw-bold">What is your preferred workout duration?</label>
+                    {% set wd = (user.get('workout_duration') | string) if user.get('workout_duration') is not none else '' %}
+                    <select class="form-select" name="workout_duration" required>
+                    <option value="" disabled {% if not wd %}selected{% endif %}>Select an option</option>
+                    <option value="20" {% if wd == '20' %}selected{% endif %}>20 minutes</option>
+                    <option value="30" {% if wd == '30' %}selected{% endif %}>30 minutes</option>
+                    <option value="45" {% if wd == '45' %}selected{% endif %}>45 minutes</option>
+                    <option value="60" {% if wd == '60' %}selected{% endif %}>60 minutes</option>
+                    </select>
+                </div>
+  
                 <!-- Commitment -->
                 <div class="mb-3">
                     <label class="form-label fw-bold">How many days per week are you willing to commit to your goals?</label>
