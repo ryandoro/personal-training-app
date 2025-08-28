@@ -234,16 +234,6 @@ iframe.fullscreen-sim {
   color: #3a3a3a;
 }
 
-.choose-workout-title {
-  text-align: center;
-  display: inline-block;   /* shrink box to fit text */
-  padding: 0.5rem 1rem;    /* breathing room inside the box */
-  border: 3px solid;       /* border thickness */
-  border-image: linear-gradient(90deg, #1EA4E6, #f7931a) 1; /* gradient border */
-  border-radius: 8px;      /* rounded corners */
-}
-
-
 .select-orange {
   border-color: white !important;
   background-color: #f7931a;
