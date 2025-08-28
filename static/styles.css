@@ -196,3 +196,57 @@ iframe.fullscreen-sim {
     background-image: url("data:image/svg+xml;charset=utf8,%3Csvg viewBox='0 0 30 30' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath stroke='%23bbbbbb' stroke-width='2' stroke-linecap='round' stroke-miterlimit='10' d='M4 7h22M4 15h22M4 23h22'/%3E%3C/svg%3E");
   }  
   
+/* Workout Duration Pills */
+.duration-pill {
+  border: none;
+  background-color: #f1f1f1;   /* light gray default */
+  color: #333;
+  border: 1px solid #f7931a;
+  font-weight: 500;
+  min-width: 88px;
+  border-radius: 50rem;        /* pill shape */
+  transition: all 0.2s ease;
+}
+
+.duration-pill:hover {
+  background-color: #f7931a;   /* slightly darker gray on hover */
+}
+
+.duration-pill.active {
+  background-color: #f7931a;   /* Bitcoin Orange */
+  color: #fff;                 /* white text for contrast */
+}
+
+.duration-pill:focus-visible {
+  outline: 2px solid #1EA4E6;  /* Kai Blue focus ring */
+  outline-offset: 2px;
+}
+
+.bitcoin-workout {
+  color: #333;
+  border: 1px solid #f7931a;
+  background-color: #f1f1f1;
+  transition: all 0.3s ease;
+}
+
+.bitcoin-workout:hover {
+  background-color: #f7931a;
+  color: #3a3a3a;
+}
+
+.choose-workout-title {
+  text-align: center;
+  display: inline-block;   /* shrink box to fit text */
+  padding: 0.5rem 1rem;    /* breathing room inside the box */
+  border: 3px solid;       /* border thickness */
+  border-image: linear-gradient(90deg, #1EA4E6, #f7931a) 1; /* gradient border */
+  border-radius: 8px;      /* rounded corners */
+}
+
+
+.select-orange {
+  border-color: #f7931a !important;
+  background-color: #f7931a;
+  color: white;
+  box-shadow: 0 0 0 0.2rem rgba(247,147,26,0.25);
+}

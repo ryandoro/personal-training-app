@@ -373,33 +373,36 @@
 
         <hr>
         <div class="card" style="box-shadow: 0 0 16px rgba(247, 147, 26, 0.4);">
-            <h3 class="text-center mb-3 fw-bold" style="color: #1EA4E6;">Choose Your Workout</h3>
+            <h3 class="text-center mb-3 fw-bold choose-workout-title" style="color: #1EA4E6;">Choose Your Workout</h3>
             <div class="row justify-content-center">
-                <!-- Duration radios -->
+                <!-- Duration pills -->
                 <div class="mb-3">
                     <label class="form-label fw-bold text-primary d-block">Workout Duration</label>
                     {% set wd = workout_duration or 60 %}
-                    <div id="duration-radios" class="d-flex flex-column flex-md-row flex-wrap gap-3 justify-content-center">
+                    <div id="duration-pills"
+                        class="d-flex flex-wrap gap-2 justify-content-center">
                     {% for minutes in [20, 30, 45, 60] %}
-                        <div class="form-check form-check-inline">
-                        <input
-                            class="form-check-input"
-                            type="radio"
-                            name="duration"
-                            id="dur-{{ minutes }}"
-                            value="{{ minutes }}"
-                            {% if wd == minutes %}checked{% endif %}
-                        >
-                        <label class="form-check-label" for="dur-{{ minutes }}">{{ minutes }} minutes</label>
-                        </div>
+                        <button type="button"
+                                class="btn duration-pill rounded-pill px-3 py-2
+                                    {% if wd == minutes %} active {% endif %}"
+                                data-minutes="{{ minutes }}"
+                                aria-pressed="{{ 'true' if wd == minutes else 'false' }}"
+                                aria-label="{{ minutes }} minutes">
+                        {{ minutes }} min
+                        </button>
                     {% endfor %}
                     </div>
+                
+                    <!-- Keep a hidden input so the selection exists in form data if you ever submit -->
+                    <input type="hidden" id="duration-input" name="duration" value="{{ wd }}">
+                    <small class="text-muted d-block mt-2">This updates your default in Settings immediately.</small>
                 </div>
+  
                 <!-- Category select-->
                 <div class="mb-3">
                     <label for="workout-category-select" class="form-label fw-bold text-primary">Workout Categories</label>
-                    <select id="workout-category-select" class="form-select shadow-sm border-primary">
-                        <option value="">-- Select a Workout Category --</option>
+                    <select id="workout-category-select" class="form-select shadow-sm bitcoin-workout">
+                        <option value="">Select a Workout Category</option>
                         {% for category, workouts in grouped_workouts.items() %}
                             <option value="{{ category }}">{{ category }}</option>
                         {% endfor %}
@@ -1008,45 +1011,70 @@
     });
 
     // Duration radios: update preference and (optionally) re-generate if a category is selected
-    const durationRadios = document.querySelectorAll('#duration-radios input[type="radio"]');
-    durationRadios.forEach(radio => {
-        radio.addEventListener('change', async () => {
-        const minutes = radio.value;
-        try {
+    (function () {
+        const pillsWrap = document.getElementById('duration-pills');
+        if (!pillsWrap) return;
+
+        const pills = pillsWrap.querySelectorAll('.duration-pill');
+        const hiddenInput = document.getElementById('duration-input');
+        const categorySelect = document.getElementById('workout-category-select');
+
+        // Helpers to set visual/ARIA state
+        function setActive(minutes) {
+            pills.forEach(btn => {
+            const isActive = String(btn.dataset.minutes) === String(minutes);
+            btn.classList.toggle('active', isActive);
+        });
+        hiddenInput.value = minutes;
+        }
+
+        // Click/tap handler
+        pills.forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const minutes = btn.dataset.minutes;
+            setActive(minutes);
+
+            try {
             const res = await fetch('/update_workout_duration', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ workout_duration: minutes })
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ workout_duration: minutes })
             });
             const data = await res.json();
-
             if (!data.success) {
-            alert(data.error || 'Could not update workout duration.');
-            return;
+                alert(data.error || 'Could not update workout duration.');
+                return;
             }
 
-            // Optional: if a category is already picked, re-generate using the new duration
-            const selectedCategory = categorySelect && categorySelect.value;
-            if (selectedCategory) {
-            // Trigger your existing change handler to refresh the workout
-            categorySelect.dispatchEvent(new Event('change'));
+            // If a category is already chosen, re-generate with new duration
+            if (categorySelect && categorySelect.value) {
+                categorySelect.dispatchEvent(new Event('change'));
             }
 
-            // Quick UX feedback
+            // Optional toast feedback
             const toast = document.getElementById('toastSuccess');
             if (toast) {
-            toast.textContent = 'Duration updated!';
-            toast.style.display = 'block';
-            toast.style.border = '1px solid #5cb85c';
-            setTimeout(() => toast.style.display = 'none', 3000);
+                toast.textContent = 'Duration updated!';
+                toast.style.display = 'block';
+                toast.style.border = '1px solid #5cb85c';
+                setTimeout(() => (toast.style.display = 'none'), 2000);
             }
-        } catch (err) {
+            } catch (err) {
             console.error(err);
             alert('Network error while updating duration.');
-        }
+            }
         });
-    });
-</script>    
+        });
+    })();
+
+    if (categorySelect) {
+        function syncSelectStyle() {
+            categorySelect.classList.toggle('select-orange', !!categorySelect.value);
+        }
+        categorySelect.addEventListener('change', syncSelectStyle);
+        syncSelectStyle(); // run on load
+    }
+</script>   
 {% endblock %}
 
 

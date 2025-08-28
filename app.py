@@ -1,7 +1,7 @@
 import os, re, logging, json, psycopg2, psycopg2.extras, psycopg2.errors
 from flask import Flask, flash, redirect, render_template, request, session, jsonify, url_for, current_app
 from werkzeug.security import generate_password_hash, check_password_hash
-from helpers import login_required, convert_decimals, calculate_target_heart_rate, generate_workout, get_guidelines, get_connection, is_admin, normalize_email, upsert_invited_user, issue_single_use_token, validate_token, mark_token_used, username_available, fmt_utc, int_or_none, inches_0_11_or_none, float_or_none, hash_token, get_category_groups, get_user_level  
+from helpers import login_required, convert_decimals, calculate_target_heart_rate, generate_workout, get_guidelines, get_connection, is_admin, normalize_email, upsert_invited_user, issue_single_use_token, validate_token, mark_token_used, username_available, fmt_utc, int_or_none, inches_0_11_or_none, float_or_none, hash_token, get_category_groups, get_user_level, LEVEL_MAP  
 from collections import OrderedDict
 from dotenv import load_dotenv
 from datetime import datetime
@@ -515,14 +515,7 @@ def generate_workout_route():
             exercise_history = row[0]
             duration_minutes = int(row[1])
 
-            level_map = {
-                "No Exercise History": 1, 
-                "Exercise less than 1 year": 1, 
-                "Exercise 1-5 years": 2, 
-                "Exercise 5+ years": 3
-            }
-            
-            user_level = level_map.get(exercise_history, 1)
+            user_level = get_user_level(exercise_history)
 
     # Generate the workout
     workout_plan = generate_workout(selected_category, user_level, user_id, duration_minutes)

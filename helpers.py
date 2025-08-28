@@ -390,13 +390,7 @@ def format_range(values, is_rest=False):
 
 def get_guidelines(exercise_history, fitness_goals):
     # Define guidelines based on exercise history and fitness goals
-    level_map = {
-        "No Exercise History": 1,
-        "Exercise less than 1 year": 1,
-        "Exercise 1-5 years": 2,
-        "Exercise 5+ years": 3
-    }
-    level = level_map.get(exercise_history, 1)  # Default to Beginner (Level 1)
+    level = LEVEL_MAP.get(exercise_history, 1)  # Default to Beginner (Level 1)
 
     if isinstance(fitness_goals, str):
         fitness_goals = [g.strip().title() for g in fitness_goals.split(",")]
