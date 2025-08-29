@@ -239,3 +239,24 @@ iframe.fullscreen-sim {
   color: white !important;
   box-shadow: 0 0 0 0.2rem rgba(247,147,26,0.25);
 }
+
+/* 2 columns on mobile, inline on wider screens */
+#duration-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;   /* keeps rows centered */
+}
+
+#duration-pills .duration-pill {
+  flex: 0 0 calc(50% - 8px); /* two per row on small screens */
+  text-align: center;
+}
+
+/* From ≥576px (or pick your breakpoint), go back to inline pills */
+@media (min-width: 576px) {
+  #duration-pills .duration-pill {
+    flex: 0 0 auto;          /* natural size */
+    min-width: 88px;         /* your existing min width */
+  }
+}
