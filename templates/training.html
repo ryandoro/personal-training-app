@@ -373,7 +373,7 @@
 
         <hr>
         <div class="card" style="box-shadow: 0 0 16px rgba(247, 147, 26, 0.4);">
-            <h3 class="text-center fw-bold p-3 rounded-3 border" style="text-shadow: 0 0 5px #fff, 0 0 8px #fff; box-shadow: 0 0 5px #fff, 0 0 8px #fff; background: linear-gradient(10deg, #1EA4E6, #f7931a);">Choose Your Workout</h3>
+            <h3 class="text-center text-white fw-bold p-3 rounded-3 border" style="color: f7931a; text-shadow: 0 0 1px black; box-shadow: 0 0 3px gray; background: #1EA4E6;">Choose Your Workout</h3>
             <div class="row justify-content-center">
                 <!-- Duration pills -->
                 <div class="mb-3">
@@ -400,7 +400,7 @@
                 <!-- Category select-->
                 <div class="mb-3">
                     <label for="workout-category-select" class="form-label fw-bold text-primary">Workout Categories</label>
-                    <select id="workout-category-select" class="form-select shadow-sm bitcoin-workout">
+                    <select id="workout-category-select" class="form-select text-center shadow-sm bitcoin-workout">
                         <option value="">Select a Workout Category</option>
                         {% for category, workouts in grouped_workouts.items() %}
                             <option value="{{ category }}">{{ category }}</option>

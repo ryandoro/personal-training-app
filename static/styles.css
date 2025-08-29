@@ -209,7 +209,7 @@ iframe.fullscreen-sim {
 }
 
 .duration-pill:hover {
-  background-color: #f7931a;   /* slightly darker gray on hover */
+  background-color: #f7931a;   
 }
 
 .duration-pill.active {
@@ -231,12 +231,11 @@ iframe.fullscreen-sim {
 
 .bitcoin-workout:hover {
   background-color: #f7931a;
-  color: #3a3a3a;
 }
 
 .select-orange {
   border-color: white !important;
   background-color: #f7931a;
-  color: white;
+  color: white !important;
   box-shadow: 0 0 0 0.2rem rgba(247,147,26,0.25);
 }
