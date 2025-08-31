@@ -3,6 +3,7 @@ import os
 from typing import Optional
 from flask import render_template
 from postmarker.core import PostmarkClient
+from datetime import date
 
 FROM = os.getenv("POSTMARK_FROM_EMAIL", "no-reply@fitbaseai.com")
 STREAM = os.getenv("POSTMARK_MESSAGE_STREAM", "outbound")
@@ -65,7 +66,18 @@ def send_invite_email(*, to_email: str, first_name: str, invite_url: str, admin_
     return send_email(to=to_email, subject=subject, html=html)
 
 
-def send_verification_email(*, to_email: str, first_name: str, verify_url: str):
+def send_verification_email(*, to_email: str, first_name: str, verify_url: str, ttl_hours: int, current_year: int | None = None, resend_url: str | None = None):
     subject = "Welcome to FitBaseAI! - Verify your email"
-    html = render_template("email/verify_email.html", first_name=first_name, verify_url=verify_url)
-    return send_email(to=to_email, subject=subject, html=html)
+    if current_year is None:
+        current_year = date.today().year
+    html = render_template(
+        "email/verify_email.html", 
+        first_name=first_name, 
+        verify_url=verify_url, 
+        ttl_hours=int(ttl_hours),
+        current_year=current_year,
+        resend_url=resend_url)
+    return send_email(
+        to=to_email, 
+        subject=subject, 
+        html=html)

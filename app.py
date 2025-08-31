@@ -4,7 +4,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from helpers import login_required, convert_decimals, calculate_target_heart_rate, generate_workout, get_guidelines, get_connection, is_admin, normalize_email, upsert_invited_user, issue_single_use_token, validate_token, mark_token_used, username_available, fmt_utc, int_or_none, inches_0_11_or_none, float_or_none, hash_token, get_category_groups, get_user_level, LEVEL_MAP  
 from collections import OrderedDict
 from dotenv import load_dotenv
-from datetime import datetime
+from datetime import datetime, date, timedelta, timezone
 from mail import send_email, send_password_reset_email, send_invite_email, send_verification_email
 from urllib.parse import urlencode 
 
@@ -23,7 +23,9 @@ app.secret_key = secret
 ALLOWED_ROLES = {"user", "trainer", "admin"}
 ALLOWED_SUBS  = {"free", "premium", "pro"}
 INVITE_TTL_HOURS = 48
-VERIFY_TTL_HOURS = 24
+VERIFY_TTL_HOURS = 48
+RESEND_COOLDOWN_SECONDS = 90  
+VERIFY_PURPOSE = "verify_email"
 RESET_TTL_HOURS = 2
 
 @app.route('/')
@@ -126,6 +128,7 @@ def register():
                     # Issue verification token 
                     raw_token, expires_at = issue_single_use_token(conn, user_id, "verify_email", VERIFY_TTL_HOURS)  
                     verify_url = url_for("verify_email", token=raw_token, _external=True)
+                    resend_url  = url_for("resend_verify_confirm", token=raw_token, _external=True)
 
                     conn.commit()
 
@@ -142,7 +145,10 @@ def register():
             send_verification_email(
                 to_email=email,
                 verify_url=verify_url,
-                first_name=username  
+                first_name=username,
+                ttl_hours=VERIFY_TTL_HOURS, 
+                current_year=date.today().year,
+                resend_url=resend_url
             )
         except Exception:
             current_app.logger.exception("Failed sending welcome/verification email")
@@ -197,6 +203,96 @@ def verify_email():
         current_app.logger.exception("Email verification error")
         flash("Something went wrong verifying your email. Please try again.", "danger")
         return redirect(url_for('login'))
+
+
+@app.get("/verify/resend")
+def resend_verify_confirm():
+    """GET: confirmation page (no side effects)"""
+    token = (request.args.get("token") or "").strip()
+    # Always show a generic confirm page; no user info leaked
+    return render_template("resend_verify_confirm.html", token=token)
+
+
+@app.post("/verify/resend")
+def resend_verify_do():
+    """POST: actually issue a new token and email."""
+    generic_msg = "If an account exists and isn’t verified, we’ve sent a new verification link."
+    token = (request.form.get("token") or "").strip()
+
+    if not token:
+        flash(generic_msg, "info")
+        return redirect(url_for("login"))
+
+    try:
+        with get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                digest = hash_token(token)
+                cur.execute("""
+                    SELECT u.id AS user_id, u.email, u.username, u.email_verified
+                      FROM user_tokens ut
+                      JOIN users u ON u.id = ut.user_id
+                     WHERE ut.purpose = %s
+                       AND ut.token_digest = %s
+                     LIMIT 1
+                """, (VERIFY_PURPOSE, digest))
+                row = cur.fetchone()
+
+                if not row or row["email_verified"]:
+                    flash(generic_msg, "info")
+                    return redirect(url_for("login"))
+
+                # Rate limit based on last token creation
+                cur.execute("""
+                    SELECT created_at
+                      FROM user_tokens
+                     WHERE user_id = %s AND purpose = %s
+                     ORDER BY created_at DESC
+                     LIMIT 1
+                """, (row["user_id"], VERIFY_PURPOSE))
+
+                last = cur.fetchone()
+                now = datetime.now(timezone.utc)
+
+                if last:
+                    last_ts = last["created_at"]  # already aware
+                    # if your DB ever returns naive (unlikely), guard it:
+                    if last_ts.tzinfo is None:
+                        last_ts = last_ts.replace(tzinfo=timezone.utc)
+                    # else: last_ts = last_ts.astimezone(timezone.utc)  # optional, for uniformity
+                    if (now - last_ts) < timedelta(seconds=RESEND_COOLDOWN_SECONDS):
+                        flash("We just sent a verification email. Please check your inbox and try again shortly.", "warning")
+                        return redirect(url_for("login"))
+                
+                # Invalidate prior unused verify tokens (optional but recommended)
+                cur.execute("""
+                    UPDATE user_tokens
+                        SET used_at = %s
+                     WHERE user_id = %s 
+                        AND purpose = %s 
+                        AND used_at IS NULL
+                """, (now, row["user_id"], VERIFY_PURPOSE))
+
+                # Issue new token
+                new_raw, _expires_at = issue_single_use_token(conn, row["user_id"], "verify_email", VERIFY_TTL_HOURS)
+                new_verify_url = url_for("verify_email", token=new_raw, _external=True)
+                new_resend_url  = url_for("resend_verify_confirm", token=new_raw, _external=True)
+                conn.commit()
+
+        # Send email outside transaction
+        send_verification_email(
+            to_email=row["email"],
+            first_name=row["username"],
+            verify_url=new_verify_url,
+            ttl_hours=VERIFY_TTL_HOURS,
+            resend_url=new_resend_url
+        )
+        flash(generic_msg, "success")
+        return redirect(url_for("login"))
+
+    except Exception:
+        current_app.logger.exception("Resend via token failed")
+        flash(generic_msg, "info")
+        return redirect(url_for("login"))
 
 
 @app.route('/login', methods=['GET', 'POST'])
