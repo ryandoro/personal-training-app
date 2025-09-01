@@ -15,7 +15,7 @@
 
       <div style="padding:0px 24px 24px 24px;text-align:center;">
         <form method="post" action="{{ url_for('resend_verify_do') }}" style="margin:0 0 18px 0;">
-          <input type="hidden" name="token" value="{{ token }}">
+          <input type="hidden" name="token_digest" value="{{ token_digest }}">
           <!-- If you use Flask-WTF, include a CSRF token here -->
           <button type="submit"
                   style="display:inline-block;background:#1EA4E6;color:#fff;border:0;border-radius:10px;padding:12px 18px;font-weight:600;font-size:16px;cursor:pointer;">

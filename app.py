@@ -24,7 +24,7 @@ ALLOWED_ROLES = {"user", "trainer", "admin"}
 ALLOWED_SUBS  = {"free", "premium", "pro"}
 INVITE_TTL_HOURS = 48
 VERIFY_TTL_HOURS = 48
-RESEND_COOLDOWN_SECONDS = 90  
+RESEND_COOLDOWN_SECONDS = 60  
 VERIFY_PURPOSE = "verify_email"
 RESET_TTL_HOURS = 2
 
@@ -207,26 +207,26 @@ def verify_email():
 
 @app.get("/verify/resend")
 def resend_verify_confirm():
-    """GET: confirmation page (no side effects)"""
-    token = (request.args.get("token") or "").strip()
-    # Always show a generic confirm page; no user info leaked
-    return render_template("resend_verify_confirm.html", token=token)
+    raw = (request.args.get("token") or "").strip()
+    token_digest = hash_token(raw) if raw else ""
+    # Always show the confirm page (no enumeration)
+    return render_template("resend_verify_confirm.html", token_digest=token_digest)
+
 
 
 @app.post("/verify/resend")
 def resend_verify_do():
     """POST: actually issue a new token and email."""
     generic_msg = "If an account exists and isn’t verified, we’ve sent a new verification link."
-    token = (request.form.get("token") or "").strip()
+    digest = (request.form.get("token_digest") or "").strip()
 
-    if not token:
+    if not digest:
         flash(generic_msg, "info")
         return redirect(url_for("login"))
 
     try:
         with get_connection() as conn:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-                digest = hash_token(token)
                 cur.execute("""
                     SELECT u.id AS user_id, u.email, u.username, u.email_verified
                       FROM user_tokens ut
@@ -237,8 +237,12 @@ def resend_verify_do():
                 """, (VERIFY_PURPOSE, digest))
                 row = cur.fetchone()
 
-                if not row or row["email_verified"]:
-                    flash(generic_msg, "info")
+                if not row:
+                    flash("That link is invalid or no longer available. If you still need access, try again from your latest email.", "info")
+                    return redirect(url_for("login"))
+
+                if row["email_verified"]:
+                    flash("Your email is already verified. Please log in.", "success")
                     return redirect(url_for("login"))
 
                 # Rate limit based on last token creation
@@ -258,9 +262,11 @@ def resend_verify_do():
                     # if your DB ever returns naive (unlikely), guard it:
                     if last_ts.tzinfo is None:
                         last_ts = last_ts.replace(tzinfo=timezone.utc)
-                    # else: last_ts = last_ts.astimezone(timezone.utc)  # optional, for uniformity
-                    if (now - last_ts) < timedelta(seconds=RESEND_COOLDOWN_SECONDS):
-                        flash("We just sent a verification email. Please check your inbox and try again shortly.", "warning")
+
+                    delta = now - last_ts
+                    if (delta) < timedelta(seconds=RESEND_COOLDOWN_SECONDS):
+                        remaining = max(1, RESEND_COOLDOWN_SECONDS - int((delta.total_seconds())))
+                        flash(f"A verification email was just sent. Please verify or try again in ~{remaining}s.", "warning")
                         return redirect(url_for("login"))
                 
                 # Invalidate prior unused verify tokens (optional but recommended)
@@ -273,7 +279,7 @@ def resend_verify_do():
                 """, (now, row["user_id"], VERIFY_PURPOSE))
 
                 # Issue new token
-                new_raw, _expires_at = issue_single_use_token(conn, row["user_id"], "verify_email", VERIFY_TTL_HOURS)
+                new_raw, _expires_at = issue_single_use_token(conn, row["user_id"], VERIFY_PURPOSE, VERIFY_TTL_HOURS)
                 new_verify_url = url_for("verify_email", token=new_raw, _external=True)
                 new_resend_url  = url_for("resend_verify_confirm", token=new_raw, _external=True)
                 conn.commit()
@@ -286,7 +292,7 @@ def resend_verify_do():
             ttl_hours=VERIFY_TTL_HOURS,
             resend_url=new_resend_url
         )
-        flash(generic_msg, "success")
+        flash("We've sent you a new verification link.", "success")
         return redirect(url_for("login"))
 
     except Exception:
