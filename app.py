@@ -1764,6 +1764,7 @@ def upgrade():
             }],
             mode='subscription',
             automatic_tax={"enabled": True},
+            customer_update={"address": "auto"},  
             success_url=url_for('upgrade_success', _external=True),
             cancel_url=url_for('training', _external=True),
             metadata={'user_id': user_id}
