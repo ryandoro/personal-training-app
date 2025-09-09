@@ -1,7 +1,7 @@
-import os, re, logging, json, psycopg2, psycopg2.extras, psycopg2.errors
+import os, re, logging, json, psycopg2, psycopg2.extras, psycopg2.errors, stripe
 from flask import Flask, flash, redirect, render_template, request, session, jsonify, url_for, current_app
 from werkzeug.security import generate_password_hash, check_password_hash
-from helpers import login_required, convert_decimals, calculate_target_heart_rate, generate_workout, get_guidelines, get_connection, is_admin, normalize_email, upsert_invited_user, issue_single_use_token, validate_token, mark_token_used, username_available, fmt_utc, int_or_none, inches_0_11_or_none, float_or_none, hash_token, get_category_groups, get_user_level, LEVEL_MAP  
+from helpers import login_required, convert_decimals, calculate_target_heart_rate, generate_workout, get_guidelines, get_connection, is_admin, normalize_email, upsert_invited_user, issue_single_use_token, validate_token, mark_token_used, username_available, fmt_utc, int_or_none, inches_0_11_or_none, float_or_none, hash_token, get_category_groups, get_user_level, LEVEL_MAP, check_and_downgrade_trial, check_subscription_expiry  
 from collections import OrderedDict
 from dotenv import load_dotenv
 from datetime import datetime, date, timedelta, timezone
@@ -19,6 +19,15 @@ secret = os.getenv("SECRET_KEY")
 if not secret:
     raise RuntimeError("SECRET_KEY is not set!")
 app.secret_key = secret
+
+# Stripe
+stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
+price_id = os.getenv("STRIPE_PREMIUM_PRICE_ID")
+ENV = os.getenv("FLASK_ENV", "development")
+if ENV == "production":
+    webhook_secret = os.getenv("STRIPE_WEBHOOK_SECRET_LIVE")
+else:
+    webhook_secret = os.getenv("STRIPE_WEBHOOK_SECRET_TEST")
 
 ALLOWED_ROLES = {"user", "trainer", "admin"}
 ALLOWED_SUBS  = {"free", "premium", "pro"}
@@ -371,6 +380,12 @@ def login():
     return render_template('login.html')
 
 
+@app.before_request
+def check_trial_status_and_subscription():
+    if 'user_id' in session:
+        check_and_downgrade_trial(session['user_id'])
+        check_subscription_expiry(session['user_id'])  
+
 
 @app.route('/logout')
 def logout():
@@ -478,20 +493,26 @@ def training():
         try:
             with get_connection() as conn:
                 with conn.cursor() as cursor:
+                    trial_end_date = datetime.today().date() + timedelta(days=14)
                     cursor.execute("""
                         UPDATE users
                         SET 
                             age = %s, weight = %s, height_feet = %s, height_inches = %s, 
                             gender = %s, exercise_history = %s, fitness_goals = %s, 
                             injury = %s, injury_details = %s, commitment = %s, additional_notes = %s, 
-                            name = %s, last_name = %s, form_completed = TRUE, workout_duration = %s
+                            name = %s, last_name = %s, form_completed = TRUE, workout_duration = %s,
+                            subscription_type = 'premium',
+                            trial_end_date = %s
                         WHERE id = %s
                     """, (
                         age, weight, height_feet, height_inches, gender, 
                         exercise_history, fitness_goals_str, injury, injury_details, 
-                        commitment, additional_notes, name, last_name, workout_duration, user_id
+                        commitment, additional_notes, name, last_name, workout_duration, 
+                        trial_end_date, user_id
                     ))
                     conn.commit()
+
+                    flash("✅ Your 14-day free Premium trial has started! You now have full access to the personalized workout generator and tracking.", "success")
 
             form_completed = True  # Mark the form as completed
             flash("Your information has been successfully updated!", "success")
@@ -566,15 +587,23 @@ def training():
             except Exception as e:
                 flash(f"An error occurred: {e}", "danger")
 
+    # Fetch full user row (including subscription_type, trial_end_date, etc.)
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            cursor.execute("SELECT * FROM users WHERE id = %s", (user_id,))
+            user = cursor.fetchone()
+
     return render_template(
         'training.html', 
+        user=user,
         form_completed=form_completed, 
         workouts=workouts, 
         target_heart_rate_zone=target_heart_rate_zone, 
         grouped_workouts=grouped_workouts, 
         guidelines=guidelines,
         fitness_goals=fitness_goals, 
-        workout_duration=workout_duration
+        workout_duration=workout_duration,
+        current_date=date.today()
     )
 
 
@@ -609,13 +638,20 @@ def generate_workout_route():
     with get_connection() as conn:
         with conn.cursor() as cursor:
             cursor.execute("""
-                SELECT exercise_history, COALESCE(workout_duration, 60) AS workout_duration 
+                SELECT exercise_history, COALESCE(workout_duration, 60) AS workout_duration, subscription_type, trial_end_date 
                 FROM users 
                 WHERE id = %s
             """, (user_id,))
             row = cursor.fetchone()
             exercise_history = row[0]
             duration_minutes = int(row[1])
+            subscription_type = row[2]
+            trial_end_date = row[3]
+
+            today = datetime.today().date()
+            if subscription_type == 'free' or (subscription_type == 'premium' and trial_end_date and today > trial_end_date):
+                if selected_category != 'Shoulders and Abs':
+                    return jsonify({'success': False, 'error': 'Upgrade to Premium to access this category.'})
 
             user_level = get_user_level(exercise_history)
 
@@ -962,14 +998,16 @@ def settings():
             cursor.execute("""
                 SELECT username, name, last_name, email, age, weight, height_feet, height_inches,
                        gender, exercise_history, fitness_goals, injury, injury_details,
-                       commitment, additional_notes, form_completed, workout_duration
+                       commitment, additional_notes, form_completed, workout_duration,
+                        subscription_type, trial_end_date
                 FROM users
                 WHERE id = %s
             """, (user_id,))
             row = cursor.fetchone()
     columns = ['username', 'name', 'last_name', 'email', 'age', 'weight', 'height_feet', 'height_inches',
                 'gender', 'exercise_history', 'fitness_goals', 'injury', 'injury_details',
-                'commitment', 'additional_notes', 'form_completed', 'workout_duration']
+                'commitment', 'additional_notes', 'form_completed', 'workout_duration',
+                'subscription_type', 'trial_end_date']
 
     user = dict(zip(columns, row)) if row else {k: "" for k in columns}
     for k in columns:
@@ -1205,7 +1243,7 @@ def settings():
                 user[k] = ""
         form_completed = new_form_completed
 
-    return render_template('settings.html', user=user, form_completed=form_completed)
+    return render_template('settings.html', user=user, form_completed=form_completed, current_date=date.today())
 
 
 @app.route('/admin/users', methods=['GET'])
@@ -1666,8 +1704,185 @@ def admin_reactivate_user(user_id):
 
 
 @app.context_processor
-def inject_current_year():
-    return {"current_year": datetime.now().year}
+def inject_global_context():
+    current_year = datetime.now().year
+    current_date = date.today()
+    user = None
+
+    if 'user_id' in session:
+        with get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute("SELECT * FROM users WHERE id = %s", (session['user_id'],))
+                user = cursor.fetchone()
+
+    return {
+        "current_year": current_year,
+        "current_date": current_date,
+        "user": user
+    }
+
+
+@app.route('/upgrade')
+@login_required
+def upgrade():
+    user_id = session["user_id"]
+
+    # Optional: Lookup user info from your DB if needed (e.g., name or email)
+    user_email = None
+    full_name = None
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT email, name, last_name FROM users WHERE id = %s", (user_id,))
+            result = cursor.fetchone()
+            if result:
+                user_email = result[0]
+                full_name = f"{result[1]} {result[2]}"
+
+    try:
+        # Create Stripe customer (only if you want to store customer ID)
+        customer = stripe.Customer.create(
+            email=user_email,
+            name=full_name,
+            metadata={"user_id": user_id}
+        )
+
+        # Save stripe_customer_id to your DB
+        with get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("""
+                    UPDATE users SET stripe_customer_id = %s WHERE id = %s
+                """, (customer.id, user_id))
+                conn.commit()
+
+        # Create a Stripe Checkout Session
+        checkout_session = stripe.checkout.Session.create(
+            payment_method_types=['card'],
+            customer=customer.id,
+            line_items=[{
+                'price': price_id,  
+                'quantity': 1,
+            }],
+            mode='subscription',
+            automatic_tax={"enabled": True},
+            success_url=url_for('upgrade_success', _external=True),
+            cancel_url=url_for('training', _external=True),
+            metadata={'user_id': user_id}
+        )
+
+        return redirect(checkout_session.url)
+    
+    except Exception as e:
+        flash(f"Error creating Stripe checkout: {e}", "danger")
+        return redirect(url_for('training'))
+
+
+@app.route("/stripe/webhook", methods=["POST"])
+def stripe_webhook():
+    payload = request.get_data(as_text=True)
+    sig_header = request.headers.get("Stripe-Signature")
+
+    try:
+        event = stripe.Webhook.construct_event(
+            payload, sig_header, webhook_secret
+        )
+    except ValueError:
+        return "Invalid payload", 400
+    except stripe.error.SignatureVerificationError:
+        return "Invalid signature", 400
+
+    print(f"📩 Webhook received: {event['type']}")
+
+    # Handle successful checkout
+    if event['type'] == 'checkout.session.completed':
+        session_data = event['data']['object']
+        print("✅ Handling checkout.session.completed")
+
+        user_id = session_data.get('metadata', {}).get('user_id')
+        stripe_customer_id = session_data.get('customer')
+
+        if user_id and stripe_customer_id:
+            with get_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute("""
+                        UPDATE users
+                        SET subscription_type = 'premium', 
+                            trial_end_date = NULL,
+                            stripe_customer_id = %s,
+                            subscription_cancel_at = NULL
+                        WHERE id = %s
+                    """, (stripe_customer_id, user_id,))
+                    conn.commit()
+
+    elif event['type'] == 'customer.subscription.updated':
+        sub_data = event['data']['object']
+        stripe_customer_id = sub_data.get('customer')
+        cancel_at = sub_data.get('cancel_at')  # Will be None if user resumed
+        cancel_at_period_end = sub_data.get('cancel_at_period_end', False)
+
+        if cancel_at_period_end:
+            print("⚠️ Subscription set to cancel at period end")
+            print("🗓️ Will cancel at:", datetime.fromtimestamp(cancel_at, tz=timezone.utc))
+
+            with get_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute("""
+                        UPDATE users
+                        SET subscription_cancel_at = to_timestamp(%s)
+                        WHERE stripe_customer_id = %s
+                    """, (cancel_at, stripe_customer_id))
+                    conn.commit()
+                    print("📆 subscription_cancel_at saved to DB")
+
+        else:
+            # Subscription was resumed (cancelation undone)
+            print("✅ Subscription resume detected — clearing cancel_at")
+            with get_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute("""
+                        UPDATE users
+                        SET subscription_cancel_at = NULL
+                        WHERE stripe_customer_id = %s
+                    """, (stripe_customer_id,))
+                    conn.commit()
+                    print("🧼 subscription_cancel_at cleared in DB")
+    
+    elif event['type'] == 'customer.subscription.deleted':
+        print("❌ Subscription fully canceled")
+
+    return jsonify({'status': 'success'}), 200
+
+
+@app.route('/upgrade-success')
+@login_required
+def upgrade_success():
+    flash("🎉 You've successfully upgraded to Premium!", "success")
+    return redirect(url_for('training'))
+
+
+@app.route('/customer-portal')
+@login_required
+def customer_portal():
+    stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
+    user_id = session["user_id"]
+
+    # Get Stripe Customer ID from your DB
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT stripe_customer_id FROM users WHERE id = %s", (user_id,))
+            result = cursor.fetchone()
+            if result and result[0]:
+                stripe_customer_id = result[0]
+            else:
+                flash("Unable to access Stripe customer info.", "danger")
+                return redirect(url_for('training'))
+
+    # Create the session
+    stripe_portal_session = stripe.billing_portal.Session.create(
+        customer=stripe_customer_id,
+        return_url=url_for('training', _external=True),
+    )
+
+    return redirect(stripe_portal_session.url)
 
 
 if __name__ == '__main__':

@@ -469,3 +469,69 @@ def float_or_none(v):
         return float(str(v).strip())
     except (TypeError, ValueError):
         return None
+    
+
+def check_and_downgrade_trial(user_id):
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT subscription_type, trial_end_date
+                FROM users
+                WHERE id = %s
+            """, (user_id,))
+            result = cur.fetchone()
+
+            if not result:
+                return
+
+            subscription_type, trial_end_date = result
+            today = datetime.today().date()
+
+            if not trial_end_date:
+                return
+            
+            if subscription_type == 'premium' and trial_end_date and today >= trial_end_date:
+                # Trial expired → downgrade to 'free'
+                cur.execute("""
+                    UPDATE users
+                    SET subscription_type = 'free'
+                    WHERE id = %s
+                """, (user_id,))
+                conn.commit()
+
+
+def check_subscription_expiry(user_id):
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("""
+                SELECT subscription_type, subscription_cancel_at
+                FROM users
+                WHERE id = %s
+            """, (user_id,))
+            result = cursor.fetchone()
+
+            if not result:
+                return  # User not found
+
+            subscription_type, cancel_at = result
+
+            if subscription_type == 'premium' and cancel_at:
+                # Compare current time with cancel_at
+                if cancel_at.tzinfo is None:
+                    cancel_at = cancel_at.replace(tzinfo=timezone.utc)
+
+                now = datetime.now(timezone.utc)
+
+                print(f"Now: {now} (tz: {now.tzinfo}), Cancel At: {cancel_at} (tz: {cancel_at.tzinfo})")
+
+                if now > cancel_at:
+                    # Downgrade the user
+                    cursor.execute("""
+                        UPDATE users
+                        SET subscription_type = 'free',
+                            subscription_cancel_at = NULL
+                        WHERE id = %s
+                    """, (user_id,))
+                    conn.commit()
+
+                    

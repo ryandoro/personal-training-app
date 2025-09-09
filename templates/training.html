@@ -12,17 +12,21 @@
                 <h3 class="card-title text-center fw-bold mb-4">Welcome to your personalized training journey!</h3>
             
                 <p>
-                    Thank you for trusting us to guide you on this incredible journey to becoming the strongest, healthiest version of yourself. There’s no one-size-fits-all approach to health, but we’ve built a simple, effective roadmap tailored to your unique goals and starting point.
+                    <strong>Thank you</strong> for trusting us to guide you toward becoming the strongest, healthiest version of yourself. There’s no one-size-fits-all approach to fitness, but we’ve built a simple, effective roadmap tailored to your goals.
                 </p>
             
                 <p>
-                    <strong>These foundational exercises and instructions will help you move better, look better, and feel amazing.</strong> Your body is the only vehicle you’ve got — and we're going to take great care of it.
+                    These foundational exercises and instructions will help you <strong>move better, look better, and feel amazing.</strong> Your body is the only vehicle you’ve got — and we're going to take great care of it.
                 </p>
             
                 <p>
-                    Be consistent, fuel your body right, and have fun with it! If you ever have questions, we're here for you. Let’s get to work — your results start now!
+                    Be consistent, fuel your body right, and enjoy the process. Got questions? We're here for you.
                 </p>
             
+                <p>
+                    <strong>Let’s get to work — your results start now!</strong>
+                </p>
+
                 <hr class="my-4">
             
                 <h5 class="fw-semibold mb-3 text-center">How It Works</h5>
@@ -35,7 +39,7 @@
                     </div>
                     <div class="col-md-4 mb-2">
                         <div class="p-3 border rounded bg-light shadow-sm h-100">
-                            <strong>Step 2:</strong> Get a personalized workout plan tailored just for you.
+                            <strong>Step 2:</strong> Unlock your free 14-day Premium Trial and receive personalized workout plans built around your goals.
                         </div>
                     </div>
                     <div class="col-md-4 mb-2">
@@ -46,8 +50,8 @@
                 </div>
             </div>
         </div>
-        <div class="card shadow p-4 bg-light rounded mb-5">
-            <h4 class="text-center fw-bold mb-4">Personal Training Questionnaire</h4>
+        <div class="card shadow p-4 rounded mb-5">
+            <h4 class="text-center text-primary mb-4">Personal Training Questionnaire</h4>
             <div class="card-body">
                 <form id="training-form" action="/training" method="post" class="needs-validation" novalidate>
                     <!-- Name -->
@@ -311,11 +315,17 @@
                     </div>                      
 
                     <!-- Submit Button -->
-                    <button type="submit" class="btn btn-primary w-100">Submit</button>
+                    <button type="submit" class="btn btn-primary w-100 mb-2">Submit</button>
+                    <small class="text-muted d-block mb-2">
+                        <i class="bi bi-info-circle"></i>
+                        By clicking Submit, your <strong>free 14-day Premium Trial</strong> will begin. You'll get full access to the <strong>personalized workout generator</strong> and <strong>progress tracking</strong>—upgrade anytime during your trial to keep it.
+                    </small>
                 </form>
             </div>        
-    {% else %} <!-- Show guidelines and workout options after the form is submitted -->
-        <!-- Guidelines Box -->
+    {% else %} 
+
+     
+        <!-- Show guidelines and workout options after the form is submitted -->
         {% if guidelines %}
         <div class="card w-100 mx-auto shadow-sm p-3 border border-2 rounded-3 mb-4" style="border-color: #ced4da;">
             <div class="card-body">
@@ -403,7 +413,13 @@
                     <select id="workout-category-select" class="form-select text-center shadow-sm bitcoin-workout">
                         <option value="">Select a Workout Category</option>
                         {% for category, workouts in grouped_workouts.items() %}
-                            <option value="{{ category }}">{{ category }}</option>
+                            {% if user.subscription_type == 'free' %}
+                                {% if category == 'Shoulders and Abs' %}
+                                    <option value="{{ category }}">{{ category }}</option>
+                                {% endif %}
+                            {% else %}
+                                <option value="{{ category }}">{{ category }}</option>
+                            {% endif %}
                         {% endfor %}
                     </select>
                 </div>                

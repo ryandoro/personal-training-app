@@ -82,6 +82,31 @@
     <!-- Main Content -->
      <main class="flex-grow-1">
         <div class="container content mt-3">
+            <!-- Show Trial Countdown Banner after the form is submitted -->
+            {% if (user.subscription_type == 'free' or user.subscription_type == 'premium') and user.trial_end_date %}
+                {% set days_left = (user.trial_end_date - current_date).days %}
+                {% if days_left > 0 %}
+                    <div style="background: #e6f6fd; border: 1px solid #1EA4E6; border-radius: 16px; padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 2px 10px rgba(0,0,0,0.05); margin: 16px auto 8px auto; max-width: 900px;">
+                        <div style="font-size: 16px; font-weight: 600; color: #003f5c;">
+                            🚀 {{ days_left }} day{{ 's' if days_left > 1 }} left in your free <span style="color:#1EA4E6;">Premium</span> trial!<br>
+                            <span style="font-weight:400; color:#555;">Want to keep full access after your trial?</span>
+                        </div>
+                        <a href="/upgrade" style="background-color: #1EA4E6; color: #ffffff; font-weight: 600; font-size: 14px; padding: 12px 18px; border-radius: 10px; text-decoration: none; transition: background-color 0.3s ease;">
+                            Upgrade to Premium
+                        </a>
+                    </div>
+                {% else %}
+                    <div style="background: #fff7e6; border: 1px solid #F7931A; border-radius: 16px; padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 2px 10px rgba(0,0,0,0.05); margin: 16px auto 8px auto; max-width: 900px;">
+                        <div style="font-size: 16px; font-weight: 600; color: #663c00;">
+                            🚧 Your free trial has ended.<br>
+                            <span style="font-weight:400; color:#7a4f01;">Upgrade to Premium to continue accessing all training and tracking features.</span>
+                        </div>
+                        <a href="/upgrade" style="background-color: #F7931A; color: #ffffff; font-weight: 600; font-size: 14px; padding: 12px 18px; border-radius: 10px; text-decoration: none;">
+                            Upgrade Now
+                        </a>
+                    </div>
+                {% endif %}
+            {% endif %}
             {% block content %}
             {% endblock %}
         </div>
