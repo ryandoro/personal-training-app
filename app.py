@@ -382,9 +382,19 @@ def login():
 
 @app.before_request
 def check_trial_status_and_subscription():
-    if 'user_id' in session:
+    if 'user_id' not in session:
+        return
+
+    # Skip checks for static files and public routes
+    if request.endpoint in ['static', 'login', 'register', 'logout', None]:
+        return
+
+    # Only run the checks once per day per user session
+    today = datetime.now(timezone.utc).date().isoformat()
+    if session.get('trial_checked_on') != today:
         check_and_downgrade_trial(session['user_id'])
-        check_subscription_expiry(session['user_id'])  
+        check_subscription_expiry(session['user_id'])
+        session['trial_checked_on'] = today
 
 
 @app.route('/logout')
