@@ -501,6 +501,7 @@ def check_and_downgrade_trial(user_id):
 
 
 def check_subscription_expiry(user_id):
+    print("🔎 Running check_subscription_expiry for user:", user_id)
     with get_connection() as conn:
         with conn.cursor() as cursor:
             cursor.execute("""

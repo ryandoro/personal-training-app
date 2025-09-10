@@ -382,6 +382,7 @@ def login():
 
 @app.before_request
 def check_trial_status_and_subscription():
+    print("Before request endpoint:", request.endpoint)
     if 'user_id' not in session:
         return
 
@@ -1780,7 +1781,6 @@ def upgrade():
                 'quantity': 1,
             }],
             mode='subscription',
-            automatic_tax={"enabled": True},
             success_url=url_for('upgrade_success', _external=True),
             cancel_url=url_for('training', _external=True),
             metadata={'user_id': user_id}
@@ -1864,7 +1864,19 @@ def stripe_webhook():
                     print("🧼 subscription_cancel_at cleared in DB")
     
     elif event['type'] == 'customer.subscription.deleted':
+        stripe_customer_id = event['data']['object'].get('customer')
         print("❌ Subscription fully canceled")
+
+        with get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("""
+                    UPDATE users
+                    SET subscription_type = 'free',
+                        subscription_cancel_at = NULL
+                    WHERE stripe_customer_id = %s
+                """, (stripe_customer_id,))
+                conn.commit()
+                print("🔻 Downgraded user to free tier in DB")
 
     return jsonify({'status': 'success'}), 200
 
