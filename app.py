@@ -1754,13 +1754,6 @@ def upgrade():
         customer = stripe.Customer.create(
             email=user_email,
             name=full_name,
-            address={
-                "line1": "2500 S Ashland Ave",
-                "city": "Green Bay",
-                "state": "WI",
-                "postal_code": "54304",
-                "country": "US"
-            },
             metadata={"user_id": user_id}
         )
 
