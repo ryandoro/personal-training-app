@@ -412,6 +412,9 @@ def logout():
 def training():
     """Handle personal training form and display workout options."""
     user_id = session['user_id']
+        # 🔒 Always enforce downgrade check before premium content
+    check_and_downgrade_trial(user_id)
+    check_subscription_expiry(user_id)
     form_completed = False  # Default flag to determine what to show
 
     try:

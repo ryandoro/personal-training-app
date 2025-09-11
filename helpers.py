@@ -472,6 +472,7 @@ def float_or_none(v):
     
 
 def check_and_downgrade_trial(user_id):
+    print("🔎Running check_and_downgrade_trial for user:", user_id)
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute("""
@@ -498,6 +499,8 @@ def check_and_downgrade_trial(user_id):
                     WHERE id = %s
                 """, (user_id,))
                 conn.commit()
+
+                print("🔻User's trial expired. Downgraded to free.")
 
 
 def check_subscription_expiry(user_id):
@@ -534,5 +537,7 @@ def check_subscription_expiry(user_id):
                         WHERE id = %s
                     """, (user_id,))
                     conn.commit()
+
+                    print("🔻User's Subscription Canceled and Ended. Downgraded to free.")
 
                     
