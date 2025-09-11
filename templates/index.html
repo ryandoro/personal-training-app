@@ -9,23 +9,23 @@
     <div class="card w-100 shadow-sm p-3 border border-2 rounded-3 mb-4" style="border-color: #ced4da;">
         <div class="card-body">
             {% if name %}
-                <h2 class="text-center fw-bold mb-3">Welcome back, {{ name }}!</h2>
+                <h2 class="text-center fw-bold mb-4">Welcome back, {{ name }}!</h2>
             {% else %}
-                <h2 class="text-center mb-4">Welcome!</h2>
+                <h2 class="text-center fw-bold mb-4">Welcome!</h2>
             {% endif %}
-            <p class="mb-2">
+            <p class="mb-3">
                 Here, you can track your workouts, generate customized routines, and see your progress as you achieve your fitness goals. Let’s keep pushing forward together!
-            </p>
-            <p class="text-center fst-italic text-muted mb-2"
-                style="font-size: 1.1rem;">
-                "It’s good to be aware."
             </p>
             {% if not name %}
                 <p>
                     To get started, head over to the <a href="{{ url_for('training') }}">training page</a> and fill out your fitness questionnaire.
                 </p>
             {% endif %}    
-        
+            <hr>
+            <p class="text-center fst-italic text-muted"
+                style="font-size: 1.1rem;">
+                "It’s good to be aware."
+            </p>
             <hr>
             <h5 class="card-title text-primary fw-bold text-center mb-3">Your Stats:</h5>
             <ul class="list-group p-2 border border-2 rounded-3 mb-4" style="border-color: #ced4da;">
