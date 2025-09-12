@@ -412,7 +412,7 @@ def logout():
 def training():
     """Handle personal training form and display workout options."""
     user_id = session['user_id']
-        # 🔒 Always enforce downgrade check before premium content
+    # 🔒 Always enforce downgrade check before premium content
     check_and_downgrade_trial(user_id)
     check_subscription_expiry(user_id)
     form_completed = False  # Default flag to determine what to show
@@ -1741,37 +1741,50 @@ def inject_global_context():
 def upgrade():
     user_id = session["user_id"]
 
-    # Optional: Lookup user info from your DB if needed (e.g., name or email)
+    # Initialize defaults 
     user_email = None
     full_name = None
+    stripe_customer_id = None
+
     with get_connection() as conn:
         with conn.cursor() as cursor:
-            cursor.execute("SELECT email, name, last_name FROM users WHERE id = %s", (user_id,))
+            cursor.execute("""
+                SELECT email, name, last_name, stripe_customer_id 
+                FROM users 
+                WHERE id = %s
+            """, (user_id,))
             result = cursor.fetchone()
             if result:
                 user_email = result[0]
                 full_name = f"{result[1]} {result[2]}"
+                stripe_customer_id = result[3]
 
+    if not user_email:
+        flash("A valid email is required to upgrade.", "danger")
+        return redirect(url_for('settings'))
+    
     try:
-        # Create Stripe customer (only if you want to store customer ID)
-        customer = stripe.Customer.create(
-            email=user_email,
-            name=full_name,
-            metadata={"user_id": user_id}
-        )
+        # Create Stripe customer (only if they don't already have a customer ID)
+        if not stripe_customer_id:
+            customer = stripe.Customer.create(
+                email=user_email,
+                name=full_name,
+                metadata={"user_id": user_id}
+            )
+            stripe_customer_id = customer.id
 
-        # Save stripe_customer_id to your DB
-        with get_connection() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute("""
-                    UPDATE users SET stripe_customer_id = %s WHERE id = %s
-                """, (customer.id, user_id))
-                conn.commit()
+            # Save stripe_customer_id to your DB
+            with get_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute("""
+                        UPDATE users SET stripe_customer_id = %s WHERE id = %s
+                    """, (stripe_customer_id, user_id))
+                    conn.commit()
 
         # Create a Stripe Checkout Session
         checkout_session = stripe.checkout.Session.create(
             payment_method_types=['card'],
-            customer=customer.id,
+            customer=stripe_customer_id,
             line_items=[{
                 'price': price_id,  
                 'quantity': 1,
@@ -1820,10 +1833,9 @@ def stripe_webhook():
                         UPDATE users
                         SET subscription_type = 'premium', 
                             trial_end_date = NULL,
-                            stripe_customer_id = %s,
                             subscription_cancel_at = NULL
                         WHERE id = %s
-                    """, (stripe_customer_id, user_id,))
+                    """, (user_id,))
                     conn.commit()
 
     elif event['type'] == 'customer.subscription.updated':
