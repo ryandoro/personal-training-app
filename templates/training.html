@@ -347,7 +347,7 @@
      
         <!-- Show guidelines and workout options after the form is submitted -->
         {% if guidelines %}
-        <div class="card w-100 mx-auto shadow-sm p-3 border border-2 rounded-3 mb-4" style="border-color: #ced4da;">
+        <div class="card w-100 mx-auto shadow-sm border border-2 rounded-3 mb-4" style="border-color: #ced4da;">
             <div class="card-body">
                 <h4 class="card-title text-center mb-3">Guidelines</h4>
         
@@ -400,9 +400,8 @@
         {% endif %}
         
 
-
-        <hr>
-        <div class="card" style="box-shadow: 0 0 16px rgba(247, 147, 26, 0.4);">
+        <!-- Choose Your Workout Card -->
+        <div class="card mt-4" style="box-shadow: 0 0 16px rgba(247, 147, 26, 0.4);">
             <h3 class="text-center text-white fw-bold p-3 rounded-3 border" style="text-shadow: 0 0 1.5px black; box-shadow: 0 0 12px lightslategray; background: #1EA4E6;">Choose Your Workout</h3>
             <div class="row justify-content-center">
                 <!-- Duration pills -->
@@ -445,41 +444,65 @@
                 </div>                
             </div>
         </div> 
-        <hr> 
 
-        <div id="workout-details" class="mt-4">
-            {% for category, workouts in grouped_workouts.items() %}
-            <div id="{{ category|replace(' ', '-')|lower }}-workouts" class="d-none">
-                <div class="card shadow-sm mb-4">
-                    <div class="card-header bg-primary text-white">
-                        <h5 class="m-0">{{ category }}</h5>
-                    </div>
-                    <div class="card-body">
-                        <ul class="list-group">
-                            {% for workout in workouts %}
-                                <li class="list-group-item d-flex justify-content-between align-items-start">
-                                    <div class="ms-2 me-auto">
-                                        <div class="fw-bold">{{ workout[0] }}</div>
-                                        <p class="small text-muted">{{ workout[1] }}</p>
-                                    </div>
-                                </li>
-                            {% endfor %}
-                        </ul>
+        <div id="workout-stack" class="stack">
+            <!-- Workout Cards -->
+            <div id="workout-details" class="mt-0">
+                {% for category, workouts in grouped_workouts.items() %}
+                <div id="{{ category|replace(' ', '-')|lower }}-workouts" class="d-none">
+                    <div class="card shadow-sm mb-2">
+                        <div class="card-header bg-primary text-white">
+                            <h5 class="m-0">{{ category }}</h5>
+                        </div>
+                        <div class="card-body">
+                            <ul class="list-group">
+                                {% for workout in workouts %}
+                                    <li class="list-group-item d-flex justify-content-between align-items-start">
+                                        <div class="ms-2 me-auto">
+                                            <div class="fw-bold">{{ workout[0] }}</div>
+                                            <p class="small text-muted">{{ workout[1] }}</p>
+                                        </div>
+                                    </li>
+                                {% endfor %}
+                            </ul>
+                        </div>
                     </div>
                 </div>
+                {% endfor %}
             </div>
-            {% endfor %}
-        </div>
 
+            <!-- Arrow Indicator -->
+            <div id="arrow-indicator" class="text-center" style="display: none;">
+                <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" fill="currentColor"
+                    class="down-arrow bi bi-arrow-down-circle-fill" viewBox="0 0 16 16">
+                <path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0M8.5 4.5a.5.5 0 0 0-1 0v5.793L5.354 
+                        8.146a.5.5 0 1 0-.708.708l3 3a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 
+                        10.293z"/>
+                </svg>
+            </div>
+
+            <!-- Complete Workout Button Card -->
+            <div id="complete-workout-card" class="card border border-success shadow-sm p-3 text-center" style="display: none;">
+                <button id="complete-workout-btn" 
+                        class="btn btn-success fw-bold btn-lg mb-3 border rounded-3" 
+                        style="text-shadow: 0 0 1.5px black; box-shadow: 0 0 12px lightslategray;">
+                    Complete Workout
+                </button>
+                <div id="progress-tracking-note" class="text-muted small">
+                    <em>When you finish a workout, be sure to click the button above to save it and track your progress on the homepage.</em>
+                </div>
+            </div>
+        </div>
+        
         <script>
             const categorySelect = document.getElementById('workout-category-select');
-            const workoutDetails = document.getElementById('workout-details');
-            const earlyBtn = document.getElementById('complete-workout-btn');
-            const earlyNote = document.getElementById('progress-tracking-note');
+            const arrowIndicator = document.getElementById('arrow-indicator')
+            const completeWorkoutCard = document.getElementById('complete-workout-card')
+            const completeWorkoutBtn = document.getElementById('complete-workout-btn');
+            const progressTrackingNote = document.getElementById('progress-tracking-note');
 
-            if (earlyBtn) earlyBtn.style.display = 'none';
-            if (earlyNote) earlyNote.style.display = 'none';
-        
+            if (completeWorkoutCard) completeWorkoutCard.style.display = 'none';
+                    
             categorySelect.addEventListener('change', async () => {
                 const selectedCategory = categorySelect.value;
         
@@ -596,15 +619,6 @@
                                                 )
                                                 .join('')}
                                         </ul>
-
-                                        <div class="card mt-4 border border-success shadow-sm p-3 text-center">
-                                            <button id="complete-workout-btn" class="btn btn-success btn-lg mb-3" style="display: none;">
-                                                Complete Workout
-                                            </button>
-                                            <div id="progress-tracking-note" class="text-muted small" style="display: none;">
-                                                <em>After clicking Complete Workout, you’ll be able to track your progress and view past workouts from the homepage.</em>
-                                            </div>
-                                        </div>
                                     </div>
                                 </div>
                             `;
@@ -612,52 +626,51 @@
 
                             bindImageClickEvents();
         
-                            // Show the "Complete Workout" button and progress tracking note 
-                            const completeWorkoutBtn = document.getElementById('complete-workout-btn');
-                            const progressTrackingNote = document.getElementById('progress-tracking-note');
-
-                            if (completeWorkoutBtn && progressTrackingNote) {
-                                completeWorkoutBtn.style.display = 'block';
-                                progressTrackingNote.style.display = 'block';
-                                completeWorkoutBtn.dataset.category = selectedCategory;
-
-                                completeWorkoutBtn.addEventListener('click', async () => {
-                                    try {
-                                        const response = await fetch('/complete_workout', {
-                                            method: 'POST',
-                                            headers: {
-                                                'Content-Type': 'application/json',
-                                            },
-                                            body: JSON.stringify({ category: selectedCategory })
-                                        });
-
-                                        const data = await response.json();
-
-                                        if (data.success) {
-                                            alert('Workout marked as complete!');
-                                            window.location.href = '/';
-                                        } else {
-                                            alert(data.error || 'An error occurred. Please try again.');
-                                        }
-                                    } catch (err) {
-                                        console.error('Error completing workout:', err);
-                                        alert('An error occurred. Please try again.');
-                                    }
-                                });
-                            }
+                            // Show the "Complete Workout" button and progress tracking note card
+                            completeWorkoutCard.style.display = 'block';
+                            arrowIndicator.style.display = 'block';
+                            completeWorkoutBtn.dataset.category = selectedCategory;
+                            completeWorkoutBtn.textContent = `Complete ${selectedCategory} Workout`;
                         } else {
                             alert('Could not generate workout. Please try again.');
-                            completeWorkoutBtn.style.display = 'none'; // Hide the button if no workout is generated
+                            arrowIndicator.style.display = 'none';
+                            completeWorkoutCard.style.display = 'none'; // Hide the button card if no workout is generated
                         }
                     } catch (err) {
                         console.error('Error fetching workout:', err);
-                        completeWorkoutBtn.style.display = 'none'; // Hide the button on error
+                        arrowIndicator.style.display = 'none';
+                        completeWorkoutCard.style.display = 'none'; // Hide the button card on error
                     }
                 } else {
-                    completeWorkoutBtn.style.display = 'none'; // Hide the button if no category is selected
-                    document.getElementById('progress-tracking-note').style.display = 'none'; // Hide the progress tracking note if no category is selected
+                    arrowIndicator.style.display = 'none';
+                    completeWorkoutCard.style.display = 'none'; // Hide the button card if no category is selected
                 }
             });
+
+            
+            // Add click handler once
+            if (completeWorkoutBtn) {
+                completeWorkoutBtn.addEventListener('click', async () => {
+                    try {
+                        const response = await fetch('/complete_workout', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ category: completeWorkoutBtn.dataset.category })
+                        });
+
+                        const data = await response.json();
+                        if (data.success) {
+                            alert('Workout marked as complete!');
+                            window.location.href = '/';
+                        } else {
+                            alert(data.error || 'An error occurred. Please try again.');
+                        }
+                    } catch (err) {
+                        console.error('Error completing workout:', err);
+                        alert('An error occurred. Please try again.');
+                    }
+                });
+            }
         </script>
 
         <!-- Success Toast -->
@@ -962,7 +975,7 @@
         
         <!-- Target Heart Rate Zone -->
         {% if target_heart_rate_zone %}
-        <div class="card w-100 mx-auto shadow-sm p-3 border border-2 rounded-3 mb-4" style="border-color: #ced4da;">
+        <div class="card w-100 mx-auto shadow-sm mt-4 border border-2 rounded-3 mb-4" style="border-color: #ced4da;">
             <div class="card-body">
                 <h4 class="card-title text-center mb-3">Your Target Heart Rate Zone</h4>
                 <p class="card-text">
