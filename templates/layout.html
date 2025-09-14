@@ -12,63 +12,65 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
 </head>
 <body class="d-flex flex-column min-vh-100">
-    <!-- Navigation Bar -->
-    <nav class="navbar navbar-expand-lg" style="background-color: #404043;">
-        <div class="container-fluid">
-            <a class="navbar-brand d-flex align-items-center" href="/">
-                <img src="{{ url_for('static', filename='images/fitbaseai_logo_left_text_right.png') }}" 
-                     alt="FitBase Logo" 
-                     style="height: 44px; width: auto;" />
-            </a>            
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="navbarNav">
-                {% if 'user_id' in session %}
-                    <!-- Search bar only visible when menu is expanded -->
-                    <form class="d-flex ms-lg-auto me-3 mt-2 mt-lg-0" role="search" action="/search" method="GET">
-                    <input class="form-control me-2 bitcoin-search"
-                            type="search" placeholder="Search exercises..." name="q" aria-label="Search">
-                    <button class="btn bitcoin-btn" type="submit">Search</button>
-                    </form>
-                {% endif %}
-                <ul class="navbar-nav ms-auto">                 
+    {% if request.endpoint not in ['terms', 'privacy'] %}
+        <!-- Navigation Bar -->
+        <nav class="navbar navbar-expand-lg" style="background-color: #404043;">
+            <div class="container-fluid">
+                <a class="navbar-brand d-flex align-items-center" href="/">
+                    <img src="{{ url_for('static', filename='images/fitbaseai_logo_left_text_right.png') }}" 
+                        alt="FitBase Logo" 
+                        style="height: 44px; width: auto;" />
+                </a>            
+                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+                <div class="collapse navbar-collapse" id="navbarNav">
                     {% if 'user_id' in session %}
-                        {% if is_admin %}
-                            <li class="nav-item">
-                                <a class="nav-link" href="{{ url_for('admin_users') }}">Admin Dashboard</a>
-                            </li>
-                        {% endif %}                  
-                        <li class="nav-item">
-                            <a class="nav-link" aria-current="page" href="/">Home</a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="/training">Training</a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="{{ url_for('settings') }}">Account Settings</a>
-                        </li>                        
-                        <li class="nav-item">
-                            <a href="/logout" class="nav-link" onclick="return confirmLogout()">Logout</a>
-                            <script>
-                                // JavaScript function to confirm logout
-                                function confirmLogout() {
-                                    return confirm("Are you sure you want to logout?");
-                                }
-                            </script>
-                        </li>
-                    {% else %}
-                        <li class="nav-item">
-                            <a class="nav-link" href="/register">Register</a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="/login">Login</a>
-                        </li>
+                        <!-- Search bar only visible when menu is expanded -->
+                        <form class="d-flex ms-lg-auto me-3 mt-2 mt-lg-0" role="search" action="/search" method="GET">
+                        <input class="form-control me-2 bitcoin-search"
+                                type="search" placeholder="Search exercises..." name="q" aria-label="Search">
+                        <button class="btn bitcoin-btn" type="submit">Search</button>
+                        </form>
                     {% endif %}
-                </ul>
+                    <ul class="navbar-nav ms-auto">                 
+                        {% if 'user_id' in session %}
+                            {% if is_admin %}
+                                <li class="nav-item">
+                                    <a class="nav-link" href="{{ url_for('admin_users') }}">Admin Dashboard</a>
+                                </li>
+                            {% endif %}                  
+                            <li class="nav-item">
+                                <a class="nav-link" aria-current="page" href="/">Home</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" href="/training">Training</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" href="{{ url_for('settings') }}">Account Settings</a>
+                            </li>                        
+                            <li class="nav-item">
+                                <a href="/logout" class="nav-link" onclick="return confirmLogout()">Logout</a>
+                                <script>
+                                    // JavaScript function to confirm logout
+                                    function confirmLogout() {
+                                        return confirm("Are you sure you want to logout?");
+                                    }
+                                </script>
+                            </li>
+                        {% else %}
+                            <li class="nav-item">
+                                <a class="nav-link" href="/register">Register</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" href="/login">Login</a>
+                            </li>
+                        {% endif %}
+                    </ul>
+                </div>
             </div>
-        </div>
-    </nav>
+        </nav>
+    {% endif %}
 
     <!-- Custom Global Toast -->
     <div id="globalToast" class="text-center fw-bold"
@@ -118,9 +120,13 @@
             <p class="mb-0">
                 Powered by 
                 <strong>
-                    <a href="{{ url_for('home') }}" style="color: #F7931A; text-decoration: none;">
-                        FitBaseAI
-                    </a>
+                    {% if request.endpoint in ['terms', 'privacy'] %}
+                        <span style="color: #F7931A;">FitBaseAI</span>
+                    {% else %}
+                        <a href="{{ url_for('home') }}" style="color: #F7931A; text-decoration: none;">
+                            FitBaseAI
+                        </a>
+                    {% endif %}
                 </strong> 
                 &copy; {{ current_year }}</p>
         </div>

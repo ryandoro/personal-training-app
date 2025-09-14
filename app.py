@@ -448,7 +448,9 @@ def training():
         workout_duration_raw = request.form.get('workout_duration')
         commitment = request.form.get('commitment')
         additional_notes = request.form.get('additional_notes')
+        waiver = request.form.get('waiver')
 
+    
         # Combine fitness goals into a single string
         fitness_goals_str = ", ".join(fitness_goals)
 
@@ -491,6 +493,9 @@ def training():
         if workout_duration_raw not in allowed_durations:
             errors['workout_duration'] = "Please select a valid workout duration."
             
+        if not waiver:
+            errors["waiver"] = "You must agree to the Terms of Service and Liability Waiver."
+
         if errors:
             flash("Please fix the highlighted fields.", "danger")
             # Re-render with what the user typed + which fields failed
@@ -1734,6 +1739,16 @@ def inject_global_context():
         "current_date": current_date,
         "user": user
     }
+
+
+@app.route("/terms")
+def terms():
+    return render_template("terms.html")
+
+
+@app.route("/privacy")
+def privacy():
+    return render_template("privacy.html")
 
 
 @app.route('/upgrade')

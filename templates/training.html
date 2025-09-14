@@ -314,8 +314,28 @@
                         <textarea class="form-control" id="additional-notes" name="additional_notes" rows="3">{{ (form_data.get('additional_notes') or '') if form_data is defined else '' }}</textarea>
                     </div>                      
 
+                    <!-- Liability Waiver + Privacy Policy Agreement -->
+                    <div class="mb-3 form-check">
+                        <input type="checkbox" 
+                            class="form-check-input {{ 'is-invalid' if errors and errors.get('waiver') }}"
+                            id="waiver" 
+                            name="waiver" 
+                            required>
+                        <label class="form-check-label" for="waiver">
+                            I acknowledge that I have read and agree to the
+                            <a href="/terms" target="_blank">Terms of Service and Liability Waiver</a> 
+                            and the 
+                            <a href="/privacy" target="_blank">Privacy Policy</a>.
+                        </label>
+                        {% if errors and errors.get('waiver') %}
+                            <div class="invalid-feedback d-block">{{ errors.get('waiver') }}</div>
+                        {% endif %}
+                    </div>
+
                     <!-- Submit Button -->
                     <button type="submit" class="btn btn-primary w-100 mb-2">Submit</button>
+
+
                     <small class="text-muted d-block mb-2">
                         <i class="bi bi-info-circle"></i>
                         By clicking Submit, your <strong>free 14-day Premium Trial</strong> will begin. You'll get full access to the <strong>personalized workout generator</strong> and <strong>progress tracking</strong>—upgrade anytime during your trial to keep it.
