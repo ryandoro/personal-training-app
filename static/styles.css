@@ -276,18 +276,11 @@ iframe.fullscreen-sim {
 .down-arrow {
   color: #198754; /* Bootstrap green */
   display: inline-block;
-  animation: bounce 1s infinite, glow 4s infinite;
+  animation: bounce 1s infinite;
+  filter: drop-shadow(0 0 4px #ffffff); /* constant white glow */
 }
 
 @keyframes bounce {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(8px); }
 }
-
-@keyframes glow {
-  0%, 50% { filter: drop-shadow(0 0 4px #ffffff); }
-  75%   { filter: drop-shadow(0 0 8px #28a745); }
-  100%     { filter: drop-shadow(0 0 4px #ffffff); }
-}
-
-
