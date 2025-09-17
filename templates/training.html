@@ -442,6 +442,14 @@
                         {% endfor %}
                     </select>
                 </div>                
+                <div class="text-center mb-3">
+                    <button id="generate-workout-btn" type="button"
+                        class="btn btn-primary fw-bold btn-lg border rounded-3 px-4"
+                        style="text-shadow: 0 0 1px rgba(0,0,0,0.25); box-shadow: 0 0 12px rgba(30,164,230,0.45);"
+                        disabled>
+                        Generate Workout
+                    </button>
+                </div>
             </div>
         </div> 
 
@@ -496,161 +504,275 @@
         
         <script>
             const categorySelect = document.getElementById('workout-category-select');
-            const arrowIndicator = document.getElementById('arrow-indicator')
-            const completeWorkoutCard = document.getElementById('complete-workout-card')
+            const generateWorkoutBtn = document.getElementById('generate-workout-btn');
+            const arrowIndicator = document.getElementById('arrow-indicator');
+            const completeWorkoutCard = document.getElementById('complete-workout-card');
             const completeWorkoutBtn = document.getElementById('complete-workout-btn');
             const progressTrackingNote = document.getElementById('progress-tracking-note');
+            const toastGenerate = document.getElementById('toastGenerate');
+            let toastGenerateTimeout;
 
-            if (completeWorkoutCard) completeWorkoutCard.style.display = 'none';
-                    
-            categorySelect.addEventListener('change', async () => {
-                const selectedCategory = categorySelect.value;
-        
-                // Hide all workout details
-                document.querySelectorAll('#workout-details > div').forEach(div => div.classList.add('d-none'));
-        
-                if (selectedCategory) {
-                    try {
-                        // Fetch generated workout
-                        const response = await fetch(`/generate_workout?category=${encodeURIComponent(selectedCategory)}`);
-                        const data = await response.json();
-        
-                        if (data.success) {
-                            // Update the DOM with generated workouts
-                            const categoryDiv = document.getElementById(
-                                `${selectedCategory.replaceAll(' ', '-').toLowerCase()}-workouts`
-                            );
-                            categoryDiv.innerHTML = `
-                                <div class="card w-100 mb-4 shadow-sm p-3 border border-3 rounded-2" style="border-color: #ced4da;">
-                                    <div class="card-header shadow p-3 fitbaseblue-bg text-white">
-                                        <h5 class="m-0 text-uppercase">${selectedCategory}</h5>
-                                    </div>
-                                    <div class="card-body px-0">
-                                        <ul class="list-group">
-                                            ${data.workout
-                                                .map(
-                                                    subcategory => `
-                                                    <li class="list-group-item">
-                                                        <div class="card w-100 shadow-sm p-3 border border-2 rounded-3" style="border-color: #ced4da;">
-                                                            <h6 class="fitbaseblue-text fw-bold fs-5 mb-3">${subcategory.subcategory}</h6>
-                                                            <div class="px-0">
-                                                                <ul class="list-unstyled mt-2">
-                                                                    ${subcategory.exercises
-                                                                        .map(
-                                                                            exercise => `
-                                                                                <li class="mb-4">
-                                                                                    <div class="card shadow p-3 text-center border border-1 rounded-4 w-100" style="border-color: #20c997;">
-                                                                                        <h6 class="fw-bold mb-3 text-uppercase" style="color: #F7931A; border-bottom: 2px solid #4D4D4D; display: inline-block; padding-bottom: 2px;">${exercise.name}</h6>
-                                                                                        <div class="d-flex justify-content-center flex-nowrap gap-3 mb-3 px-2">
-                                                                                            <div class="d-flex flex-column align-items-center">
-                                                                                                <p class="mb-1 fw-semibold">Start:</p>
-                                                                                                <img src="/static/images/${exercise.image_exercise_start}" 
-                                                                                                    alt="Start: ${exercise.name}" 
-                                                                                                    class="clickable-img rounded border border-2 p-1 shadow-sm"
-                                                                                                    data-group="${exercise.name}" data-index="0" 
-                                                                                                    style="border-color: #20c997; width: 100%; max-width: 140px;">
-                                                                                            </div>
-                                                                                            <div class="d-flex flex-column align-items-center">
-                                                                                                <p class="mb-1 fw-semibold">End:</p>
-                                                                                                <img src="/static/images/${exercise.image_exercise_end}" 
-                                                                                                    alt="End: ${exercise.name}" 
-                                                                                                    class="clickable-img rounded border border-2 p-1 shadow-sm"
-                                                                                                    data-group="${exercise.name}" data-index="1" 
-                                                                                                    style="border-color: #20c997; width: 100%; max-width: 140px;">
-                                                                                            </div>
-                                                                                        </div>
-
-                                                                                        ${exercise.youtube_id ? (
-                                                                                        `<p class="fw-semibold mb-1">Video Demonstration:</p>
-                                                                                        <div class="d-flex justify-content-center mb-3 px-2">
-                                                                                            <div style="width: 100%; max-width: 240px;">
-                                                                                                <div class="bg-light rounded border shadow-sm mb-3 mx-auto" style="border-color: #20c997; padding: 5px; max-width: 240px;">
-                                                                                                    <iframe
-                                                                                                        style="border-color: #20c997; width: 100%; aspect-ratio: 9 / 16; border: none; display: block;"
-                                                                                                        src="https://www.youtube.com/embed/${exercise.youtube_id}?playsinline=1&modestbranding=1&rel=0"
-                                                                                                        title="FitBase Demo"
-                                                                                                        frameborder="0"
-                                                                                                        allow="fullscreen; accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                                                                                                        allowfullscreen
-                                                                                                    ></iframe>
-                                                                                                </div>
-                                                                                            </div>
-                                                                                        </div>`
-                                                                                        ) : ''}
-
-                                                                                        <div class="personal-best bg-light p-3 rounded text-center mb-3 shadow-sm border border-2 mx-auto d-block" style="border-color: #20c997; width: fit-content;" data-id="${exercise.workout_id}">
-                                                                                            <small class="text-muted d-block mb-1">Your Max:</small>
-                                                                                            <div class="fw-bold personal-max-text">
-                                                                                                ${exercise.category.toLowerCase() === 'cardio'
-                                                                                                    ? 'Bodyweight'
-                                                                                                    : (exercise.name.toLowerCase().includes('bodyweight') || exercise.max_weight === 0
-                                                                                                        ? 'Bodyweight'
-                                                                                                        : (exercise.max_weight
-                                                                                                            ? `${parseFloat(exercise.max_weight).toFixed(1)} lbs`
-                                                                                                            : '–')
-                                                                                                    )
-                                                                                                } × 
-                                                                                                ${exercise.category.toLowerCase() === 'cardio'
-                                                                                                    ? (exercise.max_reps != null ? `${exercise.max_reps} min` : '–')
-                                                                                                    : (exercise.max_reps != null ? `${exercise.max_reps} reps` : '–')
-                                                                                                }
-                                                                                            </div>
-                                                                                            <button class="btn btn-outline-primary btn-sm mt-2 update-pr-link" data-id="${exercise.workout_id}" data-category="${exercise.category}">
-                                                                                                Update Max
-                                                                                            </button>
-                                                                                        </div>
-                                                                                        <div class="text-center">
-                                                                                            <button class="btn btn-outline-primary btn-sm mt-2 toggle-description" data-id="desc-${subcategory.subcategory.replace(/\s+/g, '-')}-${exercise.workout_id}">
-                                                                                                View Description
-                                                                                            </button>
-                                                                                            <div id="desc-${subcategory.subcategory.replace(/\s+/g, '-')}-${exercise.workout_id}" class="description text-muted mt-2" style="display: none;">
-                                                                                                ${exercise.description}
-                                                                                            </div>
-                                                                                        </div>
-                                                                                    </div>
-                                                                                </li>`
-                                                                        )
-                                                                        .join('')}
-                                                                </ul>
-                                                            </div>
-                                                        </div>
-                                                    </li>
-                                                `
-                                                )
-                                                .join('')}
-                                        </ul>
-                                    </div>
-                                </div>
-                            `;
-                            categoryDiv.classList.remove('d-none');
-
-                            bindImageClickEvents();
-        
-                            // Show the "Complete Workout" button and progress tracking note card
-                            completeWorkoutCard.style.display = 'block';
-                            arrowIndicator.style.display = 'block';
-                            completeWorkoutBtn.dataset.category = selectedCategory;
-                            completeWorkoutBtn.textContent = `Complete ${selectedCategory} Workout`;
-                        } else {
-                            alert('Could not generate workout. Please try again.');
-                            arrowIndicator.style.display = 'none';
-                            completeWorkoutCard.style.display = 'none'; // Hide the button card if no workout is generated
-                        }
-                    } catch (err) {
-                        console.error('Error fetching workout:', err);
-                        arrowIndicator.style.display = 'none';
-                        completeWorkoutCard.style.display = 'none'; // Hide the button card on error
-                    }
-                } else {
-                    arrowIndicator.style.display = 'none';
-                    completeWorkoutCard.style.display = 'none'; // Hide the button card if no category is selected
+            function showGenerateToast(message) {
+                if (!toastGenerate) return;
+                toastGenerate.textContent = message;
+                toastGenerate.style.display = 'block';
+                if (toastGenerateTimeout) {
+                    clearTimeout(toastGenerateTimeout);
                 }
-            });
+                toastGenerateTimeout = setTimeout(() => {
+                    toastGenerate.style.display = 'none';
+                }, 2500);
+            }
 
-            
-            // Add click handler once
+            function syncSelectStyle() {
+                if (!categorySelect) return;
+                categorySelect.classList.toggle('select-orange', !!categorySelect.value);
+            }
+
+            function syncGenerateButtonState() {
+                if (!generateWorkoutBtn) return;
+                const hasCategory = !!(categorySelect && categorySelect.value);
+                const isLoading = generateWorkoutBtn.dataset.loading === 'true';
+                generateWorkoutBtn.disabled = !hasCategory || isLoading;
+            }
+
+            function setGenerateButtonLoading(isLoading) {
+                if (!generateWorkoutBtn) return;
+                generateWorkoutBtn.dataset.loading = isLoading ? 'true' : 'false';
+                generateWorkoutBtn.textContent = isLoading ? 'Generating...' : 'Generate Workout';
+                syncGenerateButtonState();
+            }
+
+            function clearWorkoutView() {
+                document.querySelectorAll('#workout-details > div').forEach(div => div.classList.add('d-none'));
+                if (arrowIndicator) arrowIndicator.style.display = 'none';
+                if (completeWorkoutCard) completeWorkoutCard.style.display = 'none';
+                if (completeWorkoutBtn) {
+                    delete completeWorkoutBtn.dataset.category;
+                    completeWorkoutBtn.textContent = 'Complete Workout';
+                }
+                if (progressTrackingNote) {
+                    progressTrackingNote.style.display = 'none';
+                }
+            }
+
+            function buildExerciseHtml(subcategoryName, exercise, index) {
+                const isCardio = (subcategoryName || '').toLowerCase() === 'cardio';
+                const isBodyweight = (exercise.name || '').toLowerCase().includes('bodyweight');
+                const uniqueKey = exercise.workout_id ?? `${subcategoryName}-${index}`;
+                const descId = `desc-${String(uniqueKey).replace(/[^a-zA-Z0-9_-]/g, '-')}`;
+                const hasWeight = exercise.max_weight !== null && exercise.max_weight !== undefined;
+                const hasReps = exercise.max_reps !== null && exercise.max_reps !== undefined;
+                const weightValue = hasWeight ? Number(exercise.max_weight) : null;
+                const weightDisplay = (isBodyweight || isCardio)
+                    ? 'Bodyweight'
+                    : (Number.isFinite(weightValue) ? `${weightValue.toFixed(1)} lbs` : (hasWeight ? `${exercise.max_weight} lbs` : '—'));
+                const repsDisplay = hasReps
+                    ? (isCardio ? `${exercise.max_reps} min` : `${exercise.max_reps} reps`)
+                    : '—';
+                const summaryValue = (isBodyweight || isCardio)
+                    ? `Bodyweight × ${repsDisplay}`
+                    : `${weightDisplay} × ${repsDisplay}`;
+                const youtubeSection = exercise.youtube_id ? `
+                        <p class="fw-semibold mb-1">Video Demonstration:</p>
+                        <div class="d-flex justify-content-center mb-3 px-2">
+                            <div style="width: 100%; max-width: 240px;">
+                                <div class="bg-light rounded border shadow-sm mb-3 mx-auto" style="border-color: #20c997; padding: 5px; max-width: 240px;">
+                                    <iframe
+                                        style="border-color: #20c997; width: 100%; aspect-ratio: 9 / 16; border: none; display: block;"
+                                        src="https://www.youtube.com/embed/${exercise.youtube_id}"
+                                        title="${exercise.name} tutorial"
+                                        allowfullscreen>
+                                    </iframe>
+                                </div>
+                            </div>
+                        </div>
+                ` : '';
+
+                const workoutIdAttr = exercise.workout_id ?? '';
+                const categoryAttr = (subcategoryName || '').replace(/"/g, '&quot;');
+                const description = exercise.description || 'No description available.';
+
+                return `
+                    <li class="mb-4">
+                        <div class="card shadow p-3 text-center border border-1 rounded-4 w-100" style="border-color: #20c997;">
+                            <h6 class="fw-bold mb-3 text-uppercase" style="color: #F7931A; border-bottom: 2px solid #4D4D4D; display: inline-block; padding-bottom: 2px;">${exercise.name}</h6>
+                            <div class="d-flex justify-content-center flex-nowrap gap-3 mb-3 px-2">
+                                <div class="d-flex flex-column align-items-center">
+                                    <p class="mb-1 fw-semibold">Start:</p>
+                                    <img src="/static/images/${exercise.image_exercise_start}"
+                                        alt="Start: ${exercise.name}"
+                                        class="clickable-img rounded border border-2 p-1 shadow-sm"
+                                        data-group="${exercise.name}" data-index="0"
+                                        style="border-color: #20c997; width: 100%; max-width: 140px;">
+                                </div>
+                                <div class="d-flex flex-column align-items-center">
+                                    <p class="mb-1 fw-semibold">End:</p>
+                                    <img src="/static/images/${exercise.image_exercise_end}"
+                                        alt="End: ${exercise.name}"
+                                        class="clickable-img rounded border border-2 p-1 shadow-sm"
+                                        data-group="${exercise.name}" data-index="1"
+                                        style="border-color: #20c997; width: 100%; max-width: 140px;">
+                                </div>
+                            </div>
+                            ${youtubeSection}
+                            <div class="d-flex flex-column align-items-center gap-3 max-actions">
+                                <div class="personal-best max-summary" data-id="${workoutIdAttr}" data-category="${categoryAttr}">
+                                    <span class="max-label text-uppercase fw-semibold">Your Max</span>
+                                    <div class="max-pill-row">
+                                        <span class="max-pill max-pill-weight">${weightDisplay}</span>
+                                        <span class="max-times">×</span>
+                                        <span class="max-pill max-pill-reps">${repsDisplay}</span>
+                                    </div>
+                                    <span class="personal-max-text d-none">Your Max: ${summaryValue}</span>
+                                </div>
+                                <div class="d-flex flex-wrap justify-content-center gap-2 max-action-buttons">
+                                    <button class="btn btn-outline-secondary btn-sm max-action-btn update-pr-link"
+                                        data-id="${workoutIdAttr}"
+                                        data-category="${categoryAttr}">
+                                        Update Max
+                                    </button>
+                                    <button class="btn btn-outline-primary btn-sm max-action-btn toggle-description"
+                                        type="button"
+                                        data-id="${descId}">
+                                        View Description
+                                    </button>
+                                </div>
+                            </div>
+                            <div id="${descId}" class="exercise-description mt-3 text-center" style="display: none;">
+                                <p class="small text-muted mb-0">${description}</p>
+                            </div>
+                        </div>
+                    </li>
+                `;
+            }
+
+            function buildWorkoutHtml(selectedCategory, workoutData) {
+                const sections = workoutData.map(subcategory => `
+                    <li class="list-group-item">
+                        <div class="card w-100 shadow-sm p-3 border border-2 rounded-3" style="border-color: #ced4da;">
+                            <h6 class="fitbaseblue-text fw-bold fs-5 mb-3">${subcategory.subcategory}</h6>
+                            <div class="px-0">
+                                <ul class="list-unstyled mt-2">
+                                    ${subcategory.exercises.map((exercise, idx) => buildExerciseHtml(subcategory.subcategory, exercise, idx)).join('')}
+                                </ul>
+                            </div>
+                        </div>
+                    </li>
+                `).join('');
+
+                return `
+                    <div class="card w-100 mb-4 shadow-sm p-3 border border-3 rounded-2" style="border-color: #ced4da;">
+                        <div class="card-header shadow p-3 fitbaseblue-bg text-white">
+                            <h5 class="m-0 text-uppercase">${selectedCategory}</h5>
+                        </div>
+                        <div class="card-body px-0">
+                            <ul class="list-group">
+                                ${sections}
+                            </ul>
+                        </div>
+                    </div>
+                `;
+            }
+
+            function renderWorkout(selectedCategory, workoutData) {
+                clearWorkoutView();
+                if (!selectedCategory || !Array.isArray(workoutData) || workoutData.length === 0) {
+                    return;
+                }
+
+                const safeId = `${selectedCategory.replaceAll(' ', '-').toLowerCase()}-workouts`;
+                const categoryDiv = document.getElementById(safeId);
+                if (!categoryDiv) return;
+
+                categoryDiv.innerHTML = buildWorkoutHtml(selectedCategory, workoutData);
+                categoryDiv.classList.remove('d-none');
+
+                if (arrowIndicator) arrowIndicator.style.display = 'block';
+                if (completeWorkoutCard) completeWorkoutCard.style.display = 'block';
+                if (completeWorkoutBtn) {
+                    completeWorkoutBtn.dataset.category = selectedCategory;
+                    completeWorkoutBtn.textContent = `Complete ${selectedCategory} Workout`;
+                }
+                if (progressTrackingNote) {
+                    progressTrackingNote.style.display = 'block';
+                }
+
+                bindImageClickEvents();
+            }
+
+            window.renderWorkout = renderWorkout;
+
+            async function hydrateActiveWorkout() {
+                try {
+                    const response = await fetch('/get_active_workout');
+                    if (!response.ok) return;
+                    const data = await response.json();
+                    if (data.success && data.workout) {
+                        if (categorySelect) {
+                            categorySelect.value = data.category || '';
+                        }
+                        renderWorkout(data.category, data.workout);
+                    } else {
+                        renderWorkout(null, []);
+                    }
+                } catch (err) {
+                    console.error('Failed to load active workout:', err);
+                } finally {
+                    syncSelectStyle();
+                    syncGenerateButtonState();
+                }
+            }
+
+            async function handleGenerateClick() {
+                if (!categorySelect || !categorySelect.value) {
+                    alert('Please select a workout category first.');
+                    return;
+                }
+
+                const selectedCategory = categorySelect.value;
+                setGenerateButtonLoading(true);
+
+                try {
+                    const response = await fetch(`/generate_workout?category=${encodeURIComponent(selectedCategory)}`);
+                    const data = await response.json();
+                    if (data.success) {
+                        renderWorkout(data.category || selectedCategory, data.workout);
+                        showGenerateToast(`⚡ New ${data.category || selectedCategory} workout generated.`);
+                        syncSelectStyle();
+                        syncGenerateButtonState();
+                    } else {
+                        alert(data.error || 'Could not generate workout. Please try again.');
+                    }
+                } catch (err) {
+                    console.error('Error fetching workout:', err);
+                    alert('An error occurred. Please try again.');
+                } finally {
+                    setGenerateButtonLoading(false);
+                }
+            }
+
+            if (generateWorkoutBtn) {
+                generateWorkoutBtn.addEventListener('click', handleGenerateClick);
+            }
+
+            if (categorySelect) {
+                categorySelect.addEventListener('change', () => {
+                    syncSelectStyle();
+                    syncGenerateButtonState();
+                });
+            }
+
+            syncSelectStyle();
+            syncGenerateButtonState();
+            hydrateActiveWorkout();
+
             if (completeWorkoutBtn) {
                 completeWorkoutBtn.addEventListener('click', async () => {
+                    if (completeWorkoutBtn.dataset.submitting === 'true') {
+                        return;
+                    }
+                    completeWorkoutBtn.dataset.submitting = 'true';
                     try {
                         const response = await fetch('/complete_workout', {
                             method: 'POST',
@@ -668,6 +790,8 @@
                     } catch (err) {
                         console.error('Error completing workout:', err);
                         alert('An error occurred. Please try again.');
+                    } finally {
+                        completeWorkoutBtn.dataset.submitting = 'false';
                     }
                 });
             }
@@ -678,6 +802,12 @@
             style="display: none; position: fixed; top: 65px; left: 50%; transform: translateX(-50%);
                 z-index: 10000; background: #d4edda; padding: 10px 20px; border-radius: 5px; box-shadow: 0 0 10px rgba(0,0,0,0.2);">
             Max updated!
+        </div>
+
+        <div id="toastGenerate" class="text-primary text-center fw-bold"
+            style="display: none; position: fixed; top: 15px; left: 50%; transform: translateX(-50%);
+                z-index: 10000; background: #e9f7ff; padding: 10px 24px; border-radius: 5px; box-shadow: 0 0 10px rgba(0,0,0,0.2);">
+            ⚡ Workout ready!
         </div>
 
         <!-- Max Update Modal -->
@@ -881,30 +1011,43 @@
                     e.preventDefault();
 
                     currentWorkoutId = e.target.dataset.id;
-                    const container = document.querySelector(`.personal-best[data-id="${currentWorkoutId}"] .personal-max-text`);
-                    const isCardio = e.target.dataset.category.toLowerCase() === 'cardio';
-                    const [weightText, repsText] = container.textContent.split('×').map(val => val.trim());
+                    const bestWrapper = document.querySelector(`.personal-best[data-id="${currentWorkoutId}"]`);
+                    const categoryLabel = (e.target.dataset.category || '').toLowerCase();
+                    const isCardio = categoryLabel === 'cardio';
+                    const weightSpan = bestWrapper?.querySelector('.max-pill-weight');
+                    const repsSpan = bestWrapper?.querySelector('.max-pill-reps');
+                    const weightText = weightSpan ? weightSpan.textContent.trim() : '';
+                    const repsText = repsSpan ? repsSpan.textContent.trim() : '';
                     const isBodyweight = weightText.toLowerCase().includes('bodyweight');
+                    const treatAsBodyweight = isBodyweight || isCardio;
 
                     const weightInput = document.getElementById('maxWeightInput');
-                    weightInput.value = isBodyweight ? '' : (parseFloat(weightText) || '');
-                    weightInput.disabled = isBodyweight;
-                    weightInput.placeholder = isBodyweight 
-                        ? 'Bodyweight exercise' 
-                        : 'Max Weight (lbs)';
+                    const numericWeight = parseFloat(weightText.replace(/[^0-9.]+/g, ''));
+                    weightInput.value = (!treatAsBodyweight && Number.isFinite(numericWeight)) ? numericWeight : '';
+                    weightInput.disabled = treatAsBodyweight;
+                    if (treatAsBodyweight) {
+                        weightInput.placeholder = isCardio ? 'Cardio exercise' : 'Bodyweight exercise';
+                    } else {
+                        weightInput.placeholder = 'Max Weight (lbs)';
+                    }
                     weightInput.title = weightInput.placeholder;
 
                     const repsInput = document.getElementById('maxRepsInput');
-                    repsInput.value = parseInt(repsText) || '';
+                    const numericReps = parseInt(repsText.replace(/[^0-9]+/g, ''), 10);
+                    repsInput.value = Number.isFinite(numericReps) ? numericReps : '';
                     repsInput.placeholder = isCardio ? 'Minutes' : 'Reps';
                     repsInput.title = repsInput.placeholder;
 
-                    document.getElementById('prModal').classList.add('show');
+                    const modal = document.getElementById('prModal');
+                    modal.classList.add('show');
+                    modal.style.display = 'flex';
                 }
 
                 // Close modal when clicking the "X" button
                 if (e.target.id === 'prModalClose') {
-                    document.getElementById('prModal').classList.remove('show');
+                    const modal = document.getElementById('prModal');
+                    modal.classList.remove('show');
+                    modal.style.display = 'none';
                 }
             });
 
@@ -935,20 +1078,26 @@
                 .then(res => res.json())
                 .then(data => {
                     if (data.success) {
-                        const container = document.querySelector(`.personal-best[data-id="${currentWorkoutId}"] .personal-max-text`);
-                        if (container) {
-                            const displayWeight = maxWeightInput.disabled
-                                ? 'Bodyweight'
-                                : `${parseFloat(maxWeight).toFixed(1)} lbs`;
+                        const bestWrapper = document.querySelector(`.personal-best[data-id="${currentWorkoutId}"]`);
+                        if (bestWrapper) {
+                            const weightSpan = bestWrapper.querySelector('.max-pill-weight');
+                            const repsSpan = bestWrapper.querySelector('.max-pill-reps');
+                            const hiddenSummary = bestWrapper.querySelector('.personal-max-text');
                             const displayReps = isCardio
                                 ? `${maxReps} min`
                                 : `${maxReps} reps`;
+                            const weightLabel = maxWeightInput.disabled
+                                ? 'Bodyweight'
+                                : `${parseFloat(maxWeight).toFixed(1)} lbs`;
 
-                            container.textContent = `${displayWeight} × ${displayReps}`;
+                            if (weightSpan) weightSpan.textContent = weightLabel;
+                            if (repsSpan) repsSpan.textContent = displayReps;
+                            if (hiddenSummary) hiddenSummary.textContent = `Your Max: ${weightLabel} × ${displayReps}`;
                         }
                         // Hide modal
-                        document.getElementById('prModal').classList.remove('show');
-                        document.getElementById('prModal').style.display = 'none';
+                        const modal = document.getElementById('prModal');
+                        modal.classList.remove('show');
+                        modal.style.display = 'none';
 
                         // Show toast
                         const toast = document.getElementById('toastSuccess');
@@ -1059,7 +1208,7 @@
         updateCheckboxStates();
     });
 
-    // Duration pills: update preference and (optionally) re-generate if a category is selected
+    // Duration pills: update preference without auto-generating workouts
     (function () {
         const pillsWrap = document.getElementById('duration-pills');
         if (!pillsWrap) return;
@@ -1095,11 +1244,6 @@
                 return;
             }
 
-            // If a category is already chosen, re-generate with new duration
-            if (categorySelect && categorySelect.value) {
-                categorySelect.dispatchEvent(new Event('change'));
-            }
-
             // Optional toast feedback
             const toast = document.getElementById('toastSuccess');
             if (toast) {
@@ -1116,14 +1260,5 @@
         });
     })();
 
-    if (categorySelect) {
-        function syncSelectStyle() {
-            categorySelect.classList.toggle('select-orange', !!categorySelect.value);
-        }
-        categorySelect.addEventListener('change', syncSelectStyle);
-        syncSelectStyle(); // run on load
-    }
 </script>   
 {% endblock %}
-
-

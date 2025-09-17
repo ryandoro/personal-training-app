@@ -1,7 +1,7 @@
 import os, re, logging, json, psycopg2, psycopg2.extras, psycopg2.errors, stripe
 from flask import Flask, flash, redirect, render_template, request, session, jsonify, url_for, current_app
 from werkzeug.security import generate_password_hash, check_password_hash
-from helpers import login_required, convert_decimals, calculate_target_heart_rate, generate_workout, get_guidelines, get_connection, is_admin, normalize_email, upsert_invited_user, issue_single_use_token, validate_token, mark_token_used, username_available, fmt_utc, int_or_none, inches_0_11_or_none, float_or_none, hash_token, get_category_groups, get_user_level, LEVEL_MAP, check_and_downgrade_trial, check_subscription_expiry  
+from helpers import login_required, calculate_target_heart_rate, generate_workout, get_guidelines, get_connection, is_admin, normalize_email, upsert_invited_user, issue_single_use_token, validate_token, mark_token_used, username_available, fmt_utc, int_or_none, inches_0_11_or_none, float_or_none, hash_token, get_category_groups, get_user_level, LEVEL_MAP, check_and_downgrade_trial, check_subscription_expiry, get_active_workout, set_active_workout, clear_active_workout  
 from collections import OrderedDict
 from dotenv import load_dotenv
 from datetime import datetime, date, timedelta, timezone
@@ -36,6 +36,59 @@ VERIFY_TTL_HOURS = 48
 RESEND_COOLDOWN_SECONDS = 60  
 VERIFY_PURPOSE = "verify_email"
 RESET_TTL_HOURS = 2
+
+
+def format_workout_for_response(selected_category, workout_plan):
+    formatted = []
+    for subcategory, exercises in workout_plan.items():
+        items = []
+        for exercise in exercises:
+            if isinstance(exercise, dict):
+                workout_id = exercise.get('workout_id')
+                name = exercise.get('name')
+                description = exercise.get('description')
+                youtube_id = exercise.get('youtube_id')
+                image_start = exercise.get('image_exercise_start')
+                image_end = exercise.get('image_exercise_end')
+                max_weight = exercise.get('max_weight')
+                max_reps = exercise.get('max_reps')
+            else:
+                workout_id = exercise[0]
+                name = exercise[1]
+                description = exercise[2]
+                youtube_id = exercise[3]
+                image_start = exercise[4]
+                image_end = exercise[5]
+                max_weight = exercise[6] if len(exercise) > 6 else None
+                max_reps = exercise[7] if len(exercise) > 7 else None
+
+            if max_weight is not None and not isinstance(max_weight, (int, float)):
+                try:
+                    max_weight = float(max_weight)
+                except (TypeError, ValueError):
+                    max_weight = None
+
+            if max_reps is not None and not isinstance(max_reps, (int, float)):
+                try:
+                    max_reps = int(max_reps)
+                except (TypeError, ValueError):
+                    max_reps = None
+
+            items.append({
+                'workout_id': workout_id,
+                'name': name,
+                'description': description,
+                'youtube_id': youtube_id,
+                'image_exercise_start': image_start,
+                'image_exercise_end': image_end,
+                'max_weight': max_weight,
+                'max_reps': max_reps,
+                'category': selected_category,
+            })
+
+        formatted.append({'subcategory': subcategory, 'exercises': items})
+
+    return formatted
 
 @app.route('/')
 @login_required
@@ -647,9 +700,9 @@ def update_workout_duration():
 @app.route('/generate_workout')
 @login_required
 def generate_workout_route():
-    selected_category = request.args.get('category')
+    selected_category = (request.args.get('category') or '').strip()
     if not selected_category:
-        return jsonify({'success': False, 'error': 'No category selected'})
+        return jsonify({'success': False, 'error': 'No category selected'}), 400
 
     user_id = session['user_id']
 
@@ -676,38 +729,52 @@ def generate_workout_route():
 
     # Generate the workout
     workout_plan = generate_workout(selected_category, user_level, user_id, duration_minutes)
-
-    # Save the exact workout and category to the session
-    session['generated_workout'] = {
-        'category': selected_category,
+    workout_payload = {
+        'plan': workout_plan,
         'duration_minutes': duration_minutes,
-        'workout': json.dumps(convert_decimals(workout_plan))  # Save the randomly generated workout structure
     }
 
-    # Format the workout for the response
-    formatted_workout = [
-        {
-            'subcategory': subcategory,
-            'exercises': [
-                {
-                    'workout_id': exercise[0],
-                    'name': exercise[1],
-                    'description': exercise[2],
-                    'youtube_id': exercise[3],
-                    'image_exercise_start': exercise[4],
-                    'image_exercise_end': exercise[5],
-                    'max_weight': exercise[6],
-                    'max_reps': exercise[7],
-                    'category': selected_category
-                }
-                for exercise in exercises
-            ]
-        }
-        for subcategory, exercises in workout_plan.items()
-    ]
+    set_active_workout(user_id, selected_category, workout_payload)
 
-    return jsonify({'success': True, 'workout': formatted_workout})
+    formatted_workout = format_workout_for_response(selected_category, workout_plan)
 
+    return jsonify({
+        'success': True,
+        'category': selected_category,
+        'duration_minutes': duration_minutes,
+        'workout': formatted_workout,
+    })
+
+
+@app.route('/get_active_workout')
+@login_required
+def get_active_workout_route():
+    user_id = session['user_id']
+    row = get_active_workout(user_id)
+    if not row:
+        return jsonify({'success': False})
+
+    data = row.get('workout_data') or {}
+    plan = data.get('plan') if isinstance(data, dict) else None
+    if not plan:
+        return jsonify({'success': False})
+
+    formatted_workout = format_workout_for_response(row['category'], plan)
+
+    return jsonify({
+        'success': True,
+        'category': row['category'],
+        'duration_minutes': data.get('duration_minutes'),
+        'workout': formatted_workout,
+    })
+
+
+@app.post('/clear_active_workout')
+@login_required
+def clear_active_workout_route():
+    user_id = session['user_id']
+    clear_active_workout(user_id)
+    return jsonify({'success': True})
 
 
 @app.route('/complete_workout', methods=['POST'])
@@ -715,28 +782,24 @@ def generate_workout_route():
 def complete_workout():
     user_id = session['user_id']
 
-    # Ensure a workout was generated and saved in the session
-    if 'generated_workout' not in session:
+    active = get_active_workout(user_id)
+    if not active:
         return jsonify({'success': False, 'error': 'No workout generated'}), 400
 
-    # Retrieve the generated workout from the session
-    generated_workout = session.pop('generated_workout', None)
-    if not generated_workout:
+    workout_data = active.get('workout_data') or {}
+    stored_plan = workout_data.get('plan') if isinstance(workout_data, dict) else None
+    if not stored_plan:
         return jsonify({'success': False, 'error': 'No workout data available'}), 400
 
-    # Extract category and workout details
-    workout_category = generated_workout['category']
-    # Get fresh max values for all exercises in the generated workout
+    workout_category = active['category']
     refreshed_workout = OrderedDict()
 
     with get_connection() as conn:
         with conn.cursor() as cursor:
-            workout_data = json.loads(generated_workout['workout'], object_pairs_hook=OrderedDict)
-            for subcat, exercises in workout_data.items():
-            #for subcat, exercises in generated_workout['workout'].items():
+            for subcat, exercises in stored_plan.items():
                 refreshed_workout[subcat] = []
                 for ex in exercises:
-                    workout_id = ex[0]  # assuming (id, name, desc) structure
+                    workout_id = ex.get('workout_id') if isinstance(ex, dict) else ex[0]
                     cursor.execute("""
                         SELECT w.name, w.description, uep.max_weight, uep.max_reps
                         FROM workouts w
@@ -763,6 +826,8 @@ def complete_workout():
                 WHERE id = %s
             """, (workout_category, json.dumps(refreshed_workout), user_id))
             conn.commit()
+
+    clear_active_workout(user_id)
 
     return jsonify({'success': True})
 
@@ -813,11 +878,32 @@ def workout_details(category):
 @app.route('/update_pr', methods=['POST'])
 @login_required
 def update_pr():
-    data = request.get_json()
+    data = request.get_json() or {}
     user_id = session['user_id']
-    workout_id = data['workout_id']
-    max_weight = data['max_weight']
-    max_reps = data['max_reps']
+    workout_id = data.get('workout_id')
+    if not workout_id:
+        return jsonify({'success': False, 'error': 'Missing workout id'}), 400
+
+    max_weight_raw = data.get('max_weight')
+    max_reps_raw = data.get('max_reps')
+
+    max_weight = None
+    if isinstance(max_weight_raw, (int, float)):
+        max_weight = float(max_weight_raw)
+    elif isinstance(max_weight_raw, str) and max_weight_raw.strip():
+        try:
+            max_weight = float(max_weight_raw)
+        except ValueError:
+            max_weight = None
+
+    max_reps = None
+    if isinstance(max_reps_raw, (int, float)):
+        max_reps = int(max_reps_raw)
+    elif isinstance(max_reps_raw, str) and max_reps_raw.strip():
+        try:
+            max_reps = int(float(max_reps_raw))
+        except ValueError:
+            max_reps = None
 
     with get_connection() as conn:
         with conn.cursor() as cursor:
@@ -829,7 +915,70 @@ def update_pr():
                     max_reps = EXCLUDED.max_reps,
                     updated_at = CURRENT_TIMESTAMP
             """, (user_id, workout_id, max_weight, max_reps))
-            conn.commit()
+
+        active_updated = False
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("SELECT category, workout_data FROM active_workouts WHERE user_id = %s", (user_id,))
+            active = cur.fetchone()
+
+        if active and active.get('workout_data') is not None:
+            payload = active['workout_data']
+            workout_id_str = str(workout_id)
+
+            def update_exercise_entry(entry):
+                nonlocal active_updated
+                if isinstance(entry, dict):
+                    if str(entry.get('workout_id')) == workout_id_str:
+                        entry = {**entry}
+                        entry['max_weight'] = max_weight
+                        entry['max_reps'] = max_reps
+                        active_updated = True
+                    return entry
+                if isinstance(entry, (list, tuple)):
+                    if entry and str(entry[0]) == workout_id_str:
+                        entry_list = list(entry)
+                        while len(entry_list) <= 6:
+                            entry_list.append(None)
+                        entry_list[6] = max_weight
+                        while len(entry_list) <= 7:
+                            entry_list.append(None)
+                        entry_list[7] = max_reps
+                        active_updated = True
+                        return entry_list
+                return entry
+
+            def update_structure(node):
+                if isinstance(node, dict):
+                    if 'workout_id' in node or 'exercise_id' in node:
+                        return update_exercise_entry(node)
+                    return {key: update_structure(value) for key, value in node.items()}
+                if isinstance(node, list):
+                    if node and not isinstance(node[0], (dict, list, tuple)) and str(node[0]) == workout_id_str:
+                        return update_exercise_entry(node)
+                    return [update_structure(item) for item in node]
+                if isinstance(node, tuple):
+                    return update_exercise_entry(node)
+                return node
+
+            if isinstance(payload, dict):
+                # prefer plan but fall back to workout key or nested structures
+                if 'plan' in payload and payload['plan'] is not None:
+                    payload['plan'] = update_structure(payload['plan'])
+                else:
+                    payload = update_structure(payload)
+                    active['workout_data'] = payload
+                active['workout_data'] = payload
+            elif isinstance(payload, list):
+                active['workout_data'] = update_structure(payload)
+
+            if active_updated:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "UPDATE active_workouts SET workout_data = %s WHERE user_id = %s",
+                        (psycopg2.extras.Json(active['workout_data']), user_id)
+                    )
+
+        conn.commit()
 
     return jsonify({'success': True})
 

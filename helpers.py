@@ -3,7 +3,7 @@ from flask import session, redirect, url_for, flash
 import os, psycopg2, re
 import hmac, secrets, hashlib, math
 from psycopg2 import connect
-from psycopg2.extras import RealDictCursor
+from psycopg2.extras import RealDictCursor, Json
 from urllib.parse import urlparse
 from dotenv import load_dotenv
 from collections import OrderedDict
@@ -196,6 +196,42 @@ def convert_decimals(obj):
         return float(obj)
     else:
         return obj
+
+
+def get_active_workout(user_id: int) -> dict | None:
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                "SELECT category, workout_data, created_at FROM active_workouts WHERE user_id = %s",
+                (user_id,),
+            )
+            return cur.fetchone()
+
+
+def set_active_workout(user_id: int, category: str, workout_data) -> None:
+    payload = convert_decimals(workout_data)
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO active_workouts (user_id, category, workout_data)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (user_id)
+                DO UPDATE SET
+                    category = EXCLUDED.category,
+                    workout_data = EXCLUDED.workout_data,
+                    created_at = now()
+                """,
+                (user_id, category, Json(payload)),
+            )
+            conn.commit()
+
+
+def clear_active_workout(user_id: int) -> None:
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM active_workouts WHERE user_id = %s", (user_id,))
+            conn.commit()
 
 
 def calculate_target_heart_rate(age):
