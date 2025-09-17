@@ -321,7 +321,7 @@ iframe.fullscreen-sim {
   display: flex;
   align-items: center;
   gap: 0.6rem;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   justify-content: center;
 }
 
@@ -338,6 +338,7 @@ iframe.fullscreen-sim {
   color: #176a97;
   min-width: 96px;
   box-shadow: 0 2px 4px rgba(30, 164, 230, 0.08);
+  flex-shrink: 0;
 }
 
 .max-pill-reps {
@@ -347,6 +348,7 @@ iframe.fullscreen-sim {
 .max-times {
   font-weight: 700;
   color: #147bb2;
+  flex-shrink: 0;
 }
 
 .max-action-buttons {
