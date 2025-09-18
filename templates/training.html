@@ -798,27 +798,22 @@
         </script>
 
         <!-- Success Toast -->
-        <div id="toastSuccess" class="text-success text-center fw-bold"
-            style="display: none; position: fixed; top: 65px; left: 50%; transform: translateX(-50%);
-                z-index: 10000; background: #d4edda; padding: 10px 20px; border-radius: 5px; box-shadow: 0 0 10px rgba(0,0,0,0.2);">
+        <div id="toastSuccess" class="toast-floating toast-success">
             Max updated!
         </div>
 
-        <div id="toastGenerate" class="text-primary text-center fw-bold"
-            style="display: none; position: fixed; top: 15px; left: 50%; transform: translateX(-50%);
-                z-index: 10000; background: #e9f7ff; padding: 10px 24px; border-radius: 5px; box-shadow: 0 0 10px rgba(0,0,0,0.2);">
+        <div id="toastGenerate" class="toast-floating toast-info">
             ⚡ Workout ready!
         </div>
 
         <!-- Max Update Modal -->
-        <div id="prModal" class="modal"
-            style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 9999; align-items: center; justify-content: center;">
-            <div class="bg-white p-4 rounded shadow" style="width: 90%; max-width: 400px; position: relative;">
-                <button id="prModalClose" class="btn-close" style="position: absolute; top: 10px; right: 10px;"></button>
+        <div id="prModal" class="modal-overlay" style="display: none;">
+            <div class="modal-card">
+                <button id="prModalClose" class="btn-close"></button>
                 <h5 class="mb-3">Update Max</h5>
                 <input type="number" id="maxWeightInput" class="form-control mb-2" placeholder="Max Weight (lbs)" title="Bodyweight exercises do not require a weight entry">
                 <input type="number" id="maxRepsInput" class="form-control mb-3" placeholder="Max Reps">
-                <button id="submitPrBtn" class="btn btn-primary w-100 mb-2">Save</button>
+                <button id="submitPrBtn" class="btn btn-brand w-100 mb-2">Save</button>
             </div>
         </div>
 

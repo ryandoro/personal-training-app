@@ -2,15 +2,17 @@
 {% block title %}Search Results{% endblock %}
 
 {% block content %}
-<div class="container py-4">
-    <div class="card shadow p-4 mb-4 rounded">
-        <h2 class="text-center fw-semibold mb-4">Your results for “{{ query }}”</h2>
+<div class="page-hero page-hero--scroll">
+    <div class="page-card page-card--wide page-card--flush">
+        <div class="page-section text-center">
+            <h2 class="fw-semibold mb-1">Your results for “{{ query }}”</h2>
+        </div>
 
         {% if results %}
             <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
                 {% for workout_id, name, description, category, max_weight, max_reps in results %}
                     <div class="col">
-                        <div class="card h-100 shadow-sm border border-primary rounded-3">
+                        <div class="card h-100">
                             <div class="card-body">
                                 <h5 class="card-title text-primary fw-bold">{{ name }}</h5>
                                 <p class="card-text text-muted small">{{ description }}</p>
@@ -38,7 +40,7 @@
                                     {% endif %}                                    
                                 </div>
                                 <div class="mt-2">                        
-                                    <button class="btn btn-outline-primary btn-sm mt-2 update-max-btn" 
+                                    <button class="btn btn-brand-outline btn-sm mt-2 update-max-btn" 
                                             data-id="{{ workout_id }}"
                                             data-weight="{{ max_weight or '' }}"
                                             data-reps="{{ max_reps or '' }}"
@@ -52,21 +54,21 @@
                 {% endfor %}
             </div>
         {% else %}
-            <div class="alert alert-warning text-center shadow-sm" role="alert">
+            <div class="alert alert-warning text-center shadow-sm brand-alert" role="alert">
                 No results found for “{{ query }}”.
             </div>
         {% endif %}
     </div>
-</div>    
-    <!-- Max Update Modal -->
-    <div id="updateMaxModal" class="modal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 9999; align-items: center; justify-content: center;">
-        <div class="bg-white p-4 rounded shadow" style="width: 90%; max-width: 400px; position: relative;">
-            <button type="button" class="btn-close" id="closeModal" style="position: absolute; top: 10px; right: 10px;"></button>
+</div>
+<!-- Max Update Modal -->
+    <div id="updateMaxModal" class="modal-overlay" style="display: none;">
+        <div class="modal-card">
+            <button type="button" class="btn-close" id="closeModal"></button>
             <h5 class="mb-3">Update Max</h5>
             <input type="hidden" id="modalWorkoutId">
             <input type="number" id="newWeight" class="form-control mb-2" placeholder="Max Weight (lbs)" title="Bodyweight exercises do not require a weight entry">
             <input type="number" id="newReps" class="form-control mb-3" placeholder="Max Reps">
-            <button class="btn btn-primary w-100" id="saveMaxBtn">Save</button>
+            <button class="btn btn-brand w-100" id="saveMaxBtn">Save</button>
         </div>
     </div>
     
@@ -80,23 +82,38 @@
             const closeModal = document.getElementById('closeModal');
 
             document.querySelectorAll('.update-max-btn').forEach(btn => {
-                btn.addEventListener('click', () => {
-                    const weight = btn.dataset.weight;
-                    const reps = btn.dataset.reps;
+                btn.addEventListener('click', async () => {
                     const workoutName = btn.closest('.card-body').querySelector('.card-title').textContent || '';
                     const category = btn.dataset.category || '';
                     const isCardio = category.toLowerCase() === 'cardio';
                     const isBodyweight = workoutName.toLowerCase().includes('bodyweight');
 
                     workoutIdInput.value = btn.dataset.id;
-                    weightInput.value = (isBodyweight || isCardio) ? '' : (parseFloat(weight) || '');
                     weightInput.disabled = isBodyweight || isCardio;
                     weightInput.placeholder = isBodyweight || isCardio ? 'Bodyweight exercise' : 'Max Weight (lbs)';
                     weightInput.title = weightInput.placeholder;
+                    weightInput.value = '';
 
-                    repsInput.value = parseInt(reps) || '';
                     repsInput.placeholder = isCardio ? 'Minutes' : 'Reps';
                     repsInput.title = repsInput.placeholder;
+                    repsInput.value = '';
+
+                    try {
+                        const response = await fetch(`/exercise_progress/${workoutIdInput.value}`);
+                        const payload = response.ok ? await response.json() : { success: false };
+                        if (payload && payload.success) {
+                            const latestWeight = payload.max_weight;
+                            const latestReps = payload.max_reps;
+
+                            weightInput.value = (isBodyweight || isCardio) ? '' : (Number.isFinite(latestWeight) ? latestWeight : '');
+
+                            repsInput.value = Number.isFinite(latestReps) ? latestReps : '';
+                        }
+                    } catch (err) {
+                        console.error('Failed loading latest progress', err);
+                        weightInput.value = '';
+                        repsInput.value = '';
+                    }
 
                     modal.style.display = 'flex';
                 });
@@ -134,19 +151,31 @@
                     const card = document.querySelector(`.update-max-btn[data-id="${workout_id}"]`).closest('.card-body');
                     const maxTextSpan = card.querySelector('span.text-dark, span.text-muted');
 
+                    const displayReps = isCardio
+                        ? `${max_reps} min`
+                        : `${max_reps} reps`;
+                    let weightLabel;
+                    if (isCardio || isBodyweight) {
+                        weightLabel = 'Bodyweight';
+                    } else {
+                        weightLabel = `${max_weight.toFixed(1)} lbs`;
+                    }
+
                     if (maxTextSpan) {
                         maxTextSpan.classList.remove('text-muted', 'fst-italic');
                         maxTextSpan.classList.add('text-dark');
                         maxTextSpan.textContent = isCardio
                             ? `Bodyweight × ${max_reps} min`
-                            : (isBodyweight
-                                ? `Bodyweight × ${max_reps} reps`
-                                : `${max_weight.toFixed(1)} lbs × ${max_reps} reps`);
+                            : (isBodyweight ? `Bodyweight × ${max_reps} reps` : `${weightLabel} × ${max_reps} reps`);
+                    }
+
+                    if (btn) {
+                        btn.dataset.weight = (isCardio || isBodyweight) ? '' : max_weight.toFixed(1);
+                        btn.dataset.reps = max_reps;
                     }
                     // Show success toast
                     const toast = document.getElementById('toastSuccess');
                     toast.style.display = 'block';
-                    
                     setTimeout(() => {
                         toast.style.display = 'none';
                     }, 2000);
@@ -158,9 +187,7 @@
     </script>    
 
     <!-- Success Toast -->
-    <div id="toastSuccess" class="text-success text-center fw-bold"
-    style="display: none; position: fixed; top: 80px; left: 50%; transform: translateX(-50%);
-        z-index: 10000; background: #d4edda; padding: 10px 20px; border-radius: 5px; box-shadow: 0 0 10px rgba(0,0,0,0.2);">
+    <div id="toastSuccess" class="toast-floating toast-success">
     Max updated!
     </div>
 {% endblock %}

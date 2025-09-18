@@ -5,10 +5,11 @@ Account Settings
 {% endblock %}
 
 {% block content %}
-
-<div class="card shadow p-4 rounded mb-5 mt-5">
-    <h2 class="text-center fw-semibold mb-0">Account Settings</h2>
-    <div class="card-body">
+<div class="page-hero page-hero--scroll">
+    <div class="page-card page-card--wide page-card--flush">
+        <div class="page-section text-center">
+            <h2 class="fw-semibold mb-0">Account Settings</h2>
+        </div>
 
         <form method="post">
             {% if form_completed %}
@@ -25,7 +26,7 @@ Account Settings
                 {% if user.subscription_type == 'premium' and (not user.trial_end_date or user.trial_end_date < current_date) %}
                     <!-- Active Premium User (not in trial) -->
                     <div class="text-center mt-4">
-                        <a href="{{ url_for('customer_portal') }}" class="btn shadow-sm" style="background:#1EA4E6; color:#ffffff; text-decoration:none; font-weight:600; font-size:14px; padding:12px 16px; border-radius:10px;">
+                        <a href="{{ url_for('customer_portal') }}" class="btn btn-brand">
                             Manage Subscription
                         </a>
                         <small class="d-block text-muted mt-2">Update your subscription anytime</small>
@@ -33,7 +34,7 @@ Account Settings
                 {% else %}
                     <!-- Free or Trial user -->
                     <div class="text-center mt-4">
-                        <a href="{{ url_for('upgrade') }}" class="btn shadow-sm" style="background:#1EA4E6; color:#ffffff; text-decoration:none; font-weight:600; font-size:14px; padding:12px 16px; border-radius:10px;">
+                        <a href="{{ url_for('upgrade') }}" class="btn btn-brand">
                             Upgrade to Premium
                         </a>
                         <small class="d-block text-muted mt-2">Unlock full access to your personalized training experience</small>
@@ -175,7 +176,7 @@ Account Settings
             </div>
 
             <!-- Submit -->
-            <button type="submit" class="btn btn-primary w-100">Save Changes</button>
+            <button type="submit" class="btn btn-brand w-100">Save Changes</button>
         </form>
     </div>
 </div>

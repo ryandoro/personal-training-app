@@ -210,6 +210,23 @@ def get_active_workout(user_id: int) -> dict | None:
 
 def set_active_workout(user_id: int, category: str, workout_data) -> None:
     payload = convert_decimals(workout_data)
+    if isinstance(payload, dict):
+        plan = payload.get('plan')
+        normalized = []
+        if isinstance(plan, dict):
+            normalized = [
+                {'subcategory': subcat, 'exercises': exercises}
+                for subcat, exercises in plan.items()
+            ]
+        elif isinstance(plan, list):
+            for entry in plan:
+                if isinstance(entry, dict) and 'subcategory' in entry:
+                    normalized.append(entry)
+                elif isinstance(entry, (list, tuple)) and len(entry) >= 2:
+                    normalized.append({'subcategory': entry[0], 'exercises': entry[1]})
+        if normalized:
+            payload['plan'] = normalized
+
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(

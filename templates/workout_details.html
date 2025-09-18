@@ -5,20 +5,21 @@
 {% endblock %}
 
 {% block content %}
-<div class="container">
-    <div class="card w-100 mx-auto shadow-sm p-3 border border-2 rounded-3 mb-4" style="border-color: #ced4da;">
-        <div class="card-body">
-            <h2 class="text-center text-primary">{{ category }}</h2>
-            <h5 class="text-center text-secondary">Workout Details</h5>
+<div class="page-hero page-hero--scroll">
+    <div class="page-card page-card--wide page-card--flush">
+        <div class="page-section text-center">
+            <h2 class="fw-semibold mb-1">{{ category }}</h2>
+            <p class="text-muted mb-0">Workout Details</p>
+        </div>
 
-            {% if workouts %}
+        {% if workouts %}
                 {% for subcategory, exercises in workouts.items() %}
                     {% set subcat_index = loop.index %}
                     <h5 class="text-primary mt-4">{{ subcategory }}</h5>
-                    <ul class="list-group p-2 border border-2 rounded-3 mb-4" style="border-color: #ced4da;">
+                    <ul class="list-group p-2 rounded-3 mb-4">
                         {% for exercise in exercises %}
                             {% set ex_index = loop.index %}
-                            <li class="list-group-item shadow-sm p-3 border border-1 rounded-4 mb-3" style="border-color: #20c997; background-color: #ffffff;">
+                            <li class="list-group-item shadow-sm p-3 rounded-4 mb-3">
                                 <h6 class="mb-2 fw-semibold text-center">{{ exercise.name }}</h6>
                                 
                                 {% set is_cardio = category.lower() == 'cardio' %}
@@ -49,7 +50,7 @@
                                 {% endif %}           
 
                                 <div class="text-center mt-2">
-                                    <button class="btn btn-sm btn-outline-primary toggle-description"
+                                    <button class="btn btn-sm btn-brand-outline toggle-description"
                                             data-id="desc-{{ subcat_index }}-{{ ex_index }}">
                                         View Description
                                     </button>
@@ -62,37 +63,46 @@
                         {% endfor %}
                     </ul>
                 {% endfor %}
-            {% else %}
-                <p class="text-center text-muted mt-4">No workout details available for this category.</p>
-            {% endif %}
+        {% else %}
+            <p class="text-center text-muted mt-4">No workout details available for this category.</p>
+        {% endif %}
 
-            <div class="text-center mt-4">
-                <a href="/" class="btn btn-secondary">Back to Home</a>
-            </div>
+        <div class="text-center mt-4">
+            <a href="/" class="btn btn-brand-outline">Back to Home</a>
         </div>
     </div>
 </div>
 
 <script>
-document.addEventListener('DOMContentLoaded', () => {
-    document.querySelectorAll('.toggle-description').forEach(button => {
-        button.addEventListener('click', () => {
-            const descId = button.getAttribute('data-id');
-            const descElement = document.getElementById(descId);
+document.addEventListener('click', function (e) {
+    const toggle = e.target.closest('.toggle-description');
+    if (!toggle) return;
 
-            if (descElement.style.display === 'none' || !descElement.style.display) {
-                descElement.style.display = 'block';
-                button.textContent = 'Hide Description';
-            } else {
-                descElement.style.display = 'none';
-                button.textContent = 'View Description';
-            }
+    const descId = toggle.getAttribute('data-id');
+    const descElement = document.getElementById(descId);
+    if (!descElement) return;
+
+    const isHidden = descElement.style.display === 'none' || descElement.style.display === '';
+
+    if (isHidden) {
+        descElement.style.display = 'block';
+        descElement.style.maxHeight = '0px';
+        descElement.style.overflow = 'hidden';
+        descElement.style.transition = 'max-height 0.3s ease-out';
+        requestAnimationFrame(() => {
+            descElement.style.maxHeight = descElement.scrollHeight + 'px';
         });
-    });
+        toggle.textContent = 'Hide Description';
+    } else {
+        descElement.style.maxHeight = '0px';
+        setTimeout(() => {
+            descElement.style.display = 'none';
+        }, 300);
+        toggle.textContent = 'View Description';
+    }
 });
 </script>
 {% endblock %}
-
 
 
 

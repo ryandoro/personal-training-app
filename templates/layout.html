@@ -73,12 +73,10 @@
     {% endif %}
 
     <!-- Custom Global Toast -->
-    <div id="globalToast" class="text-center fw-bold"
-        style="display: none; position: fixed; top: 80px; left: 50%; transform: translateX(-50%);
-                z-index: 1050; background: #d1e7dd; color: #0f5132;
-                padding: 10px 20px; border-radius: 5px; box-shadow: 0 0 10px rgba(0,0,0,0.2);">
+    <div id="globalToast" class="toast-floating fw-bold" style="display:none;">
         <span id="toastMessage" class="me-3 w-100 text-center"></span>
-        <button type="button" class="btn-close" aria-label="Close" onclick="document.getElementById('globalToast').style.display='none';"></button>
+        <button type="button" class="btn-close" aria-label="Close"
+            onclick="document.getElementById('globalToast').style.display='none';"></button>
     </div>
 
     <!-- Main Content -->
@@ -153,27 +151,24 @@
             }
     
             if (messages.length > 0) {
-                const [category, message] = messages[0]; // Only show the first
-    
+                const [category, message] = messages[0];
+
                 document.getElementById('toastMessage').textContent = message;
-    
-                // Apply color scheme based on category
-                if (category === "danger") {
-                    toast.style.background = "#f8d7da";
-                    toast.style.color = "#842029";
-                    toast.style.border = "1px solid #842029"
-                } else if (category === "warning") {
-                    toast.style.background = "#fff3cd";
-                    toast.style.color = "#664d03";
-                    toast.style.border = "1px solid #664d03"
+
+                toast.classList.remove('toast-success', 'toast-warning', 'toast-danger', 'toast-info');
+
+                if (category === 'danger') {
+                    toast.classList.add('toast-danger');
+                } else if (category === 'warning') {
+                    toast.classList.add('toast-warning');
+                } else if (category === 'info') {
+                    toast.classList.add('toast-info');
                 } else {
-                    toast.style.background = "#d1e7dd";
-                    toast.style.color = "#0f5132";
-                    toast.style.border = "1px solid #0f5132"
+                    toast.classList.add('toast-success');
                 }
-    
+
                 toast.style.display = 'block';
-    
+
                 if (category !== 'danger') {
                     setTimeout(() => {
                         toast.style.display = 'none';

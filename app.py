@@ -38,56 +38,70 @@ VERIFY_PURPOSE = "verify_email"
 RESET_TTL_HOURS = 2
 
 
+def _normalize_plan_for_iteration(plan):
+    if isinstance(plan, list):
+        normalized = []
+        for entry in plan:
+            if isinstance(entry, dict) and 'subcategory' in entry:
+                normalized.append((entry.get('subcategory'), entry.get('exercises') or []))
+            elif isinstance(entry, (list, tuple)) and len(entry) >= 2:
+                normalized.append((entry[0], entry[1]))
+        return normalized
+    if isinstance(plan, dict):
+        return list(plan.items())
+    return []
+
+
+def _format_exercise(selected_category, exercise):
+    if isinstance(exercise, dict):
+        workout_id = exercise.get('workout_id')
+        name = exercise.get('name')
+        description = exercise.get('description')
+        youtube_id = exercise.get('youtube_id')
+        image_start = exercise.get('image_exercise_start')
+        image_end = exercise.get('image_exercise_end')
+        max_weight = exercise.get('max_weight')
+        max_reps = exercise.get('max_reps')
+    else:
+        workout_id = exercise[0]
+        name = exercise[1]
+        description = exercise[2]
+        youtube_id = exercise[3]
+        image_start = exercise[4]
+        image_end = exercise[5]
+        max_weight = exercise[6] if len(exercise) > 6 else None
+        max_reps = exercise[7] if len(exercise) > 7 else None
+
+    if max_weight is not None and not isinstance(max_weight, (int, float)):
+        try:
+            max_weight = float(max_weight)
+        except (TypeError, ValueError):
+            max_weight = None
+
+    if max_reps is not None and not isinstance(max_reps, (int, float)):
+        try:
+            max_reps = int(max_reps)
+        except (TypeError, ValueError):
+            max_reps = None
+
+    return {
+        'workout_id': workout_id,
+        'name': name,
+        'description': description,
+        'youtube_id': youtube_id,
+        'image_exercise_start': image_start,
+        'image_exercise_end': image_end,
+        'max_weight': max_weight,
+        'max_reps': max_reps,
+        'category': selected_category,
+    }
+
+
 def format_workout_for_response(selected_category, workout_plan):
     formatted = []
-    for subcategory, exercises in workout_plan.items():
-        items = []
-        for exercise in exercises:
-            if isinstance(exercise, dict):
-                workout_id = exercise.get('workout_id')
-                name = exercise.get('name')
-                description = exercise.get('description')
-                youtube_id = exercise.get('youtube_id')
-                image_start = exercise.get('image_exercise_start')
-                image_end = exercise.get('image_exercise_end')
-                max_weight = exercise.get('max_weight')
-                max_reps = exercise.get('max_reps')
-            else:
-                workout_id = exercise[0]
-                name = exercise[1]
-                description = exercise[2]
-                youtube_id = exercise[3]
-                image_start = exercise[4]
-                image_end = exercise[5]
-                max_weight = exercise[6] if len(exercise) > 6 else None
-                max_reps = exercise[7] if len(exercise) > 7 else None
-
-            if max_weight is not None and not isinstance(max_weight, (int, float)):
-                try:
-                    max_weight = float(max_weight)
-                except (TypeError, ValueError):
-                    max_weight = None
-
-            if max_reps is not None and not isinstance(max_reps, (int, float)):
-                try:
-                    max_reps = int(max_reps)
-                except (TypeError, ValueError):
-                    max_reps = None
-
-            items.append({
-                'workout_id': workout_id,
-                'name': name,
-                'description': description,
-                'youtube_id': youtube_id,
-                'image_exercise_start': image_start,
-                'image_exercise_end': image_end,
-                'max_weight': max_weight,
-                'max_reps': max_reps,
-                'category': selected_category,
-            })
-
+    for subcategory, exercises in _normalize_plan_for_iteration(workout_plan):
+        items = [_format_exercise(selected_category, ex) for ex in (exercises or [])]
         formatted.append({'subcategory': subcategory, 'exercises': items})
-
     return formatted
 
 @app.route('/')
@@ -777,6 +791,44 @@ def clear_active_workout_route():
     return jsonify({'success': True})
 
 
+@app.get('/exercise_progress/<int:workout_id>')
+@login_required
+def get_exercise_progress_route(workout_id):
+    user_id = session['user_id']
+
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT max_weight, max_reps
+                  FROM user_exercise_progress
+                 WHERE user_id = %s AND workout_id = %s
+                LIMIT 1
+                """,
+                (user_id, workout_id),
+            )
+            row = cursor.fetchone()
+
+    if not row:
+        return jsonify({'success': True, 'max_weight': None, 'max_reps': None})
+
+    max_weight = row[0]
+    if max_weight is not None:
+        try:
+            max_weight = float(max_weight)
+        except (TypeError, ValueError):
+            max_weight = None
+
+    max_reps = row[1]
+    if max_reps is not None:
+        try:
+            max_reps = int(max_reps)
+        except (TypeError, ValueError):
+            max_reps = None
+
+    return jsonify({'success': True, 'max_weight': max_weight, 'max_reps': max_reps})
+
+
 @app.route('/complete_workout', methods=['POST'])
 @login_required
 def complete_workout():
@@ -796,9 +848,9 @@ def complete_workout():
 
     with get_connection() as conn:
         with conn.cursor() as cursor:
-            for subcat, exercises in stored_plan.items():
+            for subcat, exercises in _normalize_plan_for_iteration(stored_plan):
                 refreshed_workout[subcat] = []
-                for ex in exercises:
+                for ex in exercises or []:
                     workout_id = ex.get('workout_id') if isinstance(ex, dict) else ex[0]
                     cursor.execute("""
                         SELECT w.name, w.description, uep.max_weight, uep.max_reps

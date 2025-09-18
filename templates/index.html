@@ -5,84 +5,79 @@
 {% endblock %}
 
 {% block content %}
-<div class="container">
-    <div class="card w-100 shadow-sm p-3 border border-2 rounded-3 mb-4" style="border-color: #ced4da;">
-        <div class="card-body">
+<div class="index-hero">
+    <div class="index-card">
+        <header class="index-header text-center">
+            <span class="hero-pill">FitBase<span class="text-orange">AI</span></span>
             {% if name %}
-                <h2 class="text-center fw-semibold mb-4">Welcome back, {{ name }}!</h2>
+                <h1 class="display-5 fw-bold">Welcome back, {{ name }}!</h1>
             {% else %}
-                <h2 class="text-center fw-semibold mb-4">Welcome!</h2>
+                <h1 class="display-5 fw-bold">Welcome!</h1>
             {% endif %}
-            <p class="mb-3">
+            <p class="lead text-muted fst-italic">“It’s good to be aware.”</p>
+        </header>
+
+        <section class="index-intro">
+            <p>
                 Here, you can track your workouts, generate customized routines, and see your progress as you achieve your fitness goals. Let’s keep pushing forward together!
             </p>
             {% if not name %}
-                <p>
-                    To get started, head over to the <a href="{{ url_for('training') }}">training page</a> and fill out your fitness questionnaire.
+                <p class="mt-2">
+                    To get started, head over to the <a href="{{ url_for('training') }}" class="link-blue fw-semibold">training page</a> and fill out your fitness questionnaire.
                 </p>
-            {% endif %}    
-            <hr>
-            <p class="text-center fst-italic text-muted"
-                style="font-size: 1.1rem;">
-                "It’s good to be aware."
-            </p>
-            <hr>
-            <h5 class="card-title text-primary fw-bold text-center mb-3">Your Stats:</h5>
-            <ul class="list-group p-2 border border-2 rounded-3 mb-4" style="border-color: #ced4da;">
-                <li class="list-group-item shadow-sm p-3 border border-1 rounded-4 mb-3" style="border-color: #20c997; background-color: #ffffff;">
-                    <strong>Workouts Completed:</strong> {{ workouts_completed }}
-                </li>
-                <li class="list-group-item shadow-sm p-3 border border-1 rounded-4 mb-3" style="border-color: #20c997; background-color: #ffffff;">
-                    <strong>Last Workout Completed:</strong>
+            {% endif %}
+        </section>
+
+        <section class="index-stats">
+            <h2 class="section-title text-uppercase">Your Stats</h2>
+            <div class="stats-grid">
+                <article class="stat-card">
+                    <span class="stat-label">Workouts Completed</span>
+                    <span class="stat-value">{{ workouts_completed }}</span>
+                </article>
+                <article class="stat-card">
+                    <span class="stat-label">Last Workout Completed</span>
                     {% if last_workout_completed != "No workouts completed yet" %}
-                        <a href="{{ url_for('workout_details', category=last_workout_completed) }}">
+                        <a class="stat-link" href="{{ url_for('workout_details', category=last_workout_completed) }}">
                             {{ last_workout_completed }}
+                            <span class="stat-link-icon">›</span>
                         </a>
                     {% else %}
-                        {{ last_workout_completed }}
+                        <span class="stat-placeholder">{{ last_workout_completed }}</span>
                     {% endif %}
-                </li>
-                <li class="list-group-item shadow-sm p-3 border border-1 rounded-4" style="border-color: #20c997; background-color: #ffffff;">
+                </article>
+                <article class="stat-card goals-card">
                     {% set goal_list = fitness_goals.split(',') if fitness_goals else [] %}
-                    <strong>Current Goal{{ goal_list | length > 1 and 's' or '' }}:</strong>
+                    <span class="stat-label">Current Goal{{ goal_list | length > 1 and 's' or '' }}</span>
                     {% if goal_list %}
-                        <div class="text-center mt-2">
-                            <div class="d-inline-flex flex-wrap justify-content-center gap-2">
-                                {% for goal in goal_list %}
-                                    <span class="badge rounded-pill text-bg-success px-3 py-2">
-                                        {{ goal.strip() }}
-                                    </span>
-                                {% endfor %}
-                            </div>
+                        <div class="goal-chip-row">
+                            {% for goal in goal_list %}
+                                <span class="goal-chip">{{ goal.strip() }}</span>
+                            {% endfor %}
                         </div>
-
                         {% if form_completed %}
-                            <div class="text-center mt-3">
-                                <button class="badge rounded-pill text-bg-light border-0 px-3 py-2" data-bs-toggle="modal" data-bs-target="#updateGoalsModal" style="cursor: pointer;">
-                                    <i class="bi bi-pencil me-1"></i> Update Goals
-                                </button>
-                            </div>
+                            <button class="goal-manage-btn" data-bs-toggle="modal" data-bs-target="#updateGoalsModal">
+                                <i class="bi bi-pencil me-1"></i> Update Goals
+                            </button>
                         {% endif %}
-
                     {% else %}
-                        <p class="text-muted mt-2">Not set yet</p>
+                        <span class="stat-placeholder">Not set yet</span>
                     {% endif %}
-                </li>                       
-            </ul>
-
-            <p>
-                Ready for your next workout? Head over to the training page and get started with your personalized plan.
-            </p>
-            <div class="text-center">
-                <a href="/training" class="btn btn-primary mt-3">Go to Training</a>
+                </article>
             </div>
-        </div>
+        </section>
+
+        <section class="index-cta text-center">
+            <p class="cta-copy">Ready for your next workout? Head over to the training page and get started with your personalized plan.</p>
+            <a href="/training" class="btn btn-lg btn-ignite">Launch Training</a>
+        </section>
     </div>
 </div>
 
+
 <!-- Update Goals Modal -->
 <div class="modal fade" id="updateGoalsModal" tabindex="-1" aria-labelledby="updateGoalsModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-dialog-centered">
         <form method="POST" action="{{ url_for('update_goals') }}">
         <div class="modal-content">
             <div class="modal-header">
@@ -102,7 +97,7 @@
             <div class="text-danger small mt-2" id="goalError" style="display: none;">Please select 1 or 2 goals.</div>
             </div>
             <div class="modal-footer">
-            <button type="submit" class="btn btn-success">Save Changes</button>
+            <button type="submit" class="btn btn-brand">Save Changes</button>
             </div>
         </div>
         </form>
