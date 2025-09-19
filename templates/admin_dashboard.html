@@ -10,16 +10,35 @@
         <div class="card-body">
             <h2 class="card-header text-center text-white mb-4 p-3" style="background-color: #1EA4E6;">ADMIN DASHBOARD</h2>
 
+            <div class="row g-3 mb-4">
+                <div class="col-md-6">
+                    <div class="card h-100 border-0 shadow-sm">
+                        <div class="card-body text-center">
+                            <h5 class="card-title text-muted text-uppercase mb-2">Total Users</h5>
+                            <p class="display-6 fw-bold mb-0">{{ total_users }}</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card h-100 border-0 shadow-sm">
+                        <div class="card-body text-center">
+                            <h5 class="card-title text-muted text-uppercase mb-2">Total Workouts Completed</h5>
+                            <p class="display-6 fw-bold mb-0">{{ total_workouts_completed }}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Add User Button -->
             <div class="d-flex justify-content-center mt-4 mb-4">
                 <a href="{{ url_for('admin_add_user') }}" class="btn btn-success">Add User</a>
-            </div>            
-            
+            </div>
+
             <!-- Search Bar -->
             <form method="GET" action="{{ url_for('admin_users') }}" class="mb-4">
                 <div class="input-group">
-                    <input type="text" name="search" class="form-control" placeholder="Search by first name, last name, or email" value="{{ search_term }}">
-                    <button class="btn btn-outline-secondary" type="submit">Search</button>
+                    <input type="text" name="search" class="form-control" placeholder="Search by first name, last name, username, or email" value="{{ search_term }}">
+                    <button class="btn btn-brand-outline" type="submit">Search</button>
                 </div>
             </form>
 

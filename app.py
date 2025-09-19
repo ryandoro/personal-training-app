@@ -1499,7 +1499,22 @@ def admin_users():
                 """)
             users = cursor.fetchall()
 
-    return render_template('admin_dashboard.html', users=users, search_term=search_term)
+            cursor.execute("""
+                SELECT COUNT(*) AS total_users,
+                       COALESCE(SUM(workouts_completed), 0) AS total_workouts_completed
+                FROM users
+            """)
+            counts_row = cursor.fetchone() or (0, 0)
+            total_users = counts_row[0] or 0
+            total_workouts_completed = counts_row[1] or 0
+
+    return render_template(
+        'admin_dashboard.html',
+        users=users,
+        search_term=search_term,
+        total_users=total_users,
+        total_workouts_completed=total_workouts_completed
+    )
 
 
 @app.context_processor
