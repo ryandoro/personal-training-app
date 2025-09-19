@@ -575,12 +575,13 @@
                     : `${weightDisplay} × ${repsDisplay}`;
                 const youtubeSection = exercise.youtube_id ? `
                         <p class="exercise-media-label mb-2">Video Demonstration:</p>
-                        <div class="exercise-video-wrapper mb-3">
+                        <div class="exercise-video-wrapper mb-4">
                             <div class="exercise-video-shell">
                                 <iframe
                                     class="exercise-video-frame"
-                                    src="https://www.youtube.com/embed/${exercise.youtube_id}"
+                                    src="https://www.youtube.com/embed/${exercise.youtube_id}?mute=1&playsinline=1"
                                     title="${exercise.name} tutorial"
+                                    allow="autoplay; encrypted-media"
                                     allowfullscreen>
                                 </iframe>
                             </div>
@@ -656,7 +657,7 @@
                 `).join('');
 
                 return `
-                    <div class="card w-100 mb-4 shadow-sm workout-card">
+                    <div class="card w-100 mb-0 shadow-sm workout-card" style="padding: 18px; background: rgba(255, 255, 255, 0.68); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);">
                         <div class="workout-category-header">
                             <h5 class="workout-category-title text-white">${selectedCategory}</h5>
                         </div>

@@ -37,8 +37,8 @@ html, body {
     flex-direction: column;
     align-items: center;
     text-align: center;
-    padding: 4px;
-}
+    padding: 4px; 
+} 
 
 main {
   padding-top: 50px;
@@ -60,7 +60,7 @@ footer {
 
 
 .card {
-    background: rgba(255, 255, 255, 0.82);
+    background: rgba(255, 255, 255, 0.68);
     border: 1px solid rgba(30, 164, 230, 0.16);
     border-radius: 20px;
     box-shadow: 0 18px 40px rgba(30, 164, 230, 0.12);
@@ -682,17 +682,31 @@ iframe.fullscreen-sim {
   }
 }
 
-#workout-stack{
-  display:flex;
-  flex-direction:column;
-  align-items:center;
-  gap: 0.5rem;              /* <<< one knob: equal space above and below the arrow */
+#workout-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;   /* 🔑 instead of center → children span full width */
+  gap: 0.5rem;
+  width: 100%;
+  max-width: 100vw;       /* 🔑 never wider than the viewport */
+  margin: 0;
+  padding: 0;
 }
 
-/* Cancel margins that would skew the gap */
-#workout-stack > * { margin: 0 !important; }
-#workout-stack .card { width:100%; margin:0 !important; } /* overrides .card { margin-bottom:20px } and any mb-* */
-#arrow-indicator { margin:0 !important; }
+#workout-stack > * {
+  margin: 0 !important;
+}
+
+#workout-stack .card {
+  width: 100%;            /* fill parent */
+  max-width: 100vw;       /* 🔑 prevent overflow on mobile */
+  margin: 0 auto;         /* safe centering if needed */
+}
+
+#arrow-indicator {
+  margin: 0 !important;
+}
+
 
 .down-arrow {
   color: #198754; /* Bootstrap green */
@@ -940,7 +954,7 @@ iframe.fullscreen-sim {
 }
 
 .training-container .exercise-media-row {
-  gap: 1.25rem;
+  gap: 0.75rem;
   flex-wrap: nowrap;
   justify-content: center;
   overflow-x: auto;
@@ -964,7 +978,11 @@ iframe.fullscreen-sim {
 }
 
 .training-container .exercise-media-image {
-  width: clamp(110px, 40vw, 150px);
+  flex: 1 1 0;
+  max-width: 130px;
+  width: 100%;
+  height: auto;
+  object-fit: contain;;
   border: 2px solid rgba(247, 147, 26, 0.8);
   border-radius: 16px;
   padding: 0.4rem;
