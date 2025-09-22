@@ -73,6 +73,55 @@ footer {
     line-height: 1.6;
 }
 
+.collapsible-card {
+    padding: 0;
+    overflow: hidden;
+}
+
+.collapsible-toggle {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    border: 0;
+    background: transparent;
+    color: #1EA4E6;
+    font-weight: 600;
+    font-size: 1.1rem;
+    text-align: center;
+    padding: 1.15rem 1.5rem;
+    cursor: pointer;
+}
+
+.collapsible-toggle:focus-visible {
+    outline: 3px solid rgba(30, 164, 230, 0.45);
+    outline-offset: -3px;
+}
+
+.collapsible-title {
+    flex: 1 1 auto;
+}
+
+.collapsible-chevron {
+    flex-shrink: 0;
+    transition: transform 0.3s ease;
+}
+
+.collapsible-toggle[aria-expanded="true"] .collapsible-chevron {
+    transform: rotate(180deg);
+}
+
+.collapsible-content {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease;
+}
+
+.collapsible-content .card-body {
+    padding: 1.6rem;
+}
+
 .welcome-message {
     background-color: rgba(255, 255, 255, 0.82);
     border: 1px solid rgba(30, 164, 230, 0.16);

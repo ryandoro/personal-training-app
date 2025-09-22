@@ -347,58 +347,119 @@
      
         <!-- Show guidelines and workout options after the form is submitted -->
         {% if guidelines %}
-        <div class="card w-100 mx-auto shadow-sm border border-2 rounded-3 mb-4" style="border-color: #ced4da;">
-            <div class="card-body">
-                <h4 class="card-title text-center mb-3">Guidelines</h4>
-        
-                {% set goal_list = fitness_goals.split(',') %}
-                <p>
-                    Based on your selected goal{{ goal_list | length > 1 and 's' or '' }} —
-                    <strong>
-                        {% for goal in goal_list %}
-                            {{ goal.strip() }}{% if not loop.last %}, {% endif %}
-                        {% endfor %}
-                    </strong> — here are your recommended targets per exercise:
-                </p>
-        
-                <ul class="list-group p-2 border border-2 rounded-3 mb-4" style="border-color: #ced4da;">
-                    <li class="list-group-item shadow-sm p-3 border border-1 rounded-4 mb-3" style="border-color: #20c997; background-color: #ffffff;">
-                        <strong>Sets:</strong> {{ guidelines.Sets }}
-                    </li>
-                    <li class="list-group-item shadow-sm p-3 border border-1 rounded-4 mb-3" style="border-color: #20c997; background-color: #ffffff;">
-                        <strong>Repetitions:</strong> {{ guidelines.Reps }}
-                    </li>
-                    <li class="list-group-item shadow-sm p-3 border border-1 rounded-4 mb-3" style="border-color: #20c997; background-color: #ffffff;">
-                        <strong>Rest Between Sets:</strong> {{ guidelines.Rest }}
-                    </li>
-                </ul>
-        
-                <p class="text-muted small">
-                    These ranges reflect the combination of your selected goals. Adjust within the range based on how you feel each day.
-                </p>
-                <details class="mb-3">
-                    <summary class="text-primary" style="cursor: pointer;"><strong>Pro Tip 💡</strong></summary>
-                    <p class="mt-2 mb-0">
-                        To get the best results, aim for the lower end of the rest range and the higher end of the sets and 
-                        repetitions <strong>when you're feeling strong and well-recovered</strong>. Your effort should feel like an 
-                        <strong>8 out of 10</strong> — challenging, but doable with good form. If things start to feel too easy within the guidelines,
-                        increase the weight or difficulty of the exercise, or shift to a different part of the rep range or time target than you used last time. 
-                        That’s where real results are made: consistent, focused effort.
+        <div class="card w-100 mx-auto shadow-sm border border-2 rounded-3 mb-3 collapsible-card" style="border-color: #ced4da;">
+            <button type="button" class="collapsible-toggle" data-target="guidelines-content" aria-expanded="false">
+                <span class="collapsible-title">Guidelines</span>
+                <i class="bi bi-chevron-down collapsible-chevron" aria-hidden="true"></i>
+            </button>
+            <div id="guidelines-content" class="collapsible-content" hidden>
+                <div class="card-body">
+                    {% set goal_list = fitness_goals.split(',') %}
+                    <p>
+                        Based on your selected goal{{ goal_list | length > 1 and 's' or '' }} —
+                        <strong>
+                            {% for goal in goal_list %}
+                                {{ goal.strip() }}{% if not loop.last %}, {% endif %}
+                            {% endfor %}
+                        </strong> — here are your recommended targets per exercise:
                     </p>
-                </details>
 
-                <ul class="list-group p-2 border border-2 rounded-3" style="border-color: #ced4da;">
-                    <li class="list-group-item shadow-sm p-3 border border-1 rounded-4 mb-3" style="border-color: #20c997; background-color: #ffffff;">
-                        <strong>Resistance Training:</strong> At least 2 non-consecutive days per week, targeting all major muscle groups.
-                    </li>
-                    <li class="list-group-item shadow-sm p-3 border border-1 rounded-4" style="border-color: #20c997; background-color: #ffffff;">
-                        <strong>Cardio Training:</strong> Minimum 3 days per week. Start with 10 minutes per session and build up to 20–30 minutes as you progress.
-                    </li>
-                </ul>
+                    <ul class="list-group p-2 border border-2 rounded-3 mb-4" style="border-color: #ced4da;">
+                        <li class="list-group-item shadow-sm p-3 border border-1 rounded-4 mb-3" style="border-color: #20c997; background-color: #ffffff;">
+                            <strong>Sets:</strong> {{ guidelines.Sets }}
+                        </li>
+                        <li class="list-group-item shadow-sm p-3 border border-1 rounded-4 mb-3" style="border-color: #20c997; background-color: #ffffff;">
+                            <strong>Repetitions:</strong> {{ guidelines.Reps }}
+                        </li>
+                        <li class="list-group-item shadow-sm p-3 border border-1 rounded-4 mb-3" style="border-color: #20c997; background-color: #ffffff;">
+                            <strong>Rest Between Sets:</strong> {{ guidelines.Rest }}
+                        </li>
+                    </ul>
+
+                    <p class="text-muted small">
+                        These ranges reflect the combination of your selected goals. Adjust within the range based on how you feel each day.
+                    </p>
+                    <details class="mb-3">
+                        <summary class="text-primary" style="cursor: pointer;"><strong>Pro Tip 💡</strong></summary>
+                        <p class="mt-2 mb-0">
+                            To get the best results, aim for the lower end of the rest range and the higher end of the sets and 
+                            repetitions <strong>when you're feeling strong and well-recovered</strong>. Your effort should feel like an 
+                            <strong>8 out of 10</strong> — challenging, but doable with good form. If things start to feel too easy within the guidelines,
+                            increase the weight or difficulty of the exercise, or shift to a different part of the rep range or time target than you used last time. 
+                            That’s where real results are made: consistent, focused effort.
+                        </p>
+                    </details>
+
+                    <ul class="list-group p-2 border border-2 rounded-3" style="border-color: #ced4da;">
+                        <li class="list-group-item shadow-sm p-3 border border-1 rounded-4 mb-3" style="border-color: #20c997; background-color: #ffffff;">
+                            <strong>Resistance Training:</strong> At least 2 non-consecutive days per week, targeting all major muscle groups.
+                        </li>
+                        <li class="list-group-item shadow-sm p-3 border border-1 rounded-4" style="border-color: #20c997; background-color: #ffffff;">
+                            <strong>Cardio Training:</strong> Minimum 3 days per week. Start with 10 minutes per session and build up to 20–30 minutes as you progress.
+                        </li>
+                    </ul>
+                </div>
             </div>
         </div>
         {% endif %}
-        
+
+        {% if target_heart_rate_zone %}
+        <div class="card w-100 mx-auto shadow-sm border border-2 rounded-3 mb-3 collapsible-card" style="border-color: #ced4da;">
+            <button type="button" class="collapsible-toggle" data-target="target-heart-rate-content" aria-expanded="false">
+                <span class="collapsible-title">Your Target Heart Rate Zone</span>
+                <i class="bi bi-chevron-down collapsible-chevron" aria-hidden="true"></i>
+            </button>
+            <div id="target-heart-rate-content" class="collapsible-content" hidden>
+                <div class="card-body">
+                    <p class="card-text">
+                        Based on your age, the recommended heart rate ranges for your optimal cardiovascular activity are:
+                    </p>
+
+                    <ul class="list-group p-2 border border-2 rounded-3 mb-3" style="border-color: #ced4da;">
+                        <li class="list-group-item shadow-sm p-3 border border-1 rounded-4 mb-3" style="border-color: #20c997; background-color: #ffffff;">
+                            <strong>Target Heart Rate Zone:</strong> {{ target_heart_rate_zone.lower_bound }} - {{ target_heart_rate_zone.upper_bound }} bpm
+                        </li>
+                        <li class="list-group-item shadow-sm p-3 border border-1 rounded-4" style="border-color: #20c997; background-color: #ffffff;">
+                            <strong>Maximum Heart Rate:</strong> {{ target_heart_rate_zone.max_heart_rate }} bpm
+                        </li>
+                    </ul>
+
+                    <p class="mt-3 text-muted">
+                        Try to keep your heart rate in the middle of your target heart rate zone. Track your heart rate during cardio exercises to stay within this range. Use gym equipment monitors
+                        or a smartwatch like a Fitbit, Garmin, or Apple Watch.
+                    </p>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="card w-100 mx-auto shadow-sm border border-2 rounded-3 mb-4 collapsible-card" style="border-color: #ced4da;">
+            <button type="button" class="collapsible-toggle" data-target="training-key-content" aria-expanded="false">
+                <span class="collapsible-title">Key</span>
+                <i class="bi bi-chevron-down collapsible-chevron" aria-hidden="true"></i>
+            </button>
+            <div id="training-key-content" class="collapsible-content" hidden>
+                <div class="card-body">
+                    <h5><strong>5 Point Rule:</strong></h5>
+                    <ul class="list-group p-2 border border-2 rounded-3 mb-4" style="border-color: #ced4da;">
+                        <li class="list-group-item shadow-sm p-3 border border-1 rounded-4 mb-3" style="border-color: #20c997; background-color: #ffffff;">1. Left foot flat on the floor</li>
+                        <li class="list-group-item shadow-sm p-3 border border-1 rounded-4 mb-3" style="border-color: #20c997; background-color: #ffffff;">2. Right foot flat on the floor</li>
+                        <li class="list-group-item shadow-sm p-3 border border-1 rounded-4 mb-3" style="border-color: #20c997; background-color: #ffffff;">3. Butt on bench</li>
+                        <li class="list-group-item shadow-sm p-3 border border-1 rounded-4 mb-3" style="border-color: #20c997; background-color: #ffffff;">4. Upper back on bench</li>
+                        <li class="list-group-item shadow-sm p-3 border border-1 rounded-4" style="border-color: #20c997; background-color: #ffffff;">5. Head on bench</li>
+                    </ul>
+
+                    <h5><strong>4 Point Rule:</strong></h5>
+                    <ul class="list-group p-2 border border-2 rounded-3" style="border-color: #ced4da;">
+                        <li class="list-group-item shadow-sm p-3 border border-1 rounded-4 mb-3" style="border-color: #20c997; background-color: #ffffff;">1. Left foot flat on the floor</li>
+                        <li class="list-group-item shadow-sm p-3 border border-1 rounded-4 mb-3" style="border-color: #20c997; background-color: #ffffff;">2. Right foot flat on the floor</li>
+                        <li class="list-group-item shadow-sm p-3 border border-1 rounded-4 mb-3" style="border-color: #20c997; background-color: #ffffff;">3. Butt on bench</li>
+                        <li class="list-group-item shadow-sm p-3 border border-1 rounded-4" style="border-color: #20c997; background-color: #ffffff;">4. Chest/back on pad</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
 
         <!-- Choose Your Workout Card -->
         <div class="card mt-4" style="box-shadow: 0 0 16px rgba(247, 147, 26, 0.4);">
@@ -511,6 +572,60 @@
             const progressTrackingNote = document.getElementById('progress-tracking-note');
             const toastGenerate = document.getElementById('toastGenerate');
             let toastGenerateTimeout;
+
+            initCollapsibleCards();
+
+            function initCollapsibleCards() {
+                const toggles = document.querySelectorAll('.collapsible-toggle');
+                toggles.forEach(toggle => {
+                    const targetId = toggle.dataset.target;
+                    if (!targetId) return;
+                    const content = document.getElementById(targetId);
+                    if (!content) return;
+
+                    toggle.addEventListener('click', () => {
+                        const isExpanded = toggle.getAttribute('aria-expanded') === 'true';
+                        if (isExpanded) {
+                            collapseCollapsible(content, toggle);
+                        } else {
+                            expandCollapsible(content, toggle);
+                        }
+                    });
+                });
+            }
+
+            function expandCollapsible(content, toggle) {
+                content.hidden = false;
+                content.style.maxHeight = 'none';
+                const sectionHeight = content.scrollHeight;
+                content.style.maxHeight = '0px';
+                content.offsetHeight; // force reflow so transition triggers
+                content.style.maxHeight = sectionHeight + 'px';
+                toggle.setAttribute('aria-expanded', 'true');
+
+                const onTransitionEnd = (event) => {
+                    if (event.propertyName !== 'max-height') return;
+                    content.style.maxHeight = 'none';
+                    content.removeEventListener('transitionend', onTransitionEnd);
+                };
+                content.addEventListener('transitionend', onTransitionEnd);
+            }
+
+            function collapseCollapsible(content, toggle) {
+                if (content.style.maxHeight === 'none') {
+                    content.style.maxHeight = content.scrollHeight + 'px';
+                }
+                content.offsetHeight; // force reflow before collapsing
+                content.style.maxHeight = '0px';
+                toggle.setAttribute('aria-expanded', 'false');
+
+                const onTransitionEnd = (event) => {
+                    if (event.propertyName !== 'max-height') return;
+                    content.hidden = true;
+                    content.removeEventListener('transitionend', onTransitionEnd);
+                };
+                content.addEventListener('transitionend', onTransitionEnd);
+            }
 
             function showGenerateToast(message) {
                 if (!toastGenerate) return;
@@ -1111,56 +1226,6 @@
             });
         });
         </script>
-        
-        <!-- Target Heart Rate Zone -->
-        {% if target_heart_rate_zone %}
-        <div class="card w-100 mx-auto shadow-sm mt-4 border border-2 rounded-3 mb-4" style="border-color: #ced4da;">
-            <div class="card-body">
-                <h4 class="card-title text-center mb-3">Your Target Heart Rate Zone</h4>
-                <p class="card-text">
-                    Based on your age, the recommended heart rate ranges for your optimal cardiovascular activity are:
-                </p>
-                
-                <ul class="list-group p-2 border border-2 rounded-3 mb-3" style="border-color: #ced4da;">
-                    <li class="list-group-item shadow-sm p-3 border border-1 rounded-4 mb-3" style="border-color: #20c997; background-color: #ffffff;">
-                        <strong>Target Heart Rate Zone:</strong> {{ target_heart_rate_zone.lower_bound }} - {{ target_heart_rate_zone.upper_bound }} bpm
-                    </li>
-                    <li class="list-group-item shadow-sm p-3 border border-1 rounded-4" style="border-color: #20c997; background-color: #ffffff;">
-                        <strong>Maximum Heart Rate:</strong> {{ target_heart_rate_zone.max_heart_rate }} bpm
-                    </li>
-                </ul>
-
-                <p class="mt-3 text-muted">
-                    Try to keep your heart rate in the middle of your target heart rate zone. Track your heart rate during cardio exercises to stay within this range. Use gym equipment monitors
-                    or a smartwatch like a Fitbit, Garmin, or Apple Watch.
-                </p>
-            </div>
-        </div>
-        {% endif %}
-
-        <!-- Key Section -->
-        <div class="card w-100 mx-auto shadow-sm p-3 border border-2 rounded-3 mb-4" style="border-color: #ced4da;">
-            <div class="card-body">
-                <h4 class="card-title text-center mb-3">Key</h4>
-                
-                <h5><strong>5 Point Rule:</strong></h5>
-                <ul class="list-group p-2 border border-2 rounded-3 mb-4" style="border-color: #ced4da;">
-                    <li class="list-group-item shadow-sm p-3 border border-1 rounded-4 mb-3" style="border-color: #20c997; background-color: #ffffff;">1. Left foot flat on the floor</li>
-                    <li class="list-group-item shadow-sm p-3 border border-1 rounded-4 mb-3" style="border-color: #20c997; background-color: #ffffff;">2. Right foot flat on the floor</li>
-                    <li class="list-group-item shadow-sm p-3 border border-1 rounded-4 mb-3" style="border-color: #20c997; background-color: #ffffff;">3. Butt on bench</li>
-                    <li class="list-group-item shadow-sm p-3 border border-1 rounded-4 mb-3" style="border-color: #20c997; background-color: #ffffff;">4. Upper back on bench</li>
-                    <li class="list-group-item shadow-sm p-3 border border-1 rounded-4" style="border-color: #20c997; background-color: #ffffff;">5. Head on bench</li>
-                </ul>
-        
-                <h5><strong>4 Point Rule:</strong></h5>
-                <ul class="list-group p-2 border border-2 rounded-3" style="border-color: #ced4da;">
-                    <li class="list-group-item shadow-sm p-3 border border-1 rounded-4 mb-3" style="border-color: #20c997; background-color: #ffffff;">1. Left foot flat on the floor</li>
-                    <li class="list-group-item shadow-sm p-3 border border-1 rounded-4 mb-3" style="border-color: #20c997; background-color: #ffffff;">2. Right foot flat on the floor</li>
-                    <li class="list-group-item shadow-sm p-3 border border-1 rounded-4 mb-3" style="border-color: #20c997; background-color: #ffffff;">3. Butt on bench</li>
-                    <li class="list-group-item shadow-sm p-3 border border-1 rounded-4" style="border-color: #20c997; background-color: #ffffff;">4. Chest/back on pad</li>
-                </ul>
-            </div>
-        </div>
     {% endif %}
 </div>
 <script>
