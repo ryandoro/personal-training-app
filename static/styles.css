@@ -514,8 +514,8 @@ iframe.fullscreen-sim {
   padding: 0.7rem 2.5rem;
   background: linear-gradient(135deg, #f7931a, #ffb347);
   background-size: 200% 200%;
-  border: 1px solid #404043;
-  color: #404043; 
+  border: none;
+  color: #fff; /* always white text */
   font-weight: 700;
   letter-spacing: 0.05em;
   box-shadow: 0 7.5px 15px rgba(247, 147, 26, 0.25);
@@ -528,28 +528,22 @@ iframe.fullscreen-sim {
   /* iOS fixes */
   -webkit-tap-highlight-color: transparent;
   -webkit-touch-callout: none;
+  -webkit-appearance: none;
+  appearance: none;
+  -webkit-text-fill-color: #fff !important; /* lock text to white */
 }
 
 .btn-ignite:hover {
-  color: #fff;
-  transform: translateY(-2px) scale(1.02);
-  box-shadow: 0 20px 45px rgba(247, 147, 26, 0.35);
+  transform: translateY(-2px) scale(1.05);
+  box-shadow: 0 20px 45px rgba(247, 147, 26, 0.4);
   background-position: right center;
 }
 
-.btn-ignite:active {
-  color: #fff !important;
-  border: none;
-  transform: translateY(1px) scale(0.98);
-  box-shadow: 0 10px 20px rgba(247, 147, 26, 0.2);
-  outline: 3px solid #ffb347;
-  outline-offset: 3px;
-}
-
 .btn-ignite:focus,
+.btn-ignite:active,
 .btn-ignite.focus-ring {
-  color: #fff !important;
-  border: none;
+  transform: translateY(1px) scale(0.97);
+  box-shadow: 0 10px 20px rgba(247, 147, 26, 0.3);
   outline: 3px solid #ffb347;
   outline-offset: 3px;
 }
