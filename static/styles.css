@@ -514,11 +514,11 @@ iframe.fullscreen-sim {
   padding: 0.7rem 2.5rem;
   background: linear-gradient(135deg, #f7931a, #ffb347);
   background-size: 200% 200%;
-  border: none; /* cleaner look */
-  color: #fff;
+  border: 1px solid #404043;
+  color: #404043; 
   font-weight: 700;
   letter-spacing: 0.05em;
-  box-shadow: 0 15px 30px rgba(247, 147, 26, 0.25);
+  box-shadow: 0 7.5px 15px rgba(247, 147, 26, 0.25);
   transition: all 0.25s ease;
   cursor: pointer;
   text-decoration: none;
@@ -526,26 +526,31 @@ iframe.fullscreen-sim {
   text-align: center;
 
   /* iOS fixes */
-  -webkit-tap-highlight-color: transparent; /* stops gray flash */
-  -webkit-touch-callout: none;              /* optional: disable long-press menu */
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
 }
 
 .btn-ignite:hover {
+  color: #fff;
   transform: translateY(-2px) scale(1.02);
   box-shadow: 0 20px 45px rgba(247, 147, 26, 0.35);
   background-position: right center;
 }
 
 .btn-ignite:active {
+  color: #fff; /* flip to white when pressed */
   transform: translateY(1px) scale(0.98);
   box-shadow: 0 10px 20px rgba(247, 147, 26, 0.2);
+  outline: 3px solid #f7931a;
+  outline-offset: 3px;
 }
 
 .btn-ignite:focus,
 .btn-ignite.focus-ring {
-  outline: 3px solid #ffb347;
+  outline: 3px solid #f7931a;
   outline-offset: 3px;
 }
+
 
 .btn-brand {
   border-radius: 999px;
