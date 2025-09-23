@@ -524,6 +524,10 @@ iframe.fullscreen-sim {
   text-decoration: none;
   display: inline-block;
   text-align: center;
+
+  /* iOS fixes */
+  -webkit-tap-highlight-color: transparent; /* stops gray flash */
+  -webkit-touch-callout: none;              /* optional: disable long-press menu */
 }
 
 .btn-ignite:hover {
@@ -535,15 +539,13 @@ iframe.fullscreen-sim {
 .btn-ignite:active {
   transform: translateY(1px) scale(0.98);
   box-shadow: 0 10px 20px rgba(247, 147, 26, 0.2);
+}
+
+.btn-ignite:focus,
+.btn-ignite.focus-ring {
   outline: 3px solid #ffb347;
   outline-offset: 3px;
 }
-
-.btn-ignite:focus {
-  outline: 3px solid #ffb347;
-  outline-offset: 3px;
-}
-
 
 .btn-brand {
   border-radius: 999px;
