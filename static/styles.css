@@ -542,15 +542,15 @@ iframe.fullscreen-sim {
   border: none;
   transform: translateY(1px) scale(0.98);
   box-shadow: 0 10px 20px rgba(247, 147, 26, 0.2);
-  outline: 3px solid #f7931a;
+  outline: 3px solid #ffb347;
   outline-offset: 3px;
 }
 
 .btn-ignite:focus,
 .btn-ignite.focus-ring {
-  color: #fff;
+  color: #fff !important;
   border: none;
-  outline: 3px solid #f7931a;
+  outline: 3px solid #ffb347;
   outline-offset: 3px;
 }
 
