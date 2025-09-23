@@ -513,18 +513,36 @@ iframe.fullscreen-sim {
   border-radius: 999px;
   padding: 0.7rem 2.5rem;
   background: linear-gradient(135deg, #f7931a, #ffb347);
-  border: none;
-  color: #1f1f1f;
+  background-size: 200% 200%;
+  border: none; /* cleaner look */
+  color: #fff;
   font-weight: 700;
   letter-spacing: 0.05em;
   box-shadow: 0 15px 30px rgba(247, 147, 26, 0.25);
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  transition: all 0.25s ease;
+  cursor: pointer;
+  text-decoration: none;
+display: inline-block;
+text-align: center;
 }
 
 .btn-ignite:hover {
-  transform: translateY(-2px);
+  transform: translateY(-2px) scale(1.02);
   box-shadow: 0 20px 45px rgba(247, 147, 26, 0.35);
+  background-position: right center;
 }
+
+.btn-ignite:active {
+  color: #e6e6e6;
+  transform: translateY(1px) scale(0.98);
+  box-shadow: 0 10px 20px rgba(247, 147, 26, 0.2);
+}
+
+.btn-ignite:focus {
+  outline: 3px solid #ffb347;
+  outline-offset: 3px;
+}
+
 
 .btn-brand {
   border-radius: 999px;
