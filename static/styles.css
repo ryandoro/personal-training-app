@@ -522,8 +522,8 @@ iframe.fullscreen-sim {
   transition: all 0.25s ease;
   cursor: pointer;
   text-decoration: none;
-display: inline-block;
-text-align: center;
+  display: inline-block;
+  text-align: center;
 }
 
 .btn-ignite:hover {
@@ -533,9 +533,10 @@ text-align: center;
 }
 
 .btn-ignite:active {
-  color: #e6e6e6;
   transform: translateY(1px) scale(0.98);
   box-shadow: 0 10px 20px rgba(247, 147, 26, 0.2);
+  outline: 3px solid #ffb347;
+  outline-offset: 3px;
 }
 
 .btn-ignite:focus {
