@@ -543,7 +543,7 @@ iframe.fullscreen-sim {
 .btn-ignite:active,
 .btn-ignite.focus-ring {
   transform: translateY(1px) scale(0.97);
-  box-shadow: 0 10px 20px rgba(247, 147, 26, 0.3);
+  box-shadow: none;
   outline: 3px solid #ffb347;
   outline-offset: 3px;
 }
