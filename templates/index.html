@@ -8,7 +8,13 @@
 <div class="index-hero">
     <div class="index-card" style="background: rgba(255, 255, 255, 0.75); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);">
         <header class="index-header text-center">
-            <span class="hero-pill">FitBase<span class="text-orange">AI</span></span>
+            <div class="collab-branding">
+                <span class="collab-logo-pill">
+                    <img src="{{ url_for('static', filename='images/western_logo.jpeg') }}" alt="Western Racquet and Fitness Club logo" class="collab-logo">
+                </span>
+                <span class="collab-divider">×</span>
+                <span class="hero-pill">FitBase<span class="text-orange">AI</span></span>
+            </div>
             {% if name %}
                 <h1 class="display-5 fw-bold">Welcome back, {{ name }}!</h1>
             {% else %}
