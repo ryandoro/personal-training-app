@@ -519,7 +519,7 @@ iframe.fullscreen-sim {
   font-weight: 700;
   letter-spacing: 0.05em;
   box-shadow: 0 7.5px 15px rgba(247, 147, 26, 0.25);
-  transition: all 0.25s ease;
+  transition: color 0.15s ease, transform 0.25s ease, box-shadow 0.25s ease;
   cursor: pointer;
   text-decoration: none;
   display: inline-block;
@@ -530,6 +530,8 @@ iframe.fullscreen-sim {
   -webkit-touch-callout: none;
   -webkit-appearance: none;
   appearance: none;
+  -webkit-user-select: none;
+  user-select: none;
   -webkit-text-fill-color: #404043 !important; /* lock text to dark gray */
   outline: none !important;
 }
@@ -548,7 +550,7 @@ iframe.fullscreen-sim {
   border: none !important;
   transform: translateY(1px) scale(0.97);
   box-shadow: 0 10px 20px rgba(0, 0, 0, 0.25);
-  outline: 3px solid #f7931a !important;
+  outline: 3px solid #ffb347 !important;
   outline-offset: 3px;
 }
 
