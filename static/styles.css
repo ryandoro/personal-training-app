@@ -531,6 +531,7 @@ iframe.fullscreen-sim {
   -webkit-appearance: none;
   appearance: none;
   -webkit-text-fill-color: #404043 !important; /* lock text to dark gray */
+  outline: none !important;
 }
 
 .btn-ignite:hover {
@@ -544,7 +545,7 @@ iframe.fullscreen-sim {
 .btn-ignite.focus-ring {
   color: #fff !important;                     /* switch to white */
   -webkit-text-fill-color: #fff !important;   /* force Safari text fill */
-  border: none;
+  border: none !important;
   transform: translateY(1px) scale(0.97);
   box-shadow: 0 10px 20px rgba(0, 0, 0, 0.25);
   outline: 3px solid #f7931a !important;
