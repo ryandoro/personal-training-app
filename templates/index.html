@@ -141,10 +141,7 @@
 
         document.querySelectorAll('.btn-ignite').forEach(btn => {
             btn.addEventListener('touchstart', () => {
-                btn.classList.add('focus-ring');
-            });
-            btn.addEventListener('touchend', () => {
-                setTimeout(() => btn.classList.remove('focus-ring'), 200); // stays visible shortly
+                btn.classList.add('focus-ring'); // stays on after tap
             });
         });
     </script>
