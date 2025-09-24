@@ -20,12 +20,12 @@
             {% else %}
                 <h1 class="display-5 fw-bold">Welcome!</h1>
             {% endif %}
-            <p class="lead text-muted fst-italic">“It’s good to be aware.”</p>
+            <p class="lead text-muted fst-italic">Train smarter. Stay aware.</p>
         </header>
 
         <section class="index-intro">
             <p>
-                Here, you can track your workouts, generate customized routines, and see your progress as you achieve your fitness goals. Let’s keep pushing forward together!
+                Smart training starts with awareness. Track your workouts, build custom routines, and see your goals come to life. Let’s keep pushing forward together!
             </p>
             {% if not name %}
                 <p class="mt-2">
@@ -140,9 +140,11 @@
         });
 
         document.querySelectorAll('.btn-ignite').forEach(btn => {
-            btn.addEventListener('touchstart', () => btn.classList.add('focus-ring'));
+            btn.addEventListener('touchstart', () => {
+                btn.classList.add('focus-ring');
+            });
             btn.addEventListener('touchend', () => {
-                setTimeout(() => btn.classList.remove('focus-ring'), 200);
+                setTimeout(() => btn.classList.remove('focus-ring'), 200); // stays visible shortly
             });
         });
     </script>

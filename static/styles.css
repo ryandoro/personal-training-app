@@ -514,8 +514,8 @@ iframe.fullscreen-sim {
   padding: 0.7rem 2.5rem;
   background: linear-gradient(135deg, #f7931a, #ffb347);
   background-size: 200% 200%;
-  border: none;
-  color: #fff; /* always white text */
+  border: 1px solid #404043;
+  color: #404043; /* default dark gray text */
   font-weight: 700;
   letter-spacing: 0.05em;
   box-shadow: 0 7.5px 15px rgba(247, 147, 26, 0.25);
@@ -530,7 +530,7 @@ iframe.fullscreen-sim {
   -webkit-touch-callout: none;
   -webkit-appearance: none;
   appearance: none;
-  -webkit-text-fill-color: #fff !important; /* lock text to white */
+  -webkit-text-fill-color: #404043 !important; /* lock text to dark gray */
 }
 
 .btn-ignite:hover {
@@ -542,9 +542,12 @@ iframe.fullscreen-sim {
 .btn-ignite:focus,
 .btn-ignite:active,
 .btn-ignite.focus-ring {
+  color: #fff !important;                     /* switch to white */
+  -webkit-text-fill-color: #fff !important;   /* force Safari text fill */
+  border: none;
   transform: translateY(1px) scale(0.97);
-  box-shadow: none;
-  outline: 3px solid #ffb347;
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.25);
+  outline: 3px solid #f7931a !important;
   outline-offset: 3px;
 }
 
