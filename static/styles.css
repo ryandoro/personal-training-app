@@ -549,7 +549,7 @@ iframe.fullscreen-sim {
   -webkit-text-fill-color: #fff !important;   /* force Safari text fill */
   border: none !important;
   transform: translateY(1px) scale(0.97);
-  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 0 12px 2px rgba(247, 147, 26, 0.6);
   outline: 3px solid #ffb347 !important;
   outline-offset: 3px;
 }
