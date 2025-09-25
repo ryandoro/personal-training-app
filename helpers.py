@@ -395,7 +395,8 @@ def generate_workout(selected_category, user_level, user_id, duration_minutes=60
                         w.image_exercise_start,
                         w.image_exercise_end,
                         uep.max_weight,
-                        uep.max_reps
+                        uep.max_reps,
+                        uep.notes
                     FROM workouts w
                     LEFT JOIN user_exercise_progress uep
                         ON w.id = uep.workout_id AND uep.user_id = %s

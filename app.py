@@ -62,6 +62,7 @@ def _format_exercise(selected_category, exercise):
         image_end = exercise.get('image_exercise_end')
         max_weight = exercise.get('max_weight')
         max_reps = exercise.get('max_reps')
+        notes = exercise.get('notes')
     else:
         workout_id = exercise[0]
         name = exercise[1]
@@ -71,6 +72,7 @@ def _format_exercise(selected_category, exercise):
         image_end = exercise[5]
         max_weight = exercise[6] if len(exercise) > 6 else None
         max_reps = exercise[7] if len(exercise) > 7 else None
+        notes = exercise[8] if len(exercise) > 8 else None
 
     if max_weight is not None and not isinstance(max_weight, (int, float)):
         try:
@@ -94,6 +96,7 @@ def _format_exercise(selected_category, exercise):
         'max_weight': max_weight,
         'max_reps': max_reps,
         'category': selected_category,
+        'notes': notes,
     }
 
 
@@ -925,6 +928,97 @@ def workout_details(category):
 
     return render_template('workout_details.html', category=category, workouts=workouts)
 
+
+
+@app.route('/update_notes', methods=['POST'])
+@login_required
+def update_notes():
+    data = request.get_json(silent=True) or {}
+    workout_id_raw = data.get('workout_id')
+    try:
+        workout_id = int(str(workout_id_raw).strip())
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'error': 'Invalid workout id'}), 400
+
+    notes_raw = data.get('notes')
+    notes = None
+    if notes_raw is not None:
+        notes_text = str(notes_raw)
+        cleaned = notes_text.strip()
+        if cleaned:
+            notes = cleaned
+
+    user_id = session['user_id']
+
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("""
+                INSERT INTO user_exercise_progress (user_id, workout_id, notes)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (user_id, workout_id) DO UPDATE
+                SET notes = EXCLUDED.notes,
+                    updated_at = CURRENT_TIMESTAMP
+            """, (user_id, workout_id, notes))
+
+        active_updated = False
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("SELECT category, workout_data FROM active_workouts WHERE user_id = %s", (user_id,))
+            active = cur.fetchone()
+
+        if active and active.get('workout_data') is not None:
+            payload = active['workout_data']
+            workout_id_str = str(workout_id)
+
+            def update_exercise_entry(entry):
+                nonlocal active_updated
+                if isinstance(entry, dict):
+                    if str(entry.get('workout_id')) == workout_id_str:
+                        entry = {**entry}
+                        entry['notes'] = notes
+                        active_updated = True
+                    return entry
+                if isinstance(entry, (list, tuple)):
+                    if entry and str(entry[0]) == workout_id_str:
+                        entry_list = list(entry)
+                        while len(entry_list) <= 8:
+                            entry_list.append(None)
+                        entry_list[8] = notes
+                        active_updated = True
+                        return entry_list
+                return entry
+
+            def update_structure(node):
+                if isinstance(node, dict):
+                    if 'workout_id' in node or 'exercise_id' in node:
+                        return update_exercise_entry(node)
+                    return {key: update_structure(value) for key, value in node.items()}
+                if isinstance(node, list):
+                    if node and not isinstance(node[0], (dict, list, tuple)) and str(node[0]) == workout_id_str:
+                        return update_exercise_entry(node)
+                    return [update_structure(item) for item in node]
+                if isinstance(node, tuple):
+                    return update_exercise_entry(node)
+                return node
+
+            if isinstance(payload, dict):
+                if 'plan' in payload and payload['plan'] is not None:
+                    payload['plan'] = update_structure(payload['plan'])
+                else:
+                    payload = update_structure(payload)
+                active['workout_data'] = payload
+            elif isinstance(payload, list):
+                active['workout_data'] = update_structure(payload)
+
+            if active_updated:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "UPDATE active_workouts SET workout_data = %s WHERE user_id = %s",
+                        (psycopg2.extras.Json(active['workout_data']), user_id)
+                    )
+
+        conn.commit()
+
+    return jsonify({'success': True, 'notes': notes or ''})
 
 
 @app.route('/update_pr', methods=['POST'])
