@@ -1,12 +1,44 @@
-# RYAN DORO PERSONAL TRAINING
-#### Video Demo:  <https://youtu.be/xMSgzpkJLOE>
-#### Description:
-This web application is a personal training platform I created to help users generate and track their workout routines to achieve their fitness goals. It was built using Flask, the application incorporates SQLite for data storage, Bootstrap for styling, and JavaScript for interactivity. It allows users to register, log in and log out, and interact with personalized fitness routines based on their exercise history and fitness goals, of which they are required to enter on the personal training page before they are able to select workouts to complete. Additionally, it includes workout guidelines, a heart rate zone calculator, which is inspired by Target Heart Rate Zones according to the American Heart Association, and a structured "Key" section to ensure proper form for each exercise that calls for those cues in their descriptions.
-The core file, app.py, handles all of the backend functionalities. It defines routes for various features, such as the home page that displays a welcome message and user stats, and the registration and login/logout pages for account management within the navigation bar. The training page enables the users to view personalized training guidelines and complete workouts with names and descriptions for every exercise once a workout category is selected from a dropdown menu. Moreover, the /generate_workout route creates the workout plans, the /complete_workout route updates the user's progress and stores workout details, and the /workout_details/<category> route provides insights into the details of the user’s last completed workout. These routes form the backbone of the application's logic and ensure a seamless user experience, and they are all generated based on the inputs the user enters when they fill out a personal training questionnaire on the personal training page.
-The helpers.py file supports app.py by enhancing the functionality of the application without overcrowding the main file. For example, the login_required  decorator secures sensitive routes, while the calculate_target_heart_rate function ensures safe cardiovascular activity within the training route as calculated by the American Heart Association standards. The generate_workout function creates workout routines tailored to the user’s fitness level and goals entered in the personal training questionnaire, and the get_guidelines function specifies sets, repetitions, and rest durations for each exercise, also based on the inputs the user enters in the personal training questionnaire, further personalizing the user's experience.
-The application’s front-end is structured using HTML templates located in the templates/ folder. layout.html serves as the base structure for all of the pages, with shared headers, footers, and navigation. index.html hosts the home page, training.html manages the personal training questionnaire form with a submit button and also manages the workout interactions on the personal training page once the form is completed. It also displays the target heart rate zone for the user based on their age, and it also displays the key and guidelines sections. workout_details.html provides detailed summaries when a user clicks on the "Last Workout Completed" link on the home page. These templates ensure a consistent and user-friendly interface.
-To maintain a consistent design, styles.css, located in the static/ folder, customizes the application’s appearance. It has uniform styling across pages, enhancing the readability and usability of the application for the user. The instance/health.db file serves as the SQLite database, storing user credentials, profiles, workout histories, and fitness goals. It also contains a workout database of over 100 exercises, complete with names and descriptions categorized for easy access. This database design ensures that user-specific and general workout data are well-organized and accessible.
-I aimed to make the application intuitive and straightforward for users. SQLite was chosen for its simplicity and efficiency in handling the large dataset of workout information. While the current version is functional, there are many features I would like to implement in the future. The design structure allows for easy scalability and enhancements.
-Developing the application presented several challenges. For instance, ensuring the hyperlink on the home page functioned correctly required careful troubleshooting. Aligning the styles.css file with HTML templates to maintain consistency across pages was another task that demanded attention. Displaying guidelines appropriately on the personal training page also proved to be difficult but rewarding once resolved. Structuring the database to manage both user-specific and general workout data efficiently was another significant undertaking.
-Future enhancements could include visual progress charts to give users a clearer picture of their fitness journey. I also envision adding a contact page, a testimonials page, and a dedicated section to share more about my approach to personal training. Integrating AI to provide dynamic workout adjustments and progress tracking is another possibility. These additions would further personalize the platform and enhance its utility.
-Ultimately, this project lays a strong foundation for a personalized fitness platform. Designed with the user's intentions in mind, it empowers them to take control of their fitness journey while providing the tools and guidance needed to succeed.
+# FitBaseAI
+
+FitBaseAI — A full-stack prototype fitness SaaS platform built to streamline workout creation and progress tracking while integrating modern SaaS features like subscriptions and automated communication.
+
+---
+
+## Features
+- **Personalized Workout Generator** – Automatically creates workouts for free weight, bodyweight, and machine exercises.  
+- **Progress Tracking** – Stores personal records, max weight/reps, and workout history.  
+- **Subscription Management** – Free trial → Premium upgrade flow with automated downgrades to Free tier.  
+- **Admin Dashboard** – Manage users, subscriptions, and user data.  
+- **Email Delivery** – Automated transactional emails (Postmark).  
+- **Role-Based Access** – User tiers (Free, Premium, Pro).  
+
+---
+
+## Tech Stack
+- **Backend:** Python (Flask), PostgreSQL  
+- **Frontend:** HTML, CSS, JavaScript, Bootstrap  
+- **Integrations:** Stripe (payments), Postmark (email)  
+- **Other:** Git/GitHub for version control  
+
+---
+
+## Why This Project
+I built FitBaseAI after 13 years in the fitness industry to solve real-world challenges I experienced as a trainer and manager:
+- Trainers wasting time writing repetitive workouts.  
+- Losing track of progress and machine settings.  
+- Gyms struggling with subscription flows and retention.  
+
+This prototype shows how fitness workflows can be turned into scalable, intuitive software.
+
+## Future Enhancements
+- Visual progress charts for workout history and user stats  
+- AI-driven workout adjustments to overcome injuries 
+- Expanded analytics in the admin dashboard  
+
+---
+## 👤 Author
+**Ryan Doro**  
+- 13 years in the fitness industry (trainer, sales, general manager)  
+- Software engineer with experience in Python, Flask, PostgreSQL, JavaScript, Stripe, and Postmark  
+- [LinkedIn](https://www.linkedin.com/in/ryandoroprogramming) | [Email](mailto:ryandoro93@gmail.com)
+
