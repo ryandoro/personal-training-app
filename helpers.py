@@ -53,7 +53,7 @@ WORKOUT_STRUCTURE = {
 }
 
 
-# --- Exercise history → numeric level mapping (single source of truth) ---
+# --- Exercise history → numeric level mapping ---
 LEVEL_MAP = {
     "No Exercise History": 1,
     "Exercise less than 1 year": 1,
@@ -272,13 +272,13 @@ def allocate_counts(subcategories: dict, scale: float, selected_category: str) -
     Allocate a total exercise budget across subcategories with priority emphasis
     for 'big movers' when time is short.
     """
-    # ---- 1) Define priority per category (customize as you like) ----
+    # ---- 1) Define priority per category ----
     PRIORITY_MAP = {
         # Full Body: emphasize compounds / large muscle groups first
         "Full Body": ["LEGS", "BACK", "CHEST", "SHOULDERS", "BICEPS", "TRICEPS", "ABS"],
         # Upper Body day: prioritize multi-joint / larger movers
         "Upper Body": ["BACK", "CHEST", "SHOULDERS", "BICEPS", "TRICEPS"],
-        # Legs is single bucket, but kept here for completeness
+        # Legs is single bucket
         "Legs": ["LEGS"],
         # Push/Pull splits
         "Chest and Triceps": ["CHEST", "TRICEPS"],
@@ -298,7 +298,7 @@ def allocate_counts(subcategories: dict, scale: float, selected_category: str) -
         return {k: 0 for k in subcategories}
 
     # Build ordered keys: priority first, then any remaining in original order
-    # (preserve original order input by using OrderedDict if you build it that way)
+    # Preserve original order input by using OrderedDict
     ordered_keys = [k for k in priority if k in subcategories] + \
                    [k for k in subcategories.keys() if k not in priority]
 
@@ -500,7 +500,6 @@ def get_guidelines(exercise_history, fitness_goals):
         "Reps": format_range(reps),
         "Rest": format_range(rest, is_rest=True)
     }
-    # Don't need this line? - return guidelines[level].get(fitness_goals, {})
 
 
 def fmt_utc(dt):

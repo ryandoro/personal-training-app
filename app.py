@@ -131,8 +131,8 @@ def home():
 
     # Extract the name from the result
     name = user[0]
-    fitness_goals = user[1] if user[1] else "Not set yet" # Default message if no goals yet
-    workouts_completed = user[2] if user[2] is not None else 0  # Default to 0 if no value
+    fitness_goals = user[1] if user[1] else "Not set yet" 
+    workouts_completed = user[2] if user[2] is not None else 0  
     last_workout_completed = user[3] if user[3] else "No workouts completed yet"
     form_completed = user[4]
 
@@ -186,7 +186,6 @@ def register():
                     flash("Username already exists", "danger")
                     return render_template('register.html')
 
-                # Optional: pre-check email if provided
                 if email:
                     cur.execute("SELECT 1 FROM users WHERE lower(email)=lower(%s) LIMIT 1", (email,))
                     if cur.fetchone():
@@ -248,8 +247,7 @@ def verify_email():
     try:
         with get_connection() as conn:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-                # Validate and consume token using your existing helper
-                token_row = validate_token(conn, token, "verify_email")  # should raise/return None if invalid/expired
+                token_row = validate_token(conn, token, "verify_email")  
                 if not token_row:
                     digest = hash_token(token)
 
@@ -288,7 +286,6 @@ def verify_email():
 def resend_verify_confirm():
     raw = (request.args.get("token") or "").strip()
     token_digest = hash_token(raw) if raw else ""
-    # Always show the confirm page (no enumeration)
     return render_template("resend_verify_confirm.html", token_digest=token_digest)
 
 
@@ -324,7 +321,6 @@ def resend_verify_do():
                     flash("Your email is already verified. Please log in.", "success")
                     return redirect(url_for("login"))
 
-                # Rate limit based on last token creation
                 cur.execute("""
                     SELECT created_at
                       FROM user_tokens
@@ -337,8 +333,7 @@ def resend_verify_do():
                 now = datetime.now(timezone.utc)
 
                 if last:
-                    last_ts = last["created_at"]  # already aware
-                    # if your DB ever returns naive (unlikely), guard it:
+                    last_ts = last["created_at"]  
                     if last_ts.tzinfo is None:
                         last_ts = last_ts.replace(tzinfo=timezone.utc)
 
@@ -348,7 +343,7 @@ def resend_verify_do():
                         flash(f"A verification email was just sent. Please verify or try again in ~{remaining}s.", "warning")
                         return redirect(url_for("login"))
                 
-                # Invalidate prior unused verify tokens (optional but recommended)
+                # Invalidate prior unused verify tokens 
                 cur.execute("""
                     UPDATE user_tokens
                         SET used_at = %s
@@ -383,12 +378,12 @@ def resend_verify_do():
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if 'user_id' in session:
-        return redirect(url_for('home'))  # or '/'
+        return redirect(url_for('home'))  
 
     if request.method == 'POST':
         session.clear()
 
-        identifier = (request.form.get('username') or '').strip()  # username OR email
+        identifier = (request.form.get('username') or '').strip()  
         password = request.form.get('password') or ''
 
         if not identifier or not password:
@@ -445,7 +440,7 @@ def login():
                 conn.commit()
 
         flash("Login successful!", "success")
-        return redirect(url_for('home'))  # or wherever
+        return redirect(url_for('home'))  
 
     return render_template('login.html')
 
@@ -460,7 +455,7 @@ def check_trial_status_and_subscription():
     if request.endpoint in ['static', 'login', 'register', 'logout', None]:
         return
 
-    # Only run the checks once per day per user session
+    # Run the checks once per day per user session
     today = datetime.now(timezone.utc).date().isoformat()
     if session.get('trial_checked_on') != today:
         check_and_downgrade_trial(session['user_id'])
@@ -482,7 +477,7 @@ def logout():
 def training():
     """Handle personal training form and display workout options."""
     user_id = session['user_id']
-    # 🔒 Always enforce downgrade check before premium content
+    # Always enforce downgrade check before premium content
     check_and_downgrade_trial(user_id)
     check_subscription_expiry(user_id)
     form_completed = False  # Default flag to determine what to show
@@ -608,18 +603,6 @@ def training():
         except Exception as e:
             flash(f"An error occurred: {e}", "danger")
             return render_template('training.html', form_completed=False)
-        
-    # Fetch and organize workouts into groupings
-   # categories = {
-     #   "Chest and Triceps": ["CHEST", "TRICEPS"],
-      #  "Back and Biceps": ["BACK", "BICEPS"],
-       # "Shoulders and Abs": ["SHOULDERS", "ABS"],
-        #"Arms": ["BICEPS", "TRICEPS", "SHOULDERS"],
-       # "Legs": ["LEGS"],
-       # "Upper Body": ["BACK", "CHEST", "SHOULDERS", "BICEPS", "TRICEPS"],
-        #"Full Body": ["BACK", "CHEST", "SHOULDERS", "BICEPS", "TRICEPS", "LEGS", "ABS"],
-        #"Cardio": ["CARDIO"],
-    #}
 
     categories = get_category_groups()
     grouped_workouts = {}
@@ -646,15 +629,6 @@ def training():
                     exercise_history = user_data[0]
                     age = int(user_data[1]) if user_data[1] else None
                     fitness_goals = user_data[2] if user_data[2] else "Not set yet"
-
-                    # Mapping exercise history to numeric levels
-            #        level_map = {
-             #           "No Exercise History": 1,
-              #          "Exercise less than 1 year": 1,
-               #         "Exercise 1-5 years": 2,
-                #        "Exercise 5+ years": 3
-                 #   }
-                   #user_level = level_map.get(exercise_history, 1)  # Default to 1 if not found
 
                     user_level = get_user_level(exercise_history)
 
@@ -907,22 +881,6 @@ def workout_details(category):
     if not result or not result[0]:
         return render_template('workout_details.html', category=category, workouts=None)
 
-    # Parse the stored JSON workout details
-    #raw_workouts = json.loads(result[0])
-
-    # Reformat the data for the template
-    #workouts = {
-    #    subcategory: [
-    #        {
-    #            "name": exercise["name"],
-    #            "description": exercise["description"],
-    #            "max_weight": exercise["max_weight"],
-    #            "max_reps": exercise["max_reps"]
-    #        }
-    #        for exercise in exercises
-    #    ]
-    #    for subcategory, exercises in raw_workouts.items()
-    #}
     # Load and preserve subcategory order
     workouts = json.loads(result[0], object_pairs_hook=OrderedDict)
 
@@ -1186,7 +1144,7 @@ def forgot_password():
     if request.method == 'POST':
         email_input = (request.form.get('email') or '').strip().lower()
 
-        # Uniform message to avoid account enumeration
+        # Uniform message 
         generic_msg = "If an account with that email exists and is verified, a reset link has been sent."
 
         if not email_input:
@@ -1724,7 +1682,7 @@ def admin_add_user():
 @app.route("/admin/users/invite", methods=["GET", "POST"])
 @login_required
 def admin_invite_user():
-    # reuse your existing admin check
+    # reuse existing admin check
     if not is_admin(session['user_id']):
         return "Access denied", 403
 
@@ -1742,7 +1700,7 @@ def admin_invite_user():
     subscription = (request.form.get("subscription_type") or "free").strip()
     admin_note = (request.form.get("admin_note") or "").strip() or None
 
-    # validations → use your global toast categories (message first, category second)
+    # validations → use global toast categories (message first, category second)
     if not email:
         flash("Email is required.", "danger")
         return render_template("admin_add_user.html")
@@ -1829,7 +1787,7 @@ def accept_invite():
             flash("Your invite link is invalid or has expired. Ask the admin to resend it.", "danger")
             return redirect(url_for("login"))
 
-        # Optional: show the invited email on the page
+        # Show the invited email on the page
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute("SELECT email, name, last_name FROM users WHERE id=%s", (info["user_id"],))
             user = cur.fetchone()
@@ -1901,7 +1859,7 @@ def accept_invite_post():
             session["user_id"] = user_id
 
             flash("Welcome! Your account is ready.", "success")
-            return redirect(url_for("training"))  # or your onboarding/home
+            return redirect(url_for("training"))  
 
     except psycopg2.errors.UniqueViolation:
         # In case someone raced us and took the username between check & update
@@ -2098,7 +2056,7 @@ def upgrade():
             )
             stripe_customer_id = customer.id
 
-            # Save stripe_customer_id to your DB
+            # Save stripe_customer_id to DB
             with get_connection() as conn:
                 with conn.cursor() as cursor:
                     cursor.execute("""
