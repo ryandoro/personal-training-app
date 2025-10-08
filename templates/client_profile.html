@@ -1,0 +1,796 @@
+{% extends "layout.html" %}
+
+{% block title %}
+    Client Profile
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row g-4">
+        <div class="col-12 col-lg-4">
+            <div class="card shadow-sm border-0 h-100 overflow-hidden">
+                <div class="p-4 text-white rounded-3" style="background: linear-gradient(135deg, #1EA4E6 0%, #33C3F0 100%);">
+                    <div class="d-flex flex-column gap-3">
+                        <div class="d-flex flex-column flex-md-row gap-3 justify-content-between align-items-md-start">
+                            <div class="d-flex align-items-center gap-3">
+                                <div class="rounded-circle d-flex align-items-center justify-content-center bg-white text-dark"
+                                     style="width: 64px; height: 64px; font-weight: 700;">
+                                    {{ (client.name or '')[:1] ~ (client.last_name or '')[:1] or 'C' }}
+                                </div>
+                                <div>
+                                    <h2 class="mb-1 text-white">{{ client.name or 'Client' }} {{ client.last_name or '' }}</h2>
+                                    <div class="d-flex flex-wrap align-items-center gap-2 small">
+                                        <span class="badge bg-light text-dark">@{{ client.username }}</span>
+                                        {% if client.subscription_type %}
+                                            <span class="badge bg-light text-dark">{{ client.subscription_type|capitalize }} Plan</span>
+                                        {% endif %}
+                                        {% if client.sessions_remaining is not none %}
+                                            <span class="badge bg-light text-dark">{{ client.sessions_remaining }} Sessions Remaining</span>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="mt-2 mt-md-0">
+                                <a href="{{ url_for('trainer_dashboard') }}" class="btn btn-outline-light btn-sm">
+                                    <i class="bi bi-arrow-left me-1"></i>Back to Dashboard
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <span class="text-muted d-block small">Email</span>
+                        {% if client.email %}
+                            <a href="mailto:{{ client.email }}" class="fw-semibold text-decoration-none">{{ client.email }}</a>
+                        {% else %}
+                            <span class="fw-semibold">—</span>
+                        {% endif %}
+                    </div>
+                    <div class="row g-3">
+                        <div class="col-6">
+                            <div class="p-3 rounded-3 bg-light text-center">
+                                <div class="text-muted small text-uppercase">Workouts</div>
+                                <div class="fs-4 fw-bold">{{ client.workouts_completed or 0 }}</div>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="p-3 rounded-3 bg-light text-center">
+                                <div class="text-muted small text-uppercase">Sessions Left</div>
+                                <div class="fs-4 fw-bold">{{ client.sessions_remaining if client.sessions_remaining is not none else 'Unlimited' }}</div>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="p-3 rounded-3 bg-light text-center">
+                                <div class="text-muted small text-uppercase">Duration</div>
+                                <div class="fs-6 fw-semibold" id="client-duration-display">{{ client.workout_duration or 60 }} mins</div>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="p-3 rounded-3 bg-light text-center">
+                                <div class="text-muted small text-uppercase">Last Workout</div>
+                                <div class="fs-6 fw-semibold">{{ client.last_workout_completed or '—' }}</div>
+                            </div>
+                        </div>
+                    </div>
+                    <hr class="my-4">
+                    <div class="mb-3">
+                        <span class="text-muted d-block small">Fitness Goals</span>
+                        <div class="fw-semibold">{{ client.fitness_goals or '—' }}</div>
+                    </div>
+                    <div class="mb-3">
+                        <span class="text-muted d-block small">Exercise History</span>
+                        <div class="fw-semibold">{{ client.exercise_history or '—' }}</div>
+                    </div>
+                    {% if client.commitment %}
+                        <div class="mb-3">
+                            <span class="text-muted d-block small">Weekly Commitment</span>
+                            <div class="fw-semibold">{{ client.commitment }}</div>
+                        </div>
+                    {% endif %}
+                    {% if client.additional_notes %}
+                        <div>
+                            <span class="text-muted d-block small">Notes</span>
+                            <div class="fw-semibold">{{ client.additional_notes }}</div>
+                        </div>
+                    {% endif %}
+                    <form method="POST" action="{{ url_for('trainer_update_sessions_remaining', client_id=client.id) }}" class="mt-4">
+                        <label class="form-label">Update Sessions Remaining</label>
+                        <div class="input-group">
+                            <input type="number" class="form-control" name="sessions_remaining" min="0"
+                                   value="{{ client.sessions_remaining if client.sessions_remaining is not none else '' }}"
+                                   placeholder="Leave blank for unlimited">
+                            <button class="btn btn-outline-primary" type="submit">Save</button>
+                        </div>
+                        <div class="form-text">Leave empty to treat sessions as unlimited.</div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12 col-lg-8 training-container client-workout">
+            <div class="card border-0 shadow-lg mb-4" style="border-radius: 20px;">
+                <div class="card-header border-0" style="background: linear-gradient(135deg, #1EA4E6 0%, #33C3F0 100%); border-top-left-radius: 20px; border-top-right-radius: 20px;">
+                    <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between text-white">
+                        <div>
+                            <h5 class="mb-1 text-white">Generate Workout for {{ client.name or client.username }}</h5>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body bg-white p-4">
+                    {% set wd = client.workout_duration or 60 %}
+                    <div class="mb-4">
+                        <label class="form-label fw-bold text-primary d-block">Workout Duration</label>
+                        <div id="trainer-duration-pills"
+                             class="d-flex flex-wrap gap-2 justify-content-center"
+                             data-update-url="{{ url_for('trainer_update_client_duration', client_id=client.id) }}">
+                            {% for minutes in [20, 30, 45, 60] %}
+                                <button type="button"
+                                        class="btn duration-pill rounded-pill px-3 py-2{% if wd == minutes %} active{% endif %}"
+                                        data-minutes="{{ minutes }}"
+                                        aria-pressed="{{ 'true' if wd == minutes else 'false' }}"
+                                        aria-label="Set duration to {{ minutes }} minutes">
+                                    {{ minutes }} min
+                                </button>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    <div class="row g-4 align-items-end">
+                        <div class="col-md-8">
+                            <div class="mb-3 mb-md-0">
+                                <label for="category" class="form-label fw-bold text-primary">Workout Categories</label>
+                                <select id="category" name="category" class="form-select text-center shadow-sm bitcoin-workout" required form="generate-client-workout">
+                                    <option value="" disabled selected>Select a Workout Category</option>
+                                    {% for category in category_options %}
+                                        <option value="{{ category }}">{{ category }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-4 d-grid">
+                            <button id="generate-client-workout-btn"
+                                    type="submit"
+                                    class="btn btn-primary fw-bold btn-lg border rounded-3 px-4"
+                                    style="text-shadow: 0 0 1px rgba(0,0,0,0.25); box-shadow: 0 0 12px rgba(30,164,230,0.45);"
+                                    form="generate-client-workout">
+                                Generate Workout
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <form id="generate-client-workout" method="POST" action="{{ url_for('generate_client_workout', client_id=client.id) }}" hidden></form>
+            </div>
+
+            <div id="active-workout-card" class="card border-0 shadow-lg" style="border-radius: 20px;" tabindex="-1">
+                <div class="card-header border-0" style="background: linear-gradient(135deg, #20c997 0%, #0ABFBC 100%); border-top-left-radius: 20px; border-top-right-radius: 20px;">
+                    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center text-white">
+                        <div>
+                            <h5 class="mb-1 text-white">Active Workout</h5>
+                            {% if active_workout and active_workout.created_at %}
+                                <small class="text-white-50">Assigned {{ active_workout.created_at }}</small>
+                            {% endif %}
+                        </div>
+                        {% if active_workout and active_workout.plan %}
+                            <form method="POST" action="{{ url_for('trainer_complete_client_workout', client_id=client.id) }}" class="d-inline">
+                                <button type="submit" class="btn btn-light text-success fw-semibold btn-sm">
+                                    <i class="bi bi-check-circle me-1"></i>Mark Session Completed
+                                </button>
+                            </form>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="card-body bg-white p-4">
+                    {% if active_workout and active_workout.plan %}
+                        <div class="d-flex flex-wrap gap-2 mb-3">
+                            <span class="badge text-bg-primary">{{ active_workout.category }}</span>
+                            {% if active_workout.duration_minutes %}
+                                <span class="badge text-bg-secondary">{{ active_workout.duration_minutes }} mins</span>
+                            {% endif %}
+                        </div>
+                        {% for block in active_workout.plan %}
+                            <div class="card workout-subcategory-card shadow-sm mb-4" style="border-radius: 16px;">
+                                <h6 class="workout-subcategory-title">{{ block.subcategory }}</h6>
+                                <div class="mt-3">
+                                    <ul class="list-unstyled mb-0">
+                                        {% for exercise in block.exercises %}
+                                            {% set exercise_name = exercise.name or '' %}
+                                            {% set subcategory_name = block.subcategory or '' %}
+                                            {% set is_cardio = subcategory_name|lower == 'cardio' %}
+                                            {% set is_bodyweight = 'bodyweight' in exercise_name|lower %}
+                                            {% if is_bodyweight or is_cardio %}
+                                                {% set weight_display = 'Bodyweight' %}
+                                            {% elif exercise.max_weight is not none %}
+                                                {% set weight_display = (exercise.max_weight|string) ~ ' lbs' %}
+                                            {% else %}
+                                                {% set weight_display = '—' %}
+                                            {% endif %}
+                                            {% if exercise.max_reps is not none %}
+                                                {% set reps_unit = ' min' if is_cardio else ' reps' %}
+                                                {% set reps_display = (exercise.max_reps|string) ~ reps_unit %}
+                                            {% else %}
+                                                {% set reps_display = '—' %}
+                                            {% endif %}
+                                            {% set notes_text = exercise.notes or '' %}
+                                            {% set has_notes = notes_text|trim %}
+                                            {% set start_raw = exercise.image_exercise_start %}
+                                            {% set end_raw = exercise.image_exercise_end %}
+                                            {% if start_raw %}
+                                                {% if start_raw[:4]|lower == 'http' %}
+                                                    {% set start_src = start_raw %}
+                                                {% elif start_raw.startswith('/static/') %}
+                                                    {% set start_src = start_raw %}
+                                                {% elif '/' in start_raw %}
+                                                    {% set start_src = url_for('static', filename=start_raw.lstrip('/')) %}
+                                                {% else %}
+                                                    {% set start_src = url_for('static', filename='images/' ~ start_raw) %}
+                                                {% endif %}
+                                            {% else %}
+                                                {% set start_src = None %}
+                                            {% endif %}
+                                            {% if end_raw %}
+                                                {% if end_raw[:4]|lower == 'http' %}
+                                                    {% set end_src = end_raw %}
+                                                {% elif end_raw.startswith('/static/') %}
+                                                    {% set end_src = end_raw %}
+                                                {% elif '/' in end_raw %}
+                                                    {% set end_src = url_for('static', filename=end_raw.lstrip('/')) %}
+                                                {% else %}
+                                                    {% set end_src = url_for('static', filename='images/' ~ end_raw) %}
+                                                {% endif %}
+                                            {% else %}
+                                                {% set end_src = None %}
+                                            {% endif %}
+                                            <li class="mb-4">
+                                                <div class="card shadow text-center w-100 exercise-card">
+                                                    <h6 class="exercise-name">{{ exercise_name }}</h6>
+                                                    {% if start_src or end_src %}
+                                                    <div class="exercise-media-row d-flex justify-content-center flex-nowrap mb-3 px-2">
+                                                        {% if start_src %}
+                                                        <div class="d-flex flex-column align-items-center">
+                                                            <p class="exercise-media-label mb-2">Start:</p>
+                                                            <img src="{{ start_src }}" alt="{{ exercise.name }} start" class="clickable-img exercise-media-image" data-group="{{ exercise_name|replace(' ', '-') }}-{{ loop.index }}" data-index="0">
+                                                        </div>
+                                                        {% endif %}
+                                                        {% if end_src %}
+                                                        <div class="d-flex flex-column align-items-center">
+                                                            <p class="exercise-media-label mb-2">End:</p>
+                                                            <img src="{{ end_src }}" alt="{{ exercise.name }} end" class="clickable-img exercise-media-image" data-group="{{ exercise_name|replace(' ', '-') }}-{{ loop.index }}" data-index="1">
+                                                        </div>
+                                                        {% endif %}
+                                                    </div>
+                                                    {% endif %}
+                                                    {% if exercise.youtube_id %}
+                                                    <p class="exercise-media-label mb-2">Video Demonstration:</p>
+                                                    <div class="exercise-video-wrapper mb-4">
+                                                        <div class="exercise-video-shell">
+                                                            <iframe class="exercise-video-frame" src="https://www.youtube.com/embed/{{ exercise.youtube_id }}?mute=1&playsinline=1" title="{{ exercise_name }} tutorial" allow="autoplay; encrypted-media" allowfullscreen></iframe>
+                                                        </div>
+                                                    </div>
+                                                    {% endif %}
+                                                    <div class="d-flex flex-column align-items-center gap-3 max-actions">
+                                                        <div class="personal-best max-summary" data-id="{{ exercise.workout_id }}" data-category="{{ block.subcategory }}">
+                                                            <span class="max-label text-uppercase fw-semibold">Client Max</span>
+                                                            <div class="max-pill-row">
+                                                                <span class="max-pill max-pill-weight">{{ weight_display }}</span>
+                                                                <span class="max-times">×</span>
+                                                                <span class="max-pill max-pill-reps">{{ reps_display }}</span>
+                                                            </div>
+                                                            <span class="personal-max-text d-none">Client Max: {{ weight_display }} × {{ reps_display }}</span>
+                                                        </div>
+                                                        <div class="d-flex flex-wrap justify-content-center gap-2 max-action-buttons">
+                                                            <button class="btn btn-outline-secondary btn-sm max-action-btn update-pr-link" data-id="{{ exercise.workout_id }}" data-category="{{ block.subcategory }}">Update Max</button>
+                                                            <button class="btn btn-outline-primary btn-sm max-action-btn toggle-description" type="button" data-id="desc-{{ exercise.workout_id }}">View Description</button>
+                                                        </div>
+                                                    </div>
+                                                    <div id="desc-{{ exercise.workout_id }}" class="exercise-description mt-3 text-center" style="display: none;">
+                                                        <p class="small text-muted mb-0">{{ exercise.description or 'No description available.' }}</p>
+                                                    </div>
+                                                    <div class="exercise-notes mt-3 text-start">
+                                                        <div class="d-flex justify-content-between align-items-center mb-2">
+                                                            <i class="bi bi-journal-text text-primary"></i>
+                                                            <button class="btn btn-outline-info btn-sm edit-notes-btn" data-id="{{ exercise.workout_id }}" data-category="{{ block.subcategory }}" data-notes="{{ notes_text|urlencode }}">{{ 'Edit Notes' if has_notes else 'Add Notes' }}</button>
+                                                        </div>
+                                                        <div class="notes-body small" data-id="{{ exercise.workout_id }}">
+                                                            {% if has_notes %}{{ notes_text|replace('\n', '<br>')|safe }}{% else %}<span class="text-muted">{{ NOTES_PLACEHOLDER }}</span>{% endif %}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </li>
+                                        {% endfor %}
+                                    </ul>
+                                </div>
+                            </div>
+                        {% endfor %}
+                        <div class="text-center mt-4">
+                            <form method="POST" action="{{ url_for('trainer_complete_client_workout', client_id=client.id) }}">
+                                <button type="submit" class="btn btn-success btn-sm">
+                                    <i class="bi bi-check-circle me-1"></i>Mark Session Completed
+                                </button>
+                            </form>
+                        </div>
+                    {% else %}
+                        <div class="text-center text-muted py-5">
+                            <i class="bi bi-clipboard2-heart fs-1 d-block mb-3"></i>
+                            No active workout assigned yet. Generate a workout to sync with your client.
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="toastSuccess" class="toast-floating fw-bold" style="display:none; background:#d1e7dd; color:#0f5132;"></div>
+
+    <div id="prModal" class="modal fade" tabindex="-1" style="display:none; align-items:center; justify-content:center;">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content shadow-lg border-0">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title">Update Personal Record</h5>
+                    <button type="button" class="btn-close btn-close-white" id="prModalClose" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Max Weight (lbs)</label>
+                            <input type="number" class="form-control" id="maxWeightInput" step="0.5" min="0" placeholder="Max Weight (lbs)">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Max Reps / Minutes</label>
+                            <input type="number" class="form-control" id="maxRepsInput" step="1" min="0" placeholder="Reps">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" id="closePrModal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="submitPrBtn">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="notesModal" class="modal fade" tabindex="-1" style="display:none; align-items:center; justify-content:center;">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content shadow-lg border-0">
+                <div class="modal-header bg-info text-dark">
+                    <h5 class="modal-title">Workout Notes</h5>
+                    <button type="button" class="btn-close" id="notesModalClose" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <textarea id="notesTextarea" class="form-control" rows="5" placeholder="Add session notes"></textarea>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" id="closeNotesModal">Cancel</button>
+                    <button type="button" class="btn btn-info" id="saveNotesBtn">Save Notes</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="imageModal" style="display:none; position:fixed; z-index:10000; left:0; top:0; width:100%; height:100%; background: rgba(0,0,0,0.8); align-items:center; justify-content:center;">
+        <div style="position:relative; display:inline-block; max-width:90vw; max-height:90vh;">
+            <span id="modalClose" style="position:absolute; top:-6px; right:8px; font-size:1.8rem; color:rgba(220,220,220,0.85); cursor:pointer; z-index:10001;">&times;</span>
+            <img id="modalImage" style="max-width:100%; max-height:100%; cursor:pointer; display:block;">
+        </div>
+        <div id="swipeOverlay" style="margin-top:12px; text-align:center; color:rgba(220,220,220,0.8); font-size:1.5rem; font-weight:bold; pointer-events:none;">&lt;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&gt;</div>
+    </div>
+
+</div>
+
+<script>
+(function(){
+    const updatePrUrl = "{{ url_for('trainer_update_pr', client_id=client.id) }}";
+    const updateNotesUrl = "{{ url_for('trainer_update_notes', client_id=client.id) }}";
+    const NOTES_PLACEHOLDER = 'No notes yet.';
+
+    const toast = document.getElementById('toastSuccess');
+    const prModal = document.getElementById('prModal');
+    const notesModal = document.getElementById('notesModal');
+    const maxWeightInput = document.getElementById('maxWeightInput');
+    const maxRepsInput = document.getElementById('maxRepsInput');
+    const notesTextarea = document.getElementById('notesTextarea');
+    const durationPillsWrap = document.getElementById('trainer-duration-pills');
+    const durationDisplay = document.getElementById('client-duration-display');
+    const durationBadge = document.getElementById('client-duration-badge');
+    const categorySelect = document.getElementById('category');
+    const generateWorkoutBtn = document.getElementById('generate-client-workout-btn');
+    const generateWorkoutForm = document.getElementById('generate-client-workout');
+
+    let currentWorkoutId = null;
+
+    function escapeHtml(value) {
+        if (value === null || value === undefined) return '';
+        return String(value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/\"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function showToast(message, variant = 'success') {
+        if (!toast) return;
+        toast.textContent = message;
+        toast.style.display = 'block';
+        if (variant === 'success') {
+            toast.style.background = '#d1e7dd';
+            toast.style.color = '#0f5132';
+        } else {
+            toast.style.background = '#f8d7da';
+            toast.style.color = '#842029';
+        }
+        setTimeout(() => { toast.style.display = 'none'; }, 2500);
+    }
+
+    function openModal(modal) {
+        if (!modal) return;
+        modal.classList.add('show');
+        modal.style.display = 'flex';
+    }
+
+    function closeModal(modal) {
+        if (!modal) return;
+        modal.classList.remove('show');
+        modal.style.display = 'none';
+    }
+
+    function setDurationUi(minutes, pills) {
+        if (pills && pills.length) {
+            pills.forEach(btn => {
+                const isActive = String(btn.dataset.minutes) === String(minutes);
+                btn.classList.toggle('active', isActive);
+                btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+            });
+        }
+        if (durationDisplay) {
+            durationDisplay.textContent = `${minutes} mins`;
+        }
+        if (durationBadge) {
+            durationBadge.textContent = `Duration ${minutes} mins`;
+        }
+    }
+
+    function syncSelectStyle() {
+        if (!categorySelect) return;
+        categorySelect.classList.toggle('select-orange', !!categorySelect.value);
+    }
+
+    function syncGenerateButtonState() {
+        if (!generateWorkoutBtn) return;
+        const hasCategory = !!(categorySelect && categorySelect.value);
+        const isLoading = generateWorkoutBtn.dataset.loading === 'true';
+        generateWorkoutBtn.disabled = !hasCategory || isLoading;
+    }
+
+    function setGenerateButtonLoading(isLoading) {
+        if (!generateWorkoutBtn) return;
+        generateWorkoutBtn.dataset.loading = isLoading ? 'true' : 'false';
+        generateWorkoutBtn.textContent = isLoading ? 'Generating...' : 'Generate Workout';
+        syncGenerateButtonState();
+    }
+
+    function bindDurationPills() {
+        if (!durationPillsWrap) return;
+        const updateUrl = durationPillsWrap.dataset.updateUrl || '';
+        if (!updateUrl) return;
+
+        const pills = Array.from(durationPillsWrap.querySelectorAll('.duration-pill'));
+        if (!pills.length) return;
+
+        let activeMinutes = pills.find(btn => btn.classList.contains('active'))?.dataset.minutes || String((durationDisplay?.textContent || '').replace(/[^0-9]/g, '') || '60');
+
+        pills.forEach(btn => {
+            btn.addEventListener('click', () => {
+                const minutes = btn.dataset.minutes;
+                if (!minutes || minutes === activeMinutes) return;
+
+                const previous = activeMinutes;
+                setDurationUi(minutes, pills);
+                activeMinutes = minutes;
+
+                fetch(updateUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ workout_duration: minutes })
+                })
+                .then(res => res.json().catch(() => ({})))
+                .then(data => {
+                    if (!data || !data.success) {
+                        activeMinutes = previous;
+                        setDurationUi(previous, pills);
+                        alert(data?.error || 'Could not update workout duration.');
+                        return;
+                    }
+                    showToast('Duration updated!');
+                })
+                .catch(() => {
+                    activeMinutes = previous;
+                    setDurationUi(previous, pills);
+                    alert('Network error while updating duration.');
+                });
+            });
+        });
+    }
+
+    function bindImageClickEvents() {
+        const modal = document.getElementById('imageModal');
+        const modalImg = document.getElementById('modalImage');
+        const overlay = document.getElementById('swipeOverlay');
+        const closeIcon = document.getElementById('modalClose');
+        if (!modal || !modalImg) return;
+
+        let currentGroup = null;
+        let currentIndex = 0;
+        let groupImages = [];
+
+        document.querySelectorAll('.clickable-img').forEach(img => {
+            img.addEventListener('click', () => {
+                const group = img.dataset.group;
+                const index = Number(img.dataset.index || '0');
+                groupImages = Array.from(document.querySelectorAll(`.clickable-img[data-group="${group}"]`));
+                if (!groupImages.length) return;
+                currentGroup = group;
+                currentIndex = index % groupImages.length;
+                showModal(groupImages[currentIndex].src || '');
+            });
+        });
+
+        function showModal(src) {
+            if (!src) return;
+            modalImg.src = src;
+            modal.style.display = 'flex';
+            if (overlay) overlay.style.opacity = groupImages.length > 1 ? '0.85' : '0';
+        }
+
+        function hideModal() {
+            modal.style.display = 'none';
+            modalImg.src = '';
+        }
+
+        modal.addEventListener('click', hideModal);
+        closeIcon?.addEventListener('click', hideModal);
+        modalImg.addEventListener('click', hideModal);
+
+        modal.addEventListener('touchstart', (event) => {
+            modal.dataset.touchStartX = event.changedTouches[0].screenX;
+        });
+
+        modal.addEventListener('touchend', (event) => {
+            const startX = Number(modal.dataset.touchStartX || '0');
+            const deltaX = event.changedTouches[0].screenX - startX;
+            if (Math.abs(deltaX) < 50 || groupImages.length < 2) return;
+            currentIndex = (currentIndex + (deltaX < 0 ? 1 : -1) + groupImages.length) % groupImages.length;
+            const nextImg = groupImages[currentIndex];
+            if (nextImg?.src) showModal(nextImg.src);
+        });
+    }
+
+    function handleUpdatePrClick(event) {
+        const target = event.target.closest('.update-pr-link');
+        if (!target) return;
+        event.preventDefault();
+        currentWorkoutId = target.dataset.id;
+        const categoryLabel = (target.dataset.category || '').toLowerCase();
+        const isCardio = categoryLabel === 'cardio';
+        const personalBest = document.querySelector(`.personal-best[data-id="${currentWorkoutId}"]`);
+        const weightSpan = personalBest?.querySelector('.max-pill-weight');
+        const repsSpan = personalBest?.querySelector('.max-pill-reps');
+        const weightText = weightSpan ? weightSpan.textContent.trim() : '';
+        const repsText = repsSpan ? repsSpan.textContent.trim() : '';
+        const isBodyweight = weightText.toLowerCase().includes('bodyweight');
+
+        if (maxWeightInput) {
+            maxWeightInput.disabled = isBodyweight || isCardio;
+            if (maxWeightInput.disabled) {
+                maxWeightInput.value = '';
+                maxWeightInput.placeholder = isCardio ? 'Cardio' : 'Bodyweight';
+            } else {
+                const numericWeight = parseFloat(weightText.replace(/[^0-9.]+/g, ''));
+                maxWeightInput.value = Number.isFinite(numericWeight) ? numericWeight : '';
+                maxWeightInput.placeholder = 'Max Weight (lbs)';
+            }
+        }
+
+        if (maxRepsInput) {
+            const repsNumeric = parseInt(repsText.replace(/[^0-9]+/g, ''), 10);
+            maxRepsInput.value = Number.isFinite(repsNumeric) ? repsNumeric : '';
+            maxRepsInput.placeholder = isCardio ? 'Minutes' : 'Reps';
+            maxRepsInput.dataset.isCardio = isCardio ? '1' : '0';
+        }
+
+        openModal(prModal);
+    }
+
+    function handleSavePr() {
+        if (!currentWorkoutId) return;
+        const payload = { workout_id: currentWorkoutId };
+        if (maxWeightInput && !maxWeightInput.disabled && maxWeightInput.value !== '') {
+            payload.max_weight = parseFloat(maxWeightInput.value);
+        }
+        if (maxRepsInput && maxRepsInput.value !== '') {
+            payload.max_reps = parseInt(maxRepsInput.value, 10);
+        }
+
+        fetch(updatePrUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (!data.success) {
+                alert(data.error || 'Unable to update max.');
+                return;
+            }
+            const personalBest = document.querySelector(`.personal-best[data-id="${currentWorkoutId}"]`);
+            if (personalBest) {
+                const weightSpan = personalBest.querySelector('.max-pill-weight');
+                const repsSpan = personalBest.querySelector('.max-pill-reps');
+                const summary = personalBest.querySelector('.personal-max-text');
+
+                const isCardio = maxRepsInput?.dataset.isCardio === '1';
+                const isBodyweight = maxWeightInput?.disabled;
+                const returnedWeight = data.max_weight;
+                const returnedReps = data.max_reps;
+
+                if (weightSpan) {
+                    if (isBodyweight) {
+                        weightSpan.textContent = maxWeightInput?.placeholder || (isCardio ? 'Cardio' : 'Bodyweight');
+                    } else if (returnedWeight !== null && returnedWeight !== undefined) {
+                        weightSpan.textContent = `${parseFloat(returnedWeight).toFixed(1)} lbs`;
+                    } else {
+                        weightSpan.textContent = '—';
+                    }
+                }
+
+                if (repsSpan) {
+                    if (returnedReps !== null && returnedReps !== undefined) {
+                        repsSpan.textContent = isCardio ? `${parseInt(returnedReps, 10)} min` : `${parseInt(returnedReps, 10)} reps`;
+                    } else {
+                        repsSpan.textContent = '—';
+                    }
+                }
+
+                if (summary && weightSpan && repsSpan) {
+                    summary.textContent = `Client Max: ${weightSpan.textContent} × ${repsSpan.textContent}`;
+                }
+            }
+            closeModal(prModal);
+            showToast('Personal record updated!');
+        })
+        .catch(() => alert('Unable to update max right now.'));
+    }
+
+    function handleNotesClick(event) {
+        const target = event.target.closest('.edit-notes-btn');
+        if (!target) return;
+        event.preventDefault();
+        currentWorkoutId = target.dataset.id;
+        const existing = decodeURIComponent(target.dataset.notes || '');
+        if (notesTextarea) {
+            notesTextarea.value = existing;
+        }
+        openModal(notesModal);
+    }
+
+    function handleSaveNotes() {
+        if (!currentWorkoutId) return;
+        const notesValue = notesTextarea ? notesTextarea.value.trim() : '';
+        fetch(updateNotesUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ workout_id: currentWorkoutId, notes: notesValue })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (!data.success) {
+                alert(data.error || 'Unable to update notes.');
+                return;
+            }
+            const notesBody = document.querySelector(`.notes-body[data-id="${currentWorkoutId}"]`);
+            const triggers = document.querySelectorAll(`.edit-notes-btn[data-id="${currentWorkoutId}"]`);
+            const displayHtml = notesValue ? escapeHtml(notesValue).replace(/\n/g, '<br>') : `<span class="text-muted">${escapeHtml(NOTES_PLACEHOLDER)}</span>`;
+            if (notesBody) {
+                notesBody.innerHTML = displayHtml;
+            }
+            triggers.forEach(btn => {
+                btn.dataset.notes = encodeURIComponent(notesValue);
+                btn.textContent = notesValue ? 'Edit Notes' : 'Add Notes';
+            });
+            closeModal(notesModal);
+            showToast('Notes updated!');
+        })
+        .catch(() => alert('Unable to update notes right now.'));
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        bindImageClickEvents();
+
+        document.body.addEventListener('click', handleUpdatePrClick);
+        document.body.addEventListener('click', handleNotesClick);
+
+        const toggleDescription = (event) => {
+            const target = event.target.closest('.toggle-description');
+            if (!target) return;
+            const descId = target.dataset.id;
+            const descEl = document.getElementById(descId);
+            if (!descEl) return;
+            const isHidden = descEl.style.display === '' || descEl.style.display === 'none';
+            if (isHidden) {
+                descEl.style.display = 'block';
+                descEl.style.maxHeight = '0px';
+                descEl.style.overflow = 'hidden';
+                descEl.style.transition = 'max-height 0.3s ease-out';
+                requestAnimationFrame(() => {
+                    descEl.style.maxHeight = descEl.scrollHeight + 'px';
+                });
+                target.textContent = 'Hide Description';
+            } else {
+                descEl.style.maxHeight = '0px';
+                setTimeout(() => {
+                    descEl.style.display = 'none';
+                }, 300);
+                target.textContent = 'View Description';
+            }
+        };
+
+        document.body.addEventListener('click', toggleDescription);
+
+        document.getElementById('submitPrBtn')?.addEventListener('click', handleSavePr);
+        document.getElementById('closePrModal')?.addEventListener('click', () => closeModal(prModal));
+        document.getElementById('prModalClose')?.addEventListener('click', () => closeModal(prModal));
+
+        document.getElementById('saveNotesBtn')?.addEventListener('click', handleSaveNotes);
+        document.getElementById('closeNotesModal')?.addEventListener('click', () => closeModal(notesModal));
+        document.getElementById('notesModalClose')?.addEventListener('click', () => closeModal(notesModal));
+
+        document.getElementById('imageModal')?.addEventListener('click', (event) => {
+            if (event.target.id === 'imageModal' || event.target.id === 'modalClose') {
+                closeModal(document.getElementById('imageModal'));
+            }
+        });
+
+        bindDurationPills();
+
+        syncSelectStyle();
+        syncGenerateButtonState();
+
+        categorySelect?.addEventListener('change', () => {
+            syncSelectStyle();
+            syncGenerateButtonState();
+        });
+
+        if (generateWorkoutBtn) {
+            generateWorkoutBtn.dataset.loading = generateWorkoutBtn.dataset.loading || 'false';
+        }
+
+        generateWorkoutForm?.addEventListener('submit', (event) => {
+            if (!categorySelect?.value) {
+                event.preventDefault();
+                syncGenerateButtonState();
+                return;
+            }
+            // Defer to avoid blocking native submit behaviour
+            requestAnimationFrame(() => setGenerateButtonLoading(true));
+        });
+
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('focus') === 'active') {
+            requestAnimationFrame(() => {
+                const activeCard = document.getElementById('active-workout-card');
+                if (!activeCard) return;
+                activeCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                try {
+                    activeCard.focus({ preventScroll: true });
+                } catch (err) {
+                    activeCard.focus();
+                }
+            });
+            params.delete('focus');
+            const query = params.toString();
+            const newUrl = query ? `${window.location.pathname}?${query}${window.location.hash}` : `${window.location.pathname}${window.location.hash}`;
+            history.replaceState({}, document.title, newUrl);
+        }
+    });
+})();
+</script>
+{% endblock %}

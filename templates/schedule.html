@@ -1,0 +1,477 @@
+{% extends "layout.html" %}
+
+{% block title %}
+    My Schedule
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="card border-0 shadow-lg mt-3 schedule-card" style="border-radius: 20px; max-width: 1100px;">
+        <div class="card-header border-0" style="background: linear-gradient(135deg, #1EA4E6 0%, #33C3F0 100%); border-top-left-radius: 20px; border-top-right-radius: 20px;">
+            <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3 text-white">
+                <div>
+                    <h4 class="mb-1 text-white">My Training Schedule</h4>
+                    <p class="mb-0 text-white-50">Review upcoming sessions booked with your trainer.</p>
+                </div>
+                {% if trainer_info %}
+                    <div class="text-white text-end">
+                        <div class="fw-semibold">Trainer</div>
+                        <div>{{ trainer_info.name or trainer_info.username }} {{ trainer_info.last_name or '' }}</div>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="d-flex flex-column flex-lg-row justify-content-lg-between align-items-lg-center gap-3 mb-3">
+                <div class="calendar-toolbar d-flex flex-wrap gap-2">
+                    <div class="btn-group" role="group" aria-label="Calendar navigation">
+                        <button class="btn btn-outline-primary btn-sm" id="client-prev-week"><i class="bi bi-chevron-left"></i></button>
+                        <button class="btn btn-outline-primary btn-sm" id="client-today">Today</button>
+                        <button class="btn btn-outline-primary btn-sm" id="client-next-week"><i class="bi bi-chevron-right"></i></button>
+                    </div>
+                    <div class="btn-group" role="group" aria-label="Visible window toggle">
+                        {% if trainer_info %}
+                        <button class="btn btn-outline-secondary btn-sm" id="client-follow-trainer">Use Trainer Hours</button>
+                        {% endif %}
+                        <button class="btn btn-outline-secondary btn-sm" id="client-edit-window">
+                            <i class="bi bi-sliders"></i> Custom Hours
+                        </button>
+                    </div>
+                </div>
+                <div class="text-muted small" id="client-week-label"></div>
+            </div>
+
+            {% if not trainer_info %}
+                <div class="alert alert-warning" role="alert">
+                    You are not currently linked with a trainer. Schedule information will appear here once a trainer is assigned to you.
+                </div>
+            {% endif %}
+
+            <div class="calendar-wrapper" id="client-calendar" data-mode="client">
+                <div class="calendar-scroll" id="client-calendar-scroll">
+                    <div class="calendar-header" id="client-days-header"></div>
+                    <div class="calendar-grid">
+                        <div class="calendar-times" id="client-times"></div>
+                        <div class="calendar-columns" id="client-day-columns"></div>
+                    </div>
+                </div>
+                <div class="calendar-scroll-hint" id="client-scroll-hint">Swipe sideways to explore the week</div>
+                <div class="calendar-empty-state" id="client-calendar-empty" hidden>
+                    <p class="mb-0">No sessions scheduled for this week.</p>
+                </div>
+            </div>
+
+            <div class="alert alert-info mt-3" id="client-event-details" role="alert" hidden></div>
+        </div>
+    </div>
+</div>
+
+<div id="clientWindowModal" class="calendar-modal" hidden>
+    <div class="calendar-modal-content">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5 class="mb-0">Adjust Visible Hours</h5>
+            <button type="button" class="btn-close" id="clientWindowModalClose"></button>
+        </div>
+        <form id="clientWindowForm" class="row g-3">
+            <div class="col-6">
+                <label for="clientWindowStart" class="form-label">Start hour</label>
+                <input type="time" class="form-control" id="clientWindowStart" step="900" value="05:00">
+            </div>
+            <div class="col-6">
+                <label for="clientWindowEnd" class="form-label">End hour</label>
+                <input type="time" class="form-control" id="clientWindowEnd" step="900" value="21:00">
+            </div>
+            <div class="col-12 text-end">
+                <button type="button" class="btn btn-outline-secondary me-2" id="clientWindowCancel">Cancel</button>
+                <button type="submit" class="btn btn-primary">Apply</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<template id="client-calendar-event">
+    <div class="calendar-event" draggable="false">
+        <div class="calendar-event-title"></div>
+        <div class="calendar-event-time"></div>
+    </div>
+</template>
+
+<script>
+(function(){
+    const calendarRoot = document.getElementById('client-calendar');
+    if (!calendarRoot) return;
+
+    const dayHeaderEl = document.getElementById('client-days-header');
+    const timesEl = document.getElementById('client-times');
+    const columnsEl = document.getElementById('client-day-columns');
+    const emptyState = document.getElementById('client-calendar-empty');
+    const weekLabel = document.getElementById('client-week-label');
+    const eventDetails = document.getElementById('client-event-details');
+    const scrollWrap = document.getElementById('client-calendar-scroll');
+    const scrollHint = document.getElementById('client-scroll-hint');
+    const prevWeekBtn = document.getElementById('client-prev-week');
+    const nextWeekBtn = document.getElementById('client-next-week');
+    const todayBtn = document.getElementById('client-today');
+    const editWindowBtn = document.getElementById('client-edit-window');
+    const followTrainerBtn = document.getElementById('client-follow-trainer');
+    const windowModal = document.getElementById('clientWindowModal');
+    const windowModalClose = document.getElementById('clientWindowModalClose');
+    const windowCancel = document.getElementById('clientWindowCancel');
+    const windowForm = document.getElementById('clientWindowForm');
+    const windowStartInput = document.getElementById('clientWindowStart');
+    const windowEndInput = document.getElementById('clientWindowEnd');
+    const eventTemplate = document.getElementById('client-calendar-event');
+
+    const FIFTEEN_MINUTES = 15;
+    const MILLI_IN_MINUTE = 60000;
+
+    const datasetStart = Number(calendarRoot.dataset.viewStart);
+    const datasetEnd = Number(calendarRoot.dataset.viewEnd);
+    let initialStart = Number.isFinite(datasetStart) ? datasetStart : 5;
+    let initialEnd = Number.isFinite(datasetEnd) ? datasetEnd : 21;
+    if (initialEnd <= initialStart) {
+        initialStart = 5;
+        initialEnd = 21;
+    }
+
+    const state = {
+        weekStart: startOfWeek(new Date()),
+        viewStart: initialStart,
+        viewEnd: initialEnd,
+        followTrainer: true,
+        events: []
+    };
+
+    let dayColumns = [];
+
+    function startOfWeek(date) {
+        const d = new Date(date);
+        const day = d.getDay();
+        const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+        d.setDate(diff);
+        d.setHours(0,0,0,0);
+        return d;
+    }
+
+    function formatDay(date) {
+        return date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+    }
+
+    function formatTime(date) {
+        return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    }
+
+    function toISO(date) {
+        return new Date(date).toISOString();
+    }
+
+    function clampHour(value) {
+        return Math.min(23, Math.max(0, value));
+    }
+
+    function updateWeekLabel() {
+        const end = new Date(state.weekStart);
+        end.setDate(end.getDate() + 6);
+        weekLabel.textContent = `${state.weekStart.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} – ${end.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
+    }
+
+   function renderHeaders() {
+        dayHeaderEl.innerHTML = '';
+        columnsEl.innerHTML = '';
+        dayColumns = [];
+
+        const spacer = document.createElement('div');
+        spacer.className = 'calendar-time-spacer';
+        dayHeaderEl.appendChild(spacer);
+
+        for (let i = 0; i < 7; i += 1) {
+            const dayDate = new Date(state.weekStart);
+            dayDate.setDate(dayDate.getDate() + i);
+
+            const header = document.createElement('div');
+            header.className = 'calendar-day-header';
+            header.textContent = formatDay(dayDate);
+            dayHeaderEl.appendChild(header);
+
+            const col = document.createElement('div');
+            col.className = 'calendar-day-column';
+            col.dataset.date = dayDate.toISOString();
+            columnsEl.appendChild(col);
+            dayColumns.push(col);
+        }
+    }
+
+    function renderTimes() {
+        timesEl.innerHTML = '';
+        const total = (state.viewEnd - state.viewStart) * 4;
+        for (let i = 0; i < total; i += 1) {
+            const hour = state.viewStart + Math.floor(i / 4);
+            const minutes = (i % 4) * FIFTEEN_MINUTES;
+            const label = document.createElement('div');
+            label.className = 'calendar-time-label';
+            if (minutes === 0) {
+                const show = new Date();
+                show.setHours(hour, minutes, 0, 0);
+                label.textContent = show.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+            }
+            timesEl.appendChild(label);
+        }
+    }
+
+    function renderSlots() {
+        const totalSlots = (state.viewEnd - state.viewStart) * 4;
+        dayColumns.forEach((column, index) => {
+            column.innerHTML = '';
+            const dayDate = new Date(state.weekStart);
+            dayDate.setDate(dayDate.getDate() + index);
+
+            for (let i = 0; i < totalSlots; i += 1) {
+                const slot = document.createElement('div');
+                slot.className = 'calendar-slot';
+                const slotHour = state.viewStart + Math.floor(i / 4);
+                const slotMinutes = (i % 4) * FIFTEEN_MINUTES;
+                const slotDate = new Date(dayDate);
+                slotDate.setHours(slotHour, slotMinutes, 0, 0);
+                if (slotDate < new Date()) slot.classList.add('calendar-slot-past');
+                column.appendChild(slot);
+            }
+        });
+    }
+
+    function renderEvents() {
+        dayColumns.forEach(col => col.querySelectorAll('.calendar-event').forEach(el => el.remove()));
+        emptyState.textContent = 'No sessions scheduled for this week.';
+        emptyState.hidden = state.events.length !== 0;
+        if (state.events.length === 0) {
+            eventDetails.hidden = true;
+        }
+
+        const totalMinutes = (state.viewEnd - state.viewStart) * 60;
+        const windowStart = state.viewStart * 60;
+
+        state.events.forEach(event => {
+            const start = new Date(event.start_time);
+            const end = new Date(event.end_time);
+            const dayIndex = Math.floor((start - state.weekStart) / (24 * 60 * 60 * 1000));
+            if (dayIndex < 0 || dayIndex >= dayColumns.length) return;
+
+            const eventDuration = (end - start) / MILLI_IN_MINUTE;
+            const eventStartMinutes = start.getHours() * 60 + start.getMinutes();
+            let relativeStart = eventStartMinutes - windowStart;
+            if (relativeStart + eventDuration <= 0 || relativeStart >= totalMinutes) return;
+            relativeStart = Math.max(0, Math.min(relativeStart, totalMinutes - eventDuration));
+            const relativeEnd = Math.min(totalMinutes, relativeStart + eventDuration);
+
+            const column = dayColumns[dayIndex];
+            const eventNode = eventTemplate.content.firstElementChild.cloneNode(true);
+            const top = (relativeStart / totalMinutes) * 100;
+            const height = Math.max((relativeEnd - relativeStart) / totalMinutes * 100, 2);
+            eventNode.style.top = `${top}%`;
+            eventNode.style.height = `${height}%`;
+
+            const title = eventNode.querySelector('.calendar-event-title');
+            const trainerName = event.trainer_name || event.trainer_username;
+            title.textContent = trainerName ? `With ${trainerName} ${event.trainer_last_name || ''}`.trim() : 'Training Session';
+
+            eventNode.querySelector('.calendar-event-time').textContent = `${formatTime(start)} – ${formatTime(end)}`;
+            eventNode.addEventListener('click', () => showDetails(event));
+            column.appendChild(eventNode);
+        });
+    }
+
+    function showDetails(event) {
+        eventDetails.hidden = false;
+        const start = new Date(event.start_time);
+        const end = new Date(event.end_time);
+        const trainerName = event.trainer_name || event.trainer_username;
+        const dateStr = start.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+        eventDetails.textContent = `${dateStr}: ${formatTime(start)} – ${formatTime(end)} with ${trainerName}${event.trainer_last_name ? ' ' + event.trainer_last_name : ''}`;
+    }
+
+    function fetchEvents() {
+        const startIso = toISO(state.weekStart);
+        const end = new Date(state.weekStart);
+        end.setDate(end.getDate() + 7);
+        const endIso = toISO(end);
+        fetch(`/client/schedule/data?start=${encodeURIComponent(startIso)}&end=${encodeURIComponent(endIso)}`)
+            .then(res => res.json())
+            .then(data => {
+                if (!data.success) throw new Error(data.error || 'Failed to load schedule');
+                state.events = data.events || [];
+                renderEvents();
+            })
+            .catch(err => {
+                console.error(err);
+                emptyState.hidden = false;
+                emptyState.textContent = 'Unable to load schedule right now.';
+            });
+    }
+
+    function openWindowModal() {
+        windowStartInput.value = `${String(state.viewStart).padStart(2, '0')}:00`;
+        windowEndInput.value = `${String(state.viewEnd).padStart(2, '0')}:00`;
+        windowModal.hidden = false;
+    }
+
+    function closeWindowModal() {
+        windowModal.hidden = true;
+    }
+
+    function applyWindow(evt) {
+        evt.preventDefault();
+        const startHour = clampHour(parseInt((windowStartInput.value || '05:00').split(':')[0], 10));
+        const endHour = clampHour(parseInt((windowEndInput.value || '21:00').split(':')[0], 10));
+        if (endHour <= startHour) {
+            alert('End hour must be after start hour.');
+            return;
+        }
+        state.followTrainer = false;
+        state.viewStart = startHour;
+        state.viewEnd = endHour;
+        saveClientPreferences(false, startHour, endHour);
+        closeWindowModal();
+        rebuild();
+        renderEvents();
+        updateFollowButtons();
+    }
+
+    function saveClientPreferences(followTrainer, start, end, onSuccess) {
+        fetch('/client/schedule/preferences', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                follow_trainer: followTrainer,
+                view_start: start,
+                view_end: end
+            })
+        })
+            .then(res => res.json())
+            .then(data => {
+                if (!data.success) {
+                    alert(data.error || 'Unable to save preferences right now.');
+                    return;
+                }
+                state.followTrainer = Boolean(data.follow_trainer);
+                state.viewStart = Number.isFinite(data.view_start) ? data.view_start : state.viewStart;
+                state.viewEnd = Number.isFinite(data.view_end) ? data.view_end : state.viewEnd;
+                if (state.viewEnd <= state.viewStart) {
+                    state.viewStart = 5;
+                    state.viewEnd = 21;
+                }
+                updateFollowButtons();
+                if (typeof onSuccess === 'function') onSuccess();
+            })
+            .catch(() => alert('Unable to save preferences right now.'));
+    }
+
+    function updateFollowButtons() {
+        if (!editWindowBtn) return;
+        if (!followTrainerBtn) {
+            editWindowBtn.classList.remove('btn-outline-secondary');
+            editWindowBtn.classList.add('btn-primary');
+            return;
+        }
+        if (state.followTrainer) {
+            followTrainerBtn.classList.remove('btn-outline-secondary');
+            followTrainerBtn.classList.add('btn-primary');
+            editWindowBtn.classList.remove('btn-primary');
+            editWindowBtn.classList.add('btn-outline-secondary');
+        } else {
+            followTrainerBtn.classList.remove('btn-primary');
+            followTrainerBtn.classList.add('btn-outline-secondary');
+            editWindowBtn.classList.remove('btn-outline-secondary');
+            editWindowBtn.classList.add('btn-primary');
+        }
+    }
+
+    function rebuild() {
+        renderHeaders();
+        renderTimes();
+        renderSlots();
+        const scrollWrap = document.getElementById('client-calendar-scroll');
+        if (scrollWrap) scrollWrap.scrollLeft = 0;
+    }
+
+    function init() {
+        fetch('/client/schedule/preferences')
+            .then(res => res.json())
+            .then(data => {
+                if (data && data.success) {
+                    state.followTrainer = Boolean(data.follow_trainer);
+                    state.viewStart = Number.isFinite(data.view_start) ? data.view_start : state.viewStart;
+                    state.viewEnd = Number.isFinite(data.view_end) ? data.view_end : state.viewEnd;
+                    if (state.viewEnd <= state.viewStart) {
+                        state.viewStart = 5;
+                        state.viewEnd = 21;
+                    }
+                }
+            })
+            .catch(() => {})
+            .finally(() => {
+                rebuild();
+                updateWeekLabel();
+                fetchEvents();
+                updateFollowButtons();
+
+                if (scrollWrap && scrollHint) {
+                    const hideHint = () => {
+                        scrollHint.classList.add('hide');
+                    };
+                    scrollWrap.addEventListener('scroll', () => {
+                        hideHint();
+                    }, { once: true });
+                    setTimeout(hideHint, 4000);
+                }
+            });
+
+        prevWeekBtn.addEventListener('click', () => {
+            state.weekStart.setDate(state.weekStart.getDate() - 7);
+            rebuild();
+            updateWeekLabel();
+            fetchEvents();
+        });
+        nextWeekBtn.addEventListener('click', () => {
+            state.weekStart.setDate(state.weekStart.getDate() + 7);
+            rebuild();
+            updateWeekLabel();
+            fetchEvents();
+        });
+        todayBtn.addEventListener('click', () => {
+            state.weekStart = startOfWeek(new Date());
+            rebuild();
+            updateWeekLabel();
+            fetchEvents();
+        });
+
+        editWindowBtn.addEventListener('click', openWindowModal);
+        followTrainerBtn?.addEventListener('click', () => {
+            if (followTrainerBtn.disabled) return;
+            state.followTrainer = true;
+            saveClientPreferences(true, state.viewStart, state.viewEnd, () => {
+                fetch('/client/schedule/preferences')
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data && data.success) {
+                            state.viewStart = Number.isFinite(data.view_start) ? data.view_start : state.viewStart;
+                            state.viewEnd = Number.isFinite(data.view_end) ? data.view_end : state.viewEnd;
+                            if (state.viewEnd <= state.viewStart) {
+                                state.viewStart = 5;
+                                state.viewEnd = 21;
+                            }
+                            rebuild();
+                            renderEvents();
+                        }
+                        updateFollowButtons();
+                    })
+                    .catch(() => updateFollowButtons());
+            });
+        });
+        windowModalClose.addEventListener('click', closeWindowModal);
+        windowCancel.addEventListener('click', closeWindowModal);
+        windowForm.addEventListener('submit', applyWindow);
+    }
+
+    init();
+})();
+</script>
+{% endblock %}

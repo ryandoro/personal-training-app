@@ -1,5 +1,6 @@
 import os, re, logging, json, psycopg2, psycopg2.extras, psycopg2.errors, stripe
 from flask import Flask, flash, redirect, render_template, request, session, jsonify, url_for, current_app
+from markupsafe import Markup
 from werkzeug.security import generate_password_hash, check_password_hash
 from helpers import login_required, calculate_target_heart_rate, generate_workout, get_guidelines, get_connection, is_admin, normalize_email, upsert_invited_user, issue_single_use_token, validate_token, mark_token_used, username_available, fmt_utc, int_or_none, inches_0_11_or_none, float_or_none, hash_token, get_category_groups, get_user_level, LEVEL_MAP, check_and_downgrade_trial, check_subscription_expiry, get_active_workout, set_active_workout, clear_active_workout  
 from collections import OrderedDict
@@ -670,6 +671,1088 @@ def training():
     )
 
 
+@app.route('/trainer_dashboard')
+@login_required
+def trainer_dashboard():
+    """Render trainer dashboard with stats and assigned clients."""
+    user_id = session['user_id']
+    trainer = _require_trainer(user_id)
+    if not trainer:
+        flash("Trainer access required.", "danger")
+        return redirect(url_for('home'))
+
+    search_term = (request.args.get('search') or '').strip()
+
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            base_query = [
+                """
+                SELECT u.id, u.username, u.name, u.last_name, u.email, u.fitness_goals,
+                       u.workouts_completed, u.last_workout_completed,
+                       u.sessions_remaining,
+                       COALESCE(u.sessions_booked, 0) AS sessions_booked,
+                       t.name AS trainer_name, t.last_name AS trainer_last_name,
+                       t.username AS trainer_username
+                  FROM users u
+             LEFT JOIN users t
+                    ON u.trainer_id = t.id
+                 WHERE u.trainer_id = %s
+                """
+            ]
+            params = [user_id]
+
+            if search_term:
+                like = f"%{search_term}%"
+                base_query.append(
+                    """
+                    AND (
+                        u.username ILIKE %s OR
+                        u.name ILIKE %s OR
+                        u.last_name ILIKE %s OR
+                        u.email ILIKE %s OR
+                        (COALESCE(u.name, '') || ' ' || COALESCE(u.last_name, '')) ILIKE %s
+                    )
+                    """
+                )
+                params.extend([like, like, like, like, like])
+
+            base_query.append("ORDER BY u.name NULLS LAST, u.last_name NULLS LAST, u.username")
+            cursor.execute("\n".join(base_query), params)
+            clients = cursor.fetchall() or []
+
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                "SELECT COUNT(*) FROM trainer_sessions WHERE trainer_id = %s",
+                (user_id,),
+            )
+            sessions_completed = cursor.fetchone()[0]
+
+    trainer_stats = {
+        'total_clients': len(clients),
+        'sessions_completed': sessions_completed,
+    }
+
+    trainer_info = {
+        'name': trainer.get('name'),
+        'last_name': trainer.get('last_name'),
+        'username': trainer.get('username'),
+        'role': trainer.get('role'),
+    }
+
+    schedule_prefs = {'view_start': 5, 'view_end': 21}
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            cursor.execute(
+                "SELECT view_start, view_end FROM trainer_schedule_preferences WHERE trainer_id = %s",
+                (user_id,),
+            )
+            row = cursor.fetchone()
+            if row:
+                try:
+                    schedule_prefs['view_start'] = max(0, min(23, int(row.get('view_start', 5))))
+                    schedule_prefs['view_end'] = max(1, min(24, int(row.get('view_end', 21))))
+                    if schedule_prefs['view_end'] <= schedule_prefs['view_start']:
+                        schedule_prefs = {'view_start': 5, 'view_end': 21}
+                except (TypeError, ValueError):
+                    schedule_prefs = {'view_start': 5, 'view_end': 21}
+
+    return render_template(
+        'trainer_dashboard.html',
+        trainer_stats=trainer_stats,
+        clients=clients,
+        trainer=trainer_info,
+        schedule_prefs=schedule_prefs,
+        search_term=search_term,
+    )
+
+
+def _require_trainer(user_id: int) -> dict | None:
+    """Fetch trainer (or admin) info ensuring appropriate role."""
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            cursor.execute(
+                """
+                SELECT id, role, name, last_name, username, email, workouts_completed
+                  FROM users
+                 WHERE id = %s
+                """,
+                (user_id,),
+            )
+            trainer = cursor.fetchone()
+    if not trainer or trainer.get('role') not in {'trainer', 'admin'}:
+        return None
+    return trainer
+
+
+@app.route('/client_profile/<int:client_id>')
+@login_required
+def client_profile(client_id):
+    trainer_id = session['user_id']
+    trainer = _require_trainer(trainer_id)
+    if not trainer:
+        flash("Trainer access required.", "danger")
+        return redirect(url_for('home'))
+
+
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            cursor.execute(
+                """
+                SELECT id, trainer_id, username, name, last_name, email,
+                       fitness_goals, workouts_completed, last_workout_completed,
+                       exercise_history, workout_duration, subscription_type,
+                       sessions_remaining, commitment, additional_notes
+                  FROM users
+                 WHERE id = %s
+                """,
+                (client_id,),
+            )
+            client = cursor.fetchone()
+
+            if not client:
+                flash("Client not found.", "danger")
+                return redirect(url_for('trainer_dashboard'))
+
+            if client.get('trainer_id') != trainer_id and trainer.get('role') != 'admin':
+                flash("You do not have access to that client.", "danger")
+                return redirect(url_for('trainer_dashboard'))
+
+            cursor.execute(
+                "SELECT category, workout_data, created_at FROM active_workouts WHERE user_id = %s",
+                (client_id,),
+            )
+            active = cursor.fetchone()
+
+    active_workout = None
+    if active:
+        workout_payload = active.get('workout_data') or {}
+        plan = workout_payload.get('plan') if isinstance(workout_payload, dict) else None
+        formatted_plan = None
+        if plan:
+            formatted_plan = format_workout_for_response(active['category'], plan)
+
+        created_at = active.get('created_at')
+        if created_at:
+            try:
+                created_display = fmt_utc(created_at)
+            except Exception:
+                created_display = created_at.strftime("%Y-%m-%d %H:%M") if hasattr(created_at, 'strftime') else str(created_at)
+        else:
+            created_display = None
+
+        active_workout = {
+            'category': active.get('category'),
+            'duration_minutes': workout_payload.get('duration_minutes') if isinstance(workout_payload, dict) else None,
+            'created_at': created_display,
+            'plan': formatted_plan,
+        }
+
+    category_options = list(get_category_groups().keys())
+
+    return render_template(
+        'client_profile.html',
+        trainer=trainer,
+        client=client,
+        active_workout=active_workout,
+        category_options=category_options,
+    )
+
+
+def _parse_iso_datetime(value: str, field: str) -> datetime:
+    if not value:
+        raise ValueError(f"Missing {field}.")
+    try:
+        cleaned = value.replace('Z', '+00:00')
+        parsed = datetime.fromisoformat(cleaned)
+    except ValueError as exc:
+        raise ValueError(f"Invalid {field}.") from exc
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    else:
+        parsed = parsed.astimezone(timezone.utc)
+    rounded = parsed.replace(second=0, microsecond=0)
+    if rounded.minute % 15 != 0:
+        raise ValueError("Times must align to 15-minute increments.")
+    return rounded
+
+
+def _validate_time_window(start_dt: datetime, end_dt: datetime) -> None:
+    if end_dt <= start_dt:
+        raise ValueError("End time must be after start time.")
+    duration = end_dt - start_dt
+    minutes = int(duration.total_seconds() // 60)
+    if minutes % 15 != 0:
+        raise ValueError("Duration must be a multiple of 15 minutes.")
+
+
+def _ensure_trainer_client_link(cursor, trainer_id: int, client_id: int, trainer_role: str):
+    cursor.execute(
+        "SELECT trainer_id, sessions_remaining, sessions_booked FROM users WHERE id = %s",
+        (client_id,),
+    )
+    row = cursor.fetchone()
+    if not row:
+        return None
+    if isinstance(row, dict):
+        linked_trainer = row.get('trainer_id')
+    else:
+        linked_trainer = row[0]
+    if linked_trainer == trainer_id or trainer_role == 'admin':
+        return row
+    return None
+
+
+def _schedule_conflicts(cursor, trainer_id: int, client_id: int, start_dt: datetime, end_dt: datetime, exclude_id: int | None = None) -> tuple[bool, str | None]:
+    params = [trainer_id, end_dt, start_dt]
+    exclude_clause = ""
+    if exclude_id is not None:
+        exclude_clause = " AND id <> %s"
+        params.append(exclude_id)
+
+    cursor.execute(
+        f"""
+        SELECT 1 FROM trainer_schedule
+         WHERE trainer_id = %s
+           AND end_time > %s
+           AND start_time < %s
+           {exclude_clause}
+         LIMIT 1
+        """,
+        params,
+    )
+    if cursor.fetchone():
+        return True, 'Trainer already has a booking in that window.'
+
+    params = [client_id, end_dt, start_dt]
+    if exclude_id is not None:
+        params.append(exclude_id)
+
+    cursor.execute(
+        f"""
+        SELECT 1 FROM trainer_schedule
+         WHERE client_id = %s
+           AND end_time > %s
+           AND start_time < %s
+           {exclude_clause}
+         LIMIT 1
+        """,
+        params,
+    )
+    if cursor.fetchone():
+        return True, 'Client is already booked for that time.'
+    return False, None
+
+
+def _serialize_schedule_row(row):
+    return {
+        'id': row['id'],
+        'trainer_id': row['trainer_id'],
+        'client_id': row['client_id'],
+        'client_name': row.get('client_name'),
+        'client_last_name': row.get('client_last_name'),
+        'client_username': row.get('client_username'),
+        'start_time': row['start_time'].isoformat() if row.get('start_time') else None,
+        'end_time': row['end_time'].isoformat() if row.get('end_time') else None,
+        'status': row.get('status') or 'booked',
+    }
+
+
+@app.route('/trainer/schedule/data')
+@login_required
+def trainer_schedule_data():
+    trainer_id = session['user_id']
+    trainer = _require_trainer(trainer_id)
+    if not trainer:
+        return jsonify({'success': False, 'error': 'Trainer access required'}), 403
+
+    start_raw = request.args.get('start')
+    end_raw = request.args.get('end')
+    now_utc = datetime.now(timezone.utc)
+    try:
+        start_dt = _parse_iso_datetime(start_raw, 'start') if start_raw else (now_utc - timedelta(days=now_utc.weekday()))
+        end_dt = _parse_iso_datetime(end_raw, 'end') if end_raw else start_dt + timedelta(days=7)
+    except ValueError as exc:
+        return jsonify({'success': False, 'error': str(exc)}), 400
+
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            cursor.execute(
+                """
+                SELECT ts.id, ts.trainer_id, ts.client_id, ts.start_time, ts.end_time, ts.status,
+                       c.name AS client_name, c.last_name AS client_last_name, c.username AS client_username
+                  FROM trainer_schedule ts
+                  JOIN users c ON c.id = ts.client_id
+                 WHERE ts.trainer_id = %s
+                   AND ts.start_time < %s
+                   AND ts.end_time > %s
+                 ORDER BY ts.start_time ASC
+                """,
+                (trainer_id, end_dt, start_dt),
+            )
+            rows = cursor.fetchall() or []
+
+    return jsonify({'success': True, 'events': [_serialize_schedule_row(row) for row in rows]})
+
+
+@app.route('/trainer/schedule/preferences', methods=['GET', 'POST'])
+@login_required
+def trainer_schedule_preferences():
+    trainer_id = session['user_id']
+    trainer = _require_trainer(trainer_id)
+    if not trainer:
+        return jsonify({'success': False, 'error': 'Trainer access required'}), 403
+
+    if request.method == 'GET':
+        with get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(
+                    "SELECT view_start, view_end FROM trainer_schedule_preferences WHERE trainer_id = %s",
+                    (trainer_id,),
+                )
+                row = cursor.fetchone() or {}
+        view_start = max(0, min(23, int(row.get('view_start', 5)))) if row else 5
+        view_end = max(1, min(24, int(row.get('view_end', 21)))) if row else 21
+        if view_end <= view_start:
+            view_start, view_end = 5, 21
+        return jsonify({'success': True, 'view_start': view_start, 'view_end': view_end})
+
+    data = request.get_json(silent=True) or {}
+    try:
+        view_start = int(data.get('view_start'))
+        view_end = int(data.get('view_end'))
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'error': 'Invalid hours provided.'}), 400
+
+    if not (0 <= view_start <= 23 and 1 <= view_end <= 24):
+        return jsonify({'success': False, 'error': 'Hours must be between 0 and 24.'}), 400
+    if view_end <= view_start:
+        return jsonify({'success': False, 'error': 'End hour must be after start hour.'}), 400
+
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO trainer_schedule_preferences (trainer_id, view_start, view_end)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (trainer_id)
+                DO UPDATE SET view_start = EXCLUDED.view_start,
+                              view_end = EXCLUDED.view_end,
+                              updated_at = CURRENT_TIMESTAMP
+                """,
+                (trainer_id, view_start, view_end),
+            )
+            conn.commit()
+
+    return jsonify({'success': True, 'view_start': view_start, 'view_end': view_end})
+
+
+@app.route('/trainer/schedule/book', methods=['POST'])
+@login_required
+def trainer_schedule_book():
+    trainer_id = session['user_id']
+    trainer = _require_trainer(trainer_id)
+    if not trainer:
+        return jsonify({'success': False, 'error': 'Trainer access required'}), 403
+
+    payload = request.get_json(silent=True) or {}
+    client_id = payload.get('client_id')
+    duration_minutes = payload.get('duration_minutes') or 60
+
+    try:
+        client_id = int(client_id)
+        duration_minutes = int(duration_minutes)
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'error': 'Invalid client or duration.'}), 400
+
+    if duration_minutes <= 0:
+        return jsonify({'success': False, 'error': 'Duration must be positive.'}), 400
+
+    try:
+        start_dt = _parse_iso_datetime(payload.get('start_time'), 'start time')
+        end_dt = start_dt + timedelta(minutes=duration_minutes)
+        end_raw_override = payload.get('end_time')
+        if end_raw_override:
+            end_dt = _parse_iso_datetime(end_raw_override, 'end time')
+        _validate_time_window(start_dt, end_dt)
+    except ValueError as exc:
+        return jsonify({'success': False, 'error': str(exc)}), 400
+
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            link_row = _ensure_trainer_client_link(cursor, trainer_id, client_id, trainer.get('role'))
+            if not link_row:
+                return jsonify({'success': False, 'error': 'You are not linked with that client.'}), 403
+
+            if isinstance(link_row, dict):
+                sessions_remaining = link_row.get('sessions_remaining')
+                sessions_booked = link_row.get('sessions_booked') or 0
+            else:
+                sessions_remaining = link_row[1]
+                sessions_booked = link_row[2] or 0
+            if sessions_remaining is not None and sessions_booked >= sessions_remaining:
+                flash('That client has no sessions remaining.', 'danger')
+                return jsonify({'success': False, 'error': 'Client has no sessions remaining.', 'flash': True}), 400
+
+            conflict, message = _schedule_conflicts(cursor, trainer_id, client_id, start_dt, end_dt)
+            if conflict:
+                return jsonify({'success': False, 'error': message}), 409
+
+            cursor.execute(
+                """
+                INSERT INTO trainer_schedule (trainer_id, client_id, start_time, end_time)
+                VALUES (%s, %s, %s, %s)
+                RETURNING id
+                """,
+                (trainer_id, client_id, start_dt, end_dt),
+            )
+            new_id_row = cursor.fetchone()
+            new_id = new_id_row['id'] if isinstance(new_id_row, dict) else new_id_row[0]
+
+            cursor.execute(
+                """
+                UPDATE users
+                   SET sessions_booked = COALESCE(sessions_booked, 0) + 1
+                 WHERE id = %s
+                """,
+                (client_id,),
+            )
+            conn.commit()
+
+        with get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(
+                    """
+                    SELECT ts.id, ts.trainer_id, ts.client_id, ts.start_time, ts.end_time, ts.status,
+                           c.name AS client_name, c.last_name AS client_last_name, c.username AS client_username
+                      FROM trainer_schedule ts
+                      JOIN users c ON c.id = ts.client_id
+                     WHERE ts.id = %s
+                    """,
+                    (new_id,),
+                )
+                row = cursor.fetchone()
+
+    return jsonify({'success': True, 'event': _serialize_schedule_row(row)})
+
+
+@app.route('/trainer/schedule/<int:event_id>', methods=['PATCH', 'DELETE'])
+@login_required
+def trainer_schedule_modify(event_id):
+    trainer_id = session['user_id']
+    trainer = _require_trainer(trainer_id)
+    if not trainer:
+        return jsonify({'success': False, 'error': 'Trainer access required'}), 403
+
+    if request.method == 'DELETE':
+        with get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "DELETE FROM trainer_schedule WHERE id = %s AND trainer_id = %s RETURNING client_id",
+                    (event_id, trainer_id),
+                )
+                row = cursor.fetchone()
+                if not row:
+                    return jsonify({'success': False, 'error': 'Booking not found.'}), 404
+                client_id = row[0]
+                cursor.execute(
+                    """
+                    UPDATE users
+                       SET sessions_booked = GREATEST(COALESCE(sessions_booked, 0) - 1, 0)
+                     WHERE id = %s
+                    """,
+                    (client_id,),
+                )
+                conn.commit()
+        return jsonify({'success': True})
+
+    payload = request.get_json(silent=True) or {}
+
+    try:
+        start_dt = _parse_iso_datetime(payload.get('start_time'), 'start time')
+        end_dt = _parse_iso_datetime(payload.get('end_time'), 'end time')
+        _validate_time_window(start_dt, end_dt)
+    except ValueError as exc:
+        return jsonify({'success': False, 'error': str(exc)}), 400
+
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            cursor.execute(
+                "SELECT client_id FROM trainer_schedule WHERE id = %s AND trainer_id = %s",
+                (event_id, trainer_id),
+            )
+            row = cursor.fetchone()
+            if not row:
+                return jsonify({'success': False, 'error': 'Booking not found.'}), 404
+            client_id = row['client_id']
+
+        with conn.cursor() as cursor:
+            conflict, message = _schedule_conflicts(cursor, trainer_id, client_id, start_dt, end_dt, exclude_id=event_id)
+            if conflict:
+                return jsonify({'success': False, 'error': message}), 409
+
+            cursor.execute(
+                """
+                UPDATE trainer_schedule
+                   SET start_time = %s,
+                       end_time = %s
+                 WHERE id = %s AND trainer_id = %s
+                """,
+                (start_dt, end_dt, event_id, trainer_id),
+            )
+            if cursor.rowcount == 0:
+                return jsonify({'success': False, 'error': 'Booking not found.'}), 404
+            conn.commit()
+
+        with get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(
+                    """
+                    SELECT ts.id, ts.trainer_id, ts.client_id, ts.start_time, ts.end_time, ts.status,
+                           c.name AS client_name, c.last_name AS client_last_name, c.username AS client_username
+                      FROM trainer_schedule ts
+                      JOIN users c ON c.id = ts.client_id
+                     WHERE ts.id = %s
+                    """,
+                    (event_id,),
+                )
+                refreshed = cursor.fetchone()
+
+    return jsonify({'success': True, 'event': _serialize_schedule_row(refreshed)})
+
+
+@app.route('/client/schedule/data')
+@login_required
+def client_schedule_data():
+    user_id = session['user_id']
+    role = session.get('role')
+    if role not in {'user', 'trainer', 'admin'}:
+        return jsonify({'success': False, 'error': 'Access denied'}), 403
+
+    start_raw = request.args.get('start')
+    end_raw = request.args.get('end')
+    now_utc = datetime.now(timezone.utc)
+    try:
+        start_dt = _parse_iso_datetime(start_raw, 'start') if start_raw else (now_utc - timedelta(days=now_utc.weekday()))
+        end_dt = _parse_iso_datetime(end_raw, 'end') if end_raw else start_dt + timedelta(days=7)
+    except ValueError as exc:
+        return jsonify({'success': False, 'error': str(exc)}), 400
+
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            cursor.execute(
+                """
+                SELECT ts.id, ts.trainer_id, ts.client_id, ts.start_time, ts.end_time, ts.status,
+                       t.name AS trainer_name, t.last_name AS trainer_last_name,
+                       t.username AS trainer_username
+                  FROM trainer_schedule ts
+                  JOIN users t ON t.id = ts.trainer_id
+                 WHERE ts.client_id = %s
+                   AND ts.start_time < %s
+                   AND ts.end_time > %s
+                 ORDER BY ts.start_time
+                """,
+                (user_id, end_dt, start_dt),
+            )
+            rows = cursor.fetchall() or []
+
+    events = []
+    for row in rows:
+        event = _serialize_schedule_row(row)
+        event['trainer_name'] = row.get('trainer_name')
+        event['trainer_last_name'] = row.get('trainer_last_name')
+        event['trainer_username'] = row.get('trainer_username')
+        events.append(event)
+
+    return jsonify({'success': True, 'events': events})
+
+
+@app.route('/client/schedule/preferences', methods=['GET', 'POST'])
+@login_required
+def client_schedule_preferences():
+    user_id = session['user_id']
+    role = session.get('role')
+    if role not in {'user', 'trainer', 'admin'}:
+        return jsonify({'success': False, 'error': 'Access denied'}), 403
+
+    if request.method == 'GET':
+        with get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(
+                    "SELECT trainer_id FROM users WHERE id = %s",
+                    (user_id,),
+                )
+                row = cursor.fetchone()
+                trainer_id = row.get('trainer_id') if row else None
+
+                cursor.execute(
+                    "SELECT view_start, view_end, follow_trainer FROM client_schedule_preferences WHERE client_id = %s",
+                    (user_id,),
+                )
+                pref_row = cursor.fetchone() or {}
+
+                if pref_row.get('follow_trainer', True) and trainer_id:
+                    cursor.execute(
+                        "SELECT view_start, view_end FROM trainer_schedule_preferences WHERE trainer_id = %s",
+                        (trainer_id,),
+                    )
+                    trainer_pref = cursor.fetchone() or {}
+                    view_start = trainer_pref.get('view_start', 5)
+                    view_end = trainer_pref.get('view_end', 21)
+                else:
+                    view_start = pref_row.get('view_start', 5)
+                    view_end = pref_row.get('view_end', 21)
+
+        try:
+            view_start = max(0, min(23, int(view_start)))
+            view_end = max(1, min(24, int(view_end)))
+            if view_end <= view_start:
+                view_start, view_end = 5, 21
+        except (TypeError, ValueError):
+            view_start, view_end = 5, 21
+
+        return jsonify({
+            'success': True,
+            'view_start': view_start,
+            'view_end': view_end,
+            'follow_trainer': pref_row.get('follow_trainer', True)
+        })
+
+    data = request.get_json(silent=True) or {}
+    follow_trainer = bool(data.get('follow_trainer', False))
+    try:
+        view_start = int(data.get('view_start', 5))
+        view_end = int(data.get('view_end', 21))
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'error': 'Invalid hours provided.'}), 400
+
+    if not (0 <= view_start <= 23 and 1 <= view_end <= 24):
+        return jsonify({'success': False, 'error': 'Hours must be between 0 and 24.'}), 400
+    if view_end <= view_start:
+        return jsonify({'success': False, 'error': 'End hour must be after start hour.'}), 400
+
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO client_schedule_preferences (client_id, view_start, view_end, follow_trainer)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (client_id)
+                DO UPDATE SET view_start = EXCLUDED.view_start,
+                              view_end = EXCLUDED.view_end,
+                              follow_trainer = EXCLUDED.follow_trainer,
+                              updated_at = CURRENT_TIMESTAMP
+                """,
+                (user_id, view_start, view_end, follow_trainer),
+            )
+            conn.commit()
+
+    return jsonify({'success': True, 'view_start': view_start, 'view_end': view_end, 'follow_trainer': follow_trainer})
+
+
+@app.route('/schedule')
+@login_required
+def client_schedule_view():
+    user_id = session['user_id']
+    role = session.get('role')
+
+    if role == 'trainer' or role == 'admin':
+        return redirect(url_for('trainer_dashboard'))
+
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            cursor.execute(
+                "SELECT trainer_id FROM users WHERE id = %s",
+                (user_id,),
+            )
+            row = cursor.fetchone()
+            trainer_id = row.get('trainer_id') if row else None
+
+            trainer_info = None
+            if trainer_id:
+                cursor.execute(
+                    "SELECT name, last_name, username FROM users WHERE id = %s",
+                    (trainer_id,),
+                )
+                trainer_info = cursor.fetchone()
+
+    return render_template('schedule.html', trainer_info=trainer_info)
+
+
+@app.route('/generate_client_workout/<int:client_id>', methods=['POST'])
+@login_required
+def generate_client_workout(client_id):
+    trainer_id = session['user_id']
+    trainer = _require_trainer(trainer_id)
+    if not trainer:
+        flash("Trainer access required.", "danger")
+        return redirect(url_for('home'))
+
+    selected_category = (request.form.get('category') or '').strip()
+    if not selected_category:
+        flash("Please choose a category before generating a workout.", "danger")
+        return redirect(url_for('client_profile', client_id=client_id))
+
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            cursor.execute(
+                """
+                SELECT id, trainer_id, exercise_history,
+                       COALESCE(workout_duration, 60) AS workout_duration,
+                       subscription_type, trial_end_date
+                  FROM users
+                 WHERE id = %s
+                """,
+                (client_id,),
+            )
+            client = cursor.fetchone()
+
+    if not client:
+        flash("Client not found.", "danger")
+        return redirect(url_for('trainer_dashboard'))
+
+    if client.get('trainer_id') != trainer_id and trainer.get('role') != 'admin':
+        flash("You do not have access to that client.", "danger")
+        return redirect(url_for('trainer_dashboard'))
+
+    try:
+        duration_minutes = int(client.get('workout_duration') or 60)
+    except (TypeError, ValueError):
+        duration_minutes = 60
+    subscription_type = client.get('subscription_type')
+    trial_end_date = client.get('trial_end_date')
+
+    today = datetime.today().date()
+    if subscription_type == 'free' or (
+        subscription_type == 'premium' and trial_end_date and today > trial_end_date
+    ):
+        if selected_category != 'Shoulders and Abs':
+            flash("This client needs Premium access to use that category.", "warning")
+            return redirect(url_for('client_profile', client_id=client_id))
+
+    user_level = get_user_level(client.get('exercise_history'))
+
+    workout_plan = generate_workout(selected_category, user_level, client_id, duration_minutes)
+    workout_payload = {
+        'plan': workout_plan,
+        'duration_minutes': duration_minutes,
+    }
+    set_active_workout(client_id, selected_category, workout_payload)
+
+    flash("Client workout generated and synced.", "success")
+    return redirect(url_for('client_profile', client_id=client_id, focus='active'))
+
+
+@app.route('/trainer/clients/<int:client_id>/complete_workout', methods=['POST'])
+@login_required
+def trainer_complete_client_workout(client_id):
+    trainer_id = session['user_id']
+    trainer = _require_trainer(trainer_id)
+    if not trainer:
+        flash("Trainer access required.", "danger")
+        return redirect(url_for('home'))
+
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            cursor.execute(
+                "SELECT trainer_id FROM users WHERE id = %s",
+                (client_id,),
+            )
+            row = cursor.fetchone()
+
+    if not row:
+        flash("Client not found.", "danger")
+        return redirect(url_for('trainer_dashboard'))
+
+    if row.get('trainer_id') != trainer_id and trainer.get('role') != 'admin':
+        flash("You do not have access to that client.", "danger")
+        return redirect(url_for('trainer_dashboard'))
+
+    success, error = _complete_workout_for_user(client_id)
+    if success:
+        with get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO trainer_sessions (trainer_id, client_id)
+                    VALUES (%s, %s)
+                    """,
+                    (trainer_id, client_id),
+                )
+                cursor.execute(
+                    """
+                    UPDATE users
+                       SET sessions_remaining = CASE
+                             WHEN sessions_remaining IS NULL THEN NULL
+                             WHEN sessions_remaining > 0 THEN sessions_remaining - 1
+                             ELSE 0
+                         END
+                     WHERE id = %s
+                    """,
+                    (client_id,),
+                )
+                conn.commit()
+        flash('Session marked complete for client.', 'success')
+    else:
+        flash(error or 'Unable to complete the workout for this client.', 'danger')
+
+    return redirect(url_for('client_profile', client_id=client_id))
+
+
+@app.route('/trainer/clients/<int:client_id>/sessions_remaining', methods=['POST'])
+@login_required
+def trainer_update_sessions_remaining(client_id):
+    trainer_id = session['user_id']
+    trainer = _require_trainer(trainer_id)
+    if not trainer:
+        flash("Trainer access required.", "danger")
+        return redirect(url_for('home'))
+
+    value_raw = (request.form.get('sessions_remaining') or '').strip()
+    sessions_value = None
+    if value_raw:
+        try:
+            sessions_value = int(value_raw)
+        except ValueError:
+            flash("Enter sessions remaining as a whole number.", "danger")
+            return redirect(url_for('client_profile', client_id=client_id))
+        if sessions_value < 0:
+            flash("Sessions remaining cannot be negative.", "danger")
+            return redirect(url_for('client_profile', client_id=client_id))
+
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            cursor.execute(
+                "SELECT trainer_id, sessions_booked FROM users WHERE id = %s",
+                (client_id,),
+            )
+            client = cursor.fetchone()
+
+            if not client:
+                flash("Client not found.", "danger")
+                return redirect(url_for('trainer_dashboard'))
+
+            if client.get('trainer_id') != trainer_id and trainer.get('role') != 'admin':
+                flash("You do not have access to that client.", "danger")
+                return redirect(url_for('trainer_dashboard'))
+
+            booked = client.get('sessions_booked') or 0
+            if sessions_value is not None and sessions_value < booked:
+                flash(f"This client already has {booked} session(s) booked. Increase or cancel bookings before lowering sessions purchased.", 'danger')
+                return redirect(url_for('client_profile', client_id=client_id))
+
+            cursor.execute(
+                "UPDATE users SET sessions_remaining = %s WHERE id = %s",
+                (sessions_value, client_id),
+            )
+            conn.commit()
+
+    flash("Sessions remaining updated.", "success")
+    return redirect(url_for('client_profile', client_id=client_id))
+
+
+@app.route('/trainer/clients/<int:client_id>/workout_duration', methods=['POST'])
+@login_required
+def trainer_update_client_duration(client_id):
+    trainer = _require_trainer(session['user_id'])
+    if not trainer:
+        return jsonify({'success': False, 'error': 'Trainer access required'}), 403
+
+    data = request.get_json(silent=True) or {}
+    raw = str(data.get('workout_duration', '')).strip()
+    allowed = {'20', '30', '45', '60'}
+    if raw not in allowed:
+        return jsonify({'success': False, 'error': 'Invalid duration'}), 400
+
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            cursor.execute(
+                "SELECT trainer_id FROM users WHERE id = %s",
+                (client_id,),
+            )
+            client = cursor.fetchone()
+
+            if not client:
+                return jsonify({'success': False, 'error': 'Client not found'}), 404
+
+            if client.get('trainer_id') != session['user_id'] and trainer.get('role') != 'admin':
+                return jsonify({'success': False, 'error': 'You do not have access to that client.'}), 403
+
+            cursor.execute(
+                "UPDATE users SET workout_duration = %s WHERE id = %s",
+                (int(raw), client_id),
+            )
+            conn.commit()
+
+    return jsonify({'success': True, 'workout_duration': int(raw)})
+
+
+@app.route('/trainer/clients/<int:client_id>/update_pr', methods=['POST'])
+@login_required
+def trainer_update_pr(client_id):
+    trainer = _require_trainer(session['user_id'])
+    if not trainer:
+        return jsonify({'success': False, 'error': 'Trainer access required'}), 403
+
+    data = request.get_json() or {}
+    workout_id = data.get('workout_id')
+    if not workout_id:
+        return jsonify({'success': False, 'error': 'Missing workout id'}), 400
+
+    max_weight_raw = data.get('max_weight')
+    max_reps_raw = data.get('max_reps')
+
+    max_weight = None
+    if isinstance(max_weight_raw, (int, float)):
+        max_weight = float(max_weight_raw)
+    elif isinstance(max_weight_raw, str) and max_weight_raw.strip():
+        try:
+            max_weight = float(max_weight_raw)
+        except ValueError:
+            max_weight = None
+
+    max_reps = None
+    if isinstance(max_reps_raw, (int, float)):
+        max_reps = int(max_reps_raw)
+    elif isinstance(max_reps_raw, str) and max_reps_raw.strip():
+        try:
+            max_reps = int(float(max_reps_raw))
+        except ValueError:
+            max_reps = None
+
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT trainer_id FROM users WHERE id = %s", (client_id,))
+            row = cursor.fetchone()
+    if not row:
+        return jsonify({'success': False, 'error': 'Client not found'}), 404
+
+    trainer_id = row[0]
+    if trainer_id != session['user_id'] and trainer.get('role') != 'admin':
+        return jsonify({'success': False, 'error': 'Access denied'}), 403
+
+    result = _apply_pr_update(client_id, int(workout_id), max_weight, max_reps)
+    return jsonify(result)
+
+
+@app.route('/trainer/clients/<int:client_id>/update_notes', methods=['POST'])
+@login_required
+def trainer_update_notes(client_id):
+    trainer = _require_trainer(session['user_id'])
+    if not trainer:
+        return jsonify({'success': False, 'error': 'Trainer access required'}), 403
+
+    data = request.get_json(silent=True) or {}
+    workout_id_raw = data.get('workout_id')
+    try:
+        workout_id = int(str(workout_id_raw).strip())
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'error': 'Invalid workout id'}), 400
+
+    notes_raw = data.get('notes')
+    notes = None
+    if notes_raw is not None:
+        cleaned = str(notes_raw).strip()
+        if cleaned:
+            notes = cleaned
+
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT trainer_id FROM users WHERE id = %s", (client_id,))
+            row = cursor.fetchone()
+    if not row:
+        return jsonify({'success': False, 'error': 'Client not found'}), 404
+
+    trainer_id = row[0]
+    if trainer_id != session['user_id'] and trainer.get('role') != 'admin':
+        return jsonify({'success': False, 'error': 'Access denied'}), 403
+
+    result = _apply_notes_update(client_id, workout_id, notes)
+    return jsonify(result)
+
+
+@app.route('/add_client', methods=['GET', 'POST'])
+@login_required
+def add_client():
+    trainer_id = session['user_id']
+    trainer = _require_trainer(trainer_id)
+    if not trainer:
+        flash("Trainer access required.", "danger")
+        return redirect(url_for('home'))
+
+    if request.method == 'POST':
+        form_data = request.form
+        name = (form_data.get('name') or '').strip() or None
+        last_name = (form_data.get('last_name') or '').strip() or None
+        raw_email = (form_data.get('email') or '').strip()
+        email = normalize_email(raw_email)
+        sessions_remaining = int_or_none(form_data.get('sessions_remaining'))
+
+        errors = {}
+        if not email:
+            errors['email'] = 'Email is required.'
+        elif not re.match(r"^[^@]+@[^@]+\.[^@]+$", email):
+            errors['email'] = 'Enter a valid email address.'
+        if sessions_remaining is not None and sessions_remaining < 0:
+            errors['sessions_remaining'] = 'Sessions remaining must be zero or more.'
+
+        if errors:
+            for msg in errors.values():
+                flash(msg, 'danger')
+            return render_template('trainer_add_client.html', trainer=trainer, form_data=form_data)
+
+        try:
+            with get_connection() as conn:
+                conn.autocommit = False
+                try:
+                    user_id = upsert_invited_user(
+                        conn,
+                        email=email,
+                        first=name,
+                        last=last_name,
+                        role='user',
+                        subscription='premium',
+                        invited_by=trainer_id,
+                        trainer_id=trainer_id,
+                        sessions_remaining=sessions_remaining,
+                    )
+                except ValueError as ve:
+                    conn.rollback()
+                    flash(str(ve), 'danger')
+                    return render_template('trainer_add_client.html', trainer=trainer, form_data=form_data)
+
+                raw_token, expires_at = issue_single_use_token(conn, user_id, 'invite', INVITE_TTL_HOURS)
+                conn.commit()
+
+        except psycopg2.Error:
+            current_app.logger.exception('Failed creating client invite')
+            flash('Error creating client invite.', 'danger')
+            return render_template('trainer_add_client.html', trainer=trainer, form_data=form_data)
+
+        invite_url = url_for('accept_invite', token=raw_token, _external=True)
+        trainer_name = trainer.get('name') or trainer.get('username') or 'your trainer'
+        trainer_sessions = sessions_remaining if sessions_remaining is not None else 'unlimited'
+        admin_note = f"{trainer_name} invited you to train with them on FitBaseAI."
+        if sessions_remaining is not None:
+            admin_note += f" They noted you purchased {sessions_remaining} session{'s' if sessions_remaining != 1 else ''}."
+
+        try:
+            send_invite_email(
+                to_email=email,
+                first_name=name or 'there',
+                invite_url=invite_url,
+                admin_note=admin_note,
+            )
+            flash(Markup(f'Invitation sent to {email}. If needed, share this link: <a href="{invite_url}">{invite_url}</a>'), 'success')
+        except Exception:
+            current_app.logger.exception('Failed to send invite email to new client')
+            flash(Markup(f'Invite link created, but email failed to send. Share it manually: <a href="{invite_url}">{invite_url}</a>'), 'warning')
+
+        return redirect(url_for('trainer_dashboard'))
+
+    return render_template('trainer_add_client.html', trainer=trainer)
+
+
 @app.route('/update_workout_duration', methods=['POST'])
 @login_required
 def update_workout_duration():
@@ -768,6 +1851,214 @@ def clear_active_workout_route():
     return jsonify({'success': True})
 
 
+def _apply_pr_update(user_id: int, workout_id: int, max_weight, max_reps):
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO user_exercise_progress (user_id, workout_id, name, max_weight, max_reps)
+                SELECT %s, w.id, w.name, %s, %s
+                  FROM workouts w
+                 WHERE w.id = %s
+                ON CONFLICT (user_id, workout_id) DO UPDATE
+                SET name = EXCLUDED.name,
+                    max_weight = EXCLUDED.max_weight,
+                    max_reps = EXCLUDED.max_reps,
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                (user_id, max_weight, max_reps, workout_id),
+            )
+
+        active_updated = False
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                "SELECT category, workout_data FROM active_workouts WHERE user_id = %s",
+                (user_id,),
+            )
+            active = cur.fetchone()
+
+        if active and active.get('workout_data') is not None:
+            payload = active['workout_data']
+            workout_id_str = str(workout_id)
+
+            def update_exercise_entry(entry):
+                nonlocal active_updated
+                if isinstance(entry, dict):
+                    if str(entry.get('workout_id')) == workout_id_str:
+                        entry = {**entry}
+                        entry['max_weight'] = max_weight
+                        entry['max_reps'] = max_reps
+                        active_updated = True
+                    return entry
+                if isinstance(entry, (list, tuple)):
+                    if entry and str(entry[0]) == workout_id_str:
+                        entry_list = list(entry)
+                        while len(entry_list) <= 7:
+                            entry_list.append(None)
+                        entry_list[6] = max_weight
+                        entry_list[7] = max_reps
+                        active_updated = True
+                        return entry_list
+                return entry
+
+            def update_structure(node):
+                if isinstance(node, dict):
+                    if 'workout_id' in node or 'exercise_id' in node:
+                        return update_exercise_entry(node)
+                    return {key: update_structure(value) for key, value in node.items()}
+                if isinstance(node, list):
+                    if node and not isinstance(node[0], (dict, list, tuple)) and str(node[0]) == workout_id_str:
+                        return update_exercise_entry(node)
+                    return [update_structure(item) for item in node]
+                return node
+
+            updated_payload = update_structure(payload)
+            if active_updated:
+                with get_connection() as conn:
+                    with conn.cursor() as cursor:
+                        cursor.execute(
+                            """
+                            UPDATE active_workouts
+                               SET workout_data = %s
+                             WHERE user_id = %s
+                            """,
+                            (psycopg2.extras.Json(updated_payload), user_id),
+                        )
+                        conn.commit()
+
+    return {'success': True, 'max_weight': max_weight, 'max_reps': max_reps}
+
+
+def _apply_notes_update(user_id: int, workout_id: int, notes: str | None):
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO user_exercise_progress (user_id, workout_id, name, notes)
+                SELECT %s, w.id, w.name, %s
+                  FROM workouts w
+                 WHERE w.id = %s
+                ON CONFLICT (user_id, workout_id) DO UPDATE
+                SET name = EXCLUDED.name,
+                    notes = EXCLUDED.notes,
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                (user_id, notes, workout_id),
+            )
+
+        active_updated = False
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                "SELECT category, workout_data FROM active_workouts WHERE user_id = %s",
+                (user_id,),
+            )
+            active = cur.fetchone()
+
+        if active and active.get('workout_data') is not None:
+            payload = active['workout_data']
+            workout_id_str = str(workout_id)
+
+            def update_exercise_entry(entry):
+                nonlocal active_updated
+                if isinstance(entry, dict):
+                    if str(entry.get('workout_id')) == workout_id_str:
+                        entry = {**entry}
+                        entry['notes'] = notes
+                        active_updated = True
+                    return entry
+                if isinstance(entry, (list, tuple)):
+                    if entry and str(entry[0]) == workout_id_str:
+                        entry_list = list(entry)
+                        while len(entry_list) <= 8:
+                            entry_list.append(None)
+                        entry_list[8] = notes
+                        active_updated = True
+                        return entry_list
+                return entry
+
+            def update_structure(node):
+                if isinstance(node, dict):
+                    if 'workout_id' in node or 'exercise_id' in node:
+                        return update_exercise_entry(node)
+                    return {key: update_structure(value) for key, value in node.items()}
+                if isinstance(node, list):
+                    if node and not isinstance(node[0], (dict, list, tuple)) and str(node[0]) == workout_id_str:
+                        return update_exercise_entry(node)
+                    return [update_structure(item) for item in node]
+                return node
+
+            updated_payload = update_structure(payload)
+            if active_updated:
+                with get_connection() as conn:
+                    with conn.cursor() as cursor:
+                        cursor.execute(
+                            """
+                            UPDATE active_workouts
+                               SET workout_data = %s
+                             WHERE user_id = %s
+                            """,
+                            (psycopg2.extras.Json(updated_payload), user_id),
+                        )
+                        conn.commit()
+
+    return {'success': True, 'notes': notes or ''}
+
+
+def _complete_workout_for_user(user_id: int) -> tuple[bool, str | None]:
+    active = get_active_workout(user_id)
+    if not active:
+        return False, 'No workout generated'
+
+    workout_data = active.get('workout_data') or {}
+    stored_plan = workout_data.get('plan') if isinstance(workout_data, dict) else None
+    if not stored_plan:
+        return False, 'No workout data available'
+
+    workout_category = active['category']
+    refreshed_workout = OrderedDict()
+
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+            for subcat, exercises in _normalize_plan_for_iteration(stored_plan):
+                refreshed_workout[subcat] = []
+                for ex in exercises or []:
+                    workout_id = ex.get('workout_id') if isinstance(ex, dict) else ex[0]
+                    cursor.execute(
+                        """
+                        SELECT w.name, w.description, uep.max_weight, uep.max_reps
+                          FROM workouts w
+                     LEFT JOIN user_exercise_progress uep
+                            ON w.id = uep.workout_id AND uep.user_id = %s
+                         WHERE w.id = %s
+                        """,
+                        (user_id, workout_id),
+                    )
+                    result = cursor.fetchone()
+                    if result:
+                        name, description, max_weight, max_reps = result
+                        refreshed_workout[subcat].append({
+                            "name": name,
+                            "description": description,
+                            "max_weight": float(max_weight) if max_weight is not None else None,
+                            "max_reps": max_reps,
+                        })
+
+            cursor.execute(
+                """
+                UPDATE users
+                   SET workouts_completed = COALESCE(workouts_completed, 0) + 1,
+                       last_workout_completed = %s,
+                       last_workout_details = %s
+                 WHERE id = %s
+                """,
+                (workout_category, json.dumps(refreshed_workout), user_id),
+            )
+            conn.commit()
+
+    clear_active_workout(user_id)
+    return True, None
+
+
 @app.get('/exercise_progress/<int:workout_id>')
 @login_required
 def get_exercise_progress_route(workout_id):
@@ -810,54 +2101,9 @@ def get_exercise_progress_route(workout_id):
 @login_required
 def complete_workout():
     user_id = session['user_id']
-
-    active = get_active_workout(user_id)
-    if not active:
-        return jsonify({'success': False, 'error': 'No workout generated'}), 400
-
-    workout_data = active.get('workout_data') or {}
-    stored_plan = workout_data.get('plan') if isinstance(workout_data, dict) else None
-    if not stored_plan:
-        return jsonify({'success': False, 'error': 'No workout data available'}), 400
-
-    workout_category = active['category']
-    refreshed_workout = OrderedDict()
-
-    with get_connection() as conn:
-        with conn.cursor() as cursor:
-            for subcat, exercises in _normalize_plan_for_iteration(stored_plan):
-                refreshed_workout[subcat] = []
-                for ex in exercises or []:
-                    workout_id = ex.get('workout_id') if isinstance(ex, dict) else ex[0]
-                    cursor.execute("""
-                        SELECT w.name, w.description, uep.max_weight, uep.max_reps
-                        FROM workouts w
-                        LEFT JOIN user_exercise_progress uep
-                            ON w.id = uep.workout_id AND uep.user_id = %s
-                        WHERE w.id = %s
-                    """, (user_id, workout_id))
-                    result = cursor.fetchone()
-                    if result:
-                        name, description, max_weight, max_reps = result
-                        refreshed_workout[subcat].append({
-                            "name": name,
-                            "description": description,
-                            "max_weight": float(max_weight) if max_weight is not None else None,
-                            "max_reps": max_reps
-                        })
-            # Store the workout details and increment the workout counter
-            # Save refreshed workout details
-            cursor.execute("""
-                UPDATE users
-                SET workouts_completed = COALESCE(workouts_completed, 0) + 1,
-                    last_workout_completed = %s,
-                    last_workout_details = %s
-                WHERE id = %s
-            """, (workout_category, json.dumps(refreshed_workout), user_id))
-            conn.commit()
-
-    clear_active_workout(user_id)
-
+    success, error = _complete_workout_for_user(user_id)
+    if not success:
+        return jsonify({'success': False, 'error': error}), 400
     return jsonify({'success': True})
 
 
@@ -901,82 +2147,15 @@ def update_notes():
     notes_raw = data.get('notes')
     notes = None
     if notes_raw is not None:
-        notes_text = str(notes_raw)
-        cleaned = notes_text.strip()
-        if cleaned:
-            notes = cleaned
+        notes_text = str(notes_raw).strip()
+        if notes_text:
+            notes = notes_text
 
     user_id = session['user_id']
+    result = _apply_notes_update(user_id, workout_id, notes)
+    payload = result.get('notes', notes or '') if isinstance(result, dict) else (notes or '')
+    return jsonify({'success': True, 'notes': payload})
 
-    with get_connection() as conn:
-        with conn.cursor() as cursor:
-            cursor.execute("""
-                INSERT INTO user_exercise_progress (user_id, workout_id, notes)
-                VALUES (%s, %s, %s)
-                ON CONFLICT (user_id, workout_id) DO UPDATE
-                SET notes = EXCLUDED.notes,
-                    updated_at = CURRENT_TIMESTAMP
-            """, (user_id, workout_id, notes))
-
-        active_updated = False
-        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute("SELECT category, workout_data FROM active_workouts WHERE user_id = %s", (user_id,))
-            active = cur.fetchone()
-
-        if active and active.get('workout_data') is not None:
-            payload = active['workout_data']
-            workout_id_str = str(workout_id)
-
-            def update_exercise_entry(entry):
-                nonlocal active_updated
-                if isinstance(entry, dict):
-                    if str(entry.get('workout_id')) == workout_id_str:
-                        entry = {**entry}
-                        entry['notes'] = notes
-                        active_updated = True
-                    return entry
-                if isinstance(entry, (list, tuple)):
-                    if entry and str(entry[0]) == workout_id_str:
-                        entry_list = list(entry)
-                        while len(entry_list) <= 8:
-                            entry_list.append(None)
-                        entry_list[8] = notes
-                        active_updated = True
-                        return entry_list
-                return entry
-
-            def update_structure(node):
-                if isinstance(node, dict):
-                    if 'workout_id' in node or 'exercise_id' in node:
-                        return update_exercise_entry(node)
-                    return {key: update_structure(value) for key, value in node.items()}
-                if isinstance(node, list):
-                    if node and not isinstance(node[0], (dict, list, tuple)) and str(node[0]) == workout_id_str:
-                        return update_exercise_entry(node)
-                    return [update_structure(item) for item in node]
-                if isinstance(node, tuple):
-                    return update_exercise_entry(node)
-                return node
-
-            if isinstance(payload, dict):
-                if 'plan' in payload and payload['plan'] is not None:
-                    payload['plan'] = update_structure(payload['plan'])
-                else:
-                    payload = update_structure(payload)
-                active['workout_data'] = payload
-            elif isinstance(payload, list):
-                active['workout_data'] = update_structure(payload)
-
-            if active_updated:
-                with conn.cursor() as cur:
-                    cur.execute(
-                        "UPDATE active_workouts SET workout_data = %s WHERE user_id = %s",
-                        (psycopg2.extras.Json(active['workout_data']), user_id)
-                    )
-
-        conn.commit()
-
-    return jsonify({'success': True, 'notes': notes or ''})
 
 
 @app.route('/update_pr', methods=['POST'])
@@ -1009,82 +2188,8 @@ def update_pr():
         except ValueError:
             max_reps = None
 
-    with get_connection() as conn:
-        with conn.cursor() as cursor:
-            cursor.execute("""
-                INSERT INTO user_exercise_progress (user_id, workout_id, max_weight, max_reps)
-                VALUES (%s, %s, %s, %s)
-                ON CONFLICT (user_id, workout_id) DO UPDATE
-                SET max_weight = EXCLUDED.max_weight,
-                    max_reps = EXCLUDED.max_reps,
-                    updated_at = CURRENT_TIMESTAMP
-            """, (user_id, workout_id, max_weight, max_reps))
-
-        active_updated = False
-        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute("SELECT category, workout_data FROM active_workouts WHERE user_id = %s", (user_id,))
-            active = cur.fetchone()
-
-        if active and active.get('workout_data') is not None:
-            payload = active['workout_data']
-            workout_id_str = str(workout_id)
-
-            def update_exercise_entry(entry):
-                nonlocal active_updated
-                if isinstance(entry, dict):
-                    if str(entry.get('workout_id')) == workout_id_str:
-                        entry = {**entry}
-                        entry['max_weight'] = max_weight
-                        entry['max_reps'] = max_reps
-                        active_updated = True
-                    return entry
-                if isinstance(entry, (list, tuple)):
-                    if entry and str(entry[0]) == workout_id_str:
-                        entry_list = list(entry)
-                        while len(entry_list) <= 6:
-                            entry_list.append(None)
-                        entry_list[6] = max_weight
-                        while len(entry_list) <= 7:
-                            entry_list.append(None)
-                        entry_list[7] = max_reps
-                        active_updated = True
-                        return entry_list
-                return entry
-
-            def update_structure(node):
-                if isinstance(node, dict):
-                    if 'workout_id' in node or 'exercise_id' in node:
-                        return update_exercise_entry(node)
-                    return {key: update_structure(value) for key, value in node.items()}
-                if isinstance(node, list):
-                    if node and not isinstance(node[0], (dict, list, tuple)) and str(node[0]) == workout_id_str:
-                        return update_exercise_entry(node)
-                    return [update_structure(item) for item in node]
-                if isinstance(node, tuple):
-                    return update_exercise_entry(node)
-                return node
-
-            if isinstance(payload, dict):
-                # prefer plan but fall back to workout key or nested structures
-                if 'plan' in payload and payload['plan'] is not None:
-                    payload['plan'] = update_structure(payload['plan'])
-                else:
-                    payload = update_structure(payload)
-                    active['workout_data'] = payload
-                active['workout_data'] = payload
-            elif isinstance(payload, list):
-                active['workout_data'] = update_structure(payload)
-
-            if active_updated:
-                with conn.cursor() as cur:
-                    cur.execute(
-                        "UPDATE active_workouts SET workout_data = %s WHERE user_id = %s",
-                        (psycopg2.extras.Json(active['workout_data']), user_id)
-                    )
-
-        conn.commit()
-
-    return jsonify({'success': True})
+    result = _apply_pr_update(user_id, int(workout_id), max_weight, max_reps)
+    return jsonify(result)
 
 
 @app.route("/search")
@@ -1607,8 +2712,15 @@ def admin_user_profile(user_id):
             'injury_details': request.form.get('injury_details'),
             'commitment': request.form.get('commitment'),
             'additional_notes': request.form.get('additional_notes'),
-            'workouts_completed': request.form.get('workouts_completed') or 0
+            'workouts_completed': request.form.get('workouts_completed') or 0,
+            'sessions_remaining': int_or_none(request.form.get('sessions_remaining'))
         }
+
+        trainer_id_raw = (request.form.get('trainer_id') or '').strip()
+        try:
+            trainer_id_val = int(trainer_id_raw) if trainer_id_raw else None
+        except ValueError:
+            trainer_id_val = None
 
         with get_connection() as conn:
             with conn.cursor() as cursor:
@@ -1633,7 +2745,9 @@ def admin_user_profile(user_id):
                         injury_details = %s,
                         commitment = %s,
                         additional_notes = %s,
-                        workouts_completed = %s
+                        workouts_completed = %s,
+                        sessions_remaining = %s,
+                        trainer_id = %s
                     WHERE id = %s
                 """
                 try:
@@ -1644,7 +2758,7 @@ def admin_user_profile(user_id):
                         data['height_feet'], data['height_inches'], data['gender'],
                         data['exercise_history'], fitness_goals_str, data['injury'],
                         data['injury_details'], data['commitment'], data['additional_notes'],
-                        data['workouts_completed'], user_id
+                        data['workouts_completed'], data['sessions_remaining'], trainer_id_val, user_id
                     ))
                     conn.commit()
                     flash("User profile updated successfully.", "success")
@@ -1662,9 +2776,19 @@ def admin_user_profile(user_id):
             if not user:
                 return "User not found", 404
 
+            cursor.execute(
+                """
+                SELECT id, name, last_name, username, role
+                  FROM users
+                 WHERE role IN ('trainer', 'admin')
+                 ORDER BY role DESC, name NULLS LAST, last_name NULLS LAST, username
+                """
+            )
+            trainers = cursor.fetchall() or []
+
     invite_url = request.args.get('invite_url')
     invite_expires_in = request.args.get('invite_expires_in')
-    return render_template('admin_user_profile.html', user=user, invite_url=invite_url, invite_expires_in=invite_expires_in)
+    return render_template('admin_user_profile.html', user=user, invite_url=invite_url, invite_expires_in=invite_expires_in, trainers=trainers)
 
 
 @app.route('/admin/users/add', methods=['GET'])

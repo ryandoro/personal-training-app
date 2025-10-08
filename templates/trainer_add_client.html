@@ -1,0 +1,65 @@
+{% extends "layout.html" %}
+
+{% block title %}
+    Add Client
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    <div class="card shadow-sm border-0">
+        <div class="card-body p-4">
+            <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center mb-4">
+                <div>
+                    <h2 class="mb-1">Add Client</h2>
+                    <p class="text-muted mb-0">Invite a client by email and we’ll send them a link to finish creating their account.</p>
+                </div>
+                <div class="mt-3 mt-md-0">
+                    <a href="{{ url_for('trainer_dashboard') }}" class="btn btn-outline-secondary">
+                        <i class="bi bi-arrow-left me-1"></i>Back to Dashboard
+                    </a>
+                </div>
+            </div>
+
+            <div class="alert alert-info" role="alert">
+                Your client will receive an email to pick their username and password. You can also copy the invite link from the success message if you prefer to share it manually.
+            </div>
+
+            <form method="POST" class="row g-4">
+                <div class="col-md-6">
+                    <label for="name" class="form-label">First Name</label>
+                    <input type="text" class="form-control" id="name" name="name" value="{{ form_data.get('name') if form_data else '' }}" placeholder="First Name">
+                </div>
+                <div class="col-md-6">
+                    <label for="last_name" class="form-label">Last Name</label>
+                    <input type="text" class="form-control" id="last_name" name="last_name" value="{{ form_data.get('last_name') if form_data else '' }}" placeholder="Last Name">
+                </div>
+                <div class="col-md-6">
+                    <label for="email" class="form-label">Email <span class="text-danger">*</span></label>
+                    <input type="email" class="form-control" id="email" name="email" value="{{ form_data.get('email') if form_data else '' }}" required placeholder="Email">
+                </div>
+                <div class="col-md-6">
+                    <label for="sessions_remaining" class="form-label">Sessions Purchased</label>
+                    <input type="number" class="form-control" id="sessions_remaining" name="sessions_remaining" min="0" value="{{ form_data.get('sessions_remaining') if form_data else '' }}" placeholder="Sessions Purchased or Remaining">
+                    <div class="form-text">Leave blank if sessions are unlimited.</div>
+                </div>
+                <div class="col-12">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-person-plus-fill me-1"></i>Create Client
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

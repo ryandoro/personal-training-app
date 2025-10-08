@@ -160,6 +160,22 @@ Edit User Profile
                   <option value="pro" {% if user.subscription_type == 'pro' %}selected{% endif %}>Pro</option>
                 </select>
               </div>
+              <div class="col-md-6">
+                <label class="form-label">Assigned Trainer</label>
+                <select class="form-select" name="trainer_id">
+                  <option value="" {% if not user.trainer_id %}selected{% endif %}>No Trainer</option>
+                  {% for trainer in trainers %}
+                    <option value="{{ trainer.id }}" {% if user.trainer_id == trainer.id %}selected{% endif %}>
+                      {% if trainer.name or trainer.last_name %}
+                        {{ trainer.name or '' }} {{ trainer.last_name or '' }}
+                      {% else %}
+                        @{{ trainer.username }}
+                      {% endif %}
+                      {% if trainer.role == 'admin' %} (Admin){% else %} (Trainer){% endif %}
+                    </option>
+                  {% endfor %}
+                </select>
+              </div>
 
               <div class="col-md-6 d-flex align-items-center gap-2">
                 <input type="checkbox" class="form-check-input" id="email_verified" name="email_verified"
@@ -260,6 +276,11 @@ Edit User Profile
               </div>
 
               <div class="col-md-6">
+                <label class="form-label">Sessions Remaining</label>
+                <input type="number" class="form-control" name="sessions_remaining" min="0" value="{{ user.sessions_remaining if user.sessions_remaining is not none else '' }}" placeholder="Optional">
+              </div>
+
+              <div class="col-md-6">
                 <label class="form-label d-block">Injury Status</label>
                 <div class="form-check form-check-inline">
                   <input class="form-check-input" type="radio" name="injury" id="injury-yes" value="Yes"
@@ -322,4 +343,3 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 </script>
 {% endblock %}
-

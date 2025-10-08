@@ -137,7 +137,7 @@ def issue_single_use_token(conn, user_id: int, purpose: str, ttl_hours: int):
 
 
 
-def upsert_invited_user(conn, *, email, first, last, role, subscription, invited_by) -> int:
+def upsert_invited_user(conn, *, email, first, last, role, subscription, invited_by, trainer_id=None, sessions_remaining=None) -> int:
     now = datetime.now(timezone.utc)
     with conn.cursor() as cur:
         cur.execute("SELECT id, status FROM users WHERE lower(email) = %s", (email.lower(),))
@@ -153,24 +153,27 @@ def upsert_invited_user(conn, *, email, first, last, role, subscription, invited
                        status='invited', email_verified=false,
                        invited_by=%s, invited_at=%s,
                        accepted_at=NULL, username=NULL, hash=NULL,
+                       trainer_id=%s,
+                       sessions_remaining=%s,
+                       sessions_booked=COALESCE(sessions_booked, 0),
                        updated_at=%s
                  WHERE id=%s
             """, (first or None, last or None, role, subscription,
-                  invited_by, now, now, user_id))
+                  invited_by, now, trainer_id, sessions_remaining, now, user_id))
             return user_id
 
         cur.execute("""
             INSERT INTO users
                 (email, name, last_name, role, subscription_type,
                  status, email_verified, invited_by, invited_at,
-                 username, hash, created_at, updated_at)
+                 username, hash, trainer_id, sessions_remaining, sessions_booked, created_at, updated_at)
             VALUES
                 (%s, %s, %s, %s, %s,
                  'invited', false, %s, %s,
-                 NULL, NULL, %s, %s)
+                 NULL, NULL, %s, %s, 0, %s, %s)
             RETURNING id
         """, (email, first or None, last or None, role, subscription,
-              invited_by, now, now, now))
+              invited_by, now, trainer_id, sessions_remaining, now, now))
         return cur.fetchone()[0]
 
 

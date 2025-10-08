@@ -39,13 +39,23 @@
                                 <li class="nav-item">
                                     <a class="nav-link" href="{{ url_for('admin_users') }}">Admin Dashboard</a>
                                 </li>
-                            {% endif %}                  
+                            {% endif %}
+                            {% if session.get('role') in ['trainer', 'admin'] %}
+                                <li class="nav-item">
+                                    <a class="nav-link" href="{{ url_for('trainer_dashboard') }}">Trainer Dashboard</a>
+                                </li>
+                            {% endif %}                 
                             <li class="nav-item">
                                 <a class="nav-link" aria-current="page" href="/">Home</a>
                             </li>
                             <li class="nav-item">
                                 <a class="nav-link" href="/training">Training</a>
                             </li>
+                            {% if session.get('role') == 'user' and user and user.trainer_id %}
+                                <li class="nav-item">
+                                    <a class="nav-link" href="{{ url_for('client_schedule_view') }}">Schedule</a>
+                                </li>
+                            {% endif %}
                             <li class="nav-item">
                                 <a class="nav-link" href="{{ url_for('settings') }}">Account Settings</a>
                             </li>                        
@@ -74,7 +84,7 @@
 
     <!-- Custom Global Toast -->
     <div id="globalToast" class="toast-floating fw-bold" style="display:none;">
-        <span id="toastMessage" class="me-3 w-100 text-center"></span>
+        <span id="toastMessage" class="toast-message"></span>
         <button type="button" class="btn-close" aria-label="Close"
             onclick="document.getElementById('globalToast').style.display='none';"></button>
     </div>

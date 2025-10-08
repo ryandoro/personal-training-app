@@ -1,0 +1,887 @@
+{% extends "layout.html" %}
+
+{% block title %}
+    Trainer Dashboard
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="card w-100 shadow-sm p-0 border border-2 rounded-3 mb-4" style="border-color: #ced4da;">
+        <div class="card-body">
+            <h2 class="card-header text-center text-white mb-4 p-3" style="background-color: #1EA4E6;">
+                TRAINER DASHBOARD
+            </h2>
+
+            {% set add_client_url = url_for('add_client') %}
+            {% set show_trainer_column = trainer.role == 'admin' %}
+
+            <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between mb-4">
+                <div>
+                    <h3 class="mb-1">
+                        {% set first_name = trainer.name or '' %}
+                        {% set last_name = trainer.last_name or '' %}
+                        {% if first_name or last_name %}
+                            {{ first_name }} {{ last_name }}
+                        {% else %}
+                            {{ trainer.username }}
+                        {% endif %}
+                    </h3>
+                    <p class="text-muted mb-0">Manage your clients and sessions at a glance.</p>
+                </div>
+            </div>
+
+            <div class="row g-3 mb-4">
+                <div class="col-md-6">
+                    <div class="card h-100 border-0 shadow-sm">
+                        <div class="card-body text-center">
+                            <h5 class="card-title text-muted text-uppercase mb-2">Total Clients</h5>
+                            <p class="display-6 fw-bold mb-0">{{ trainer_stats.total_clients or 0 }}</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card h-100 border-0 shadow-sm">
+                        <div class="card-body text-center">
+                            <h5 class="card-title text-muted text-uppercase mb-2">Sessions Completed</h5>
+                            <p class="display-6 fw-bold mb-0">{{ trainer_stats.sessions_completed or 0 }}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between mb-4">
+                <form method="GET" action="{{ url_for('trainer_dashboard') }}" class="d-flex flex-column flex-md-row gap-2 w-100 w-md-auto">
+                    <div class="input-group">
+                        <input type="text" name="search" class="form-control" placeholder="Search clients by name, username, or email" value="{{ search_term }}">
+                        <button class="btn btn-brand-outline" type="submit">Search</button>
+                    </div>
+                </form>
+                <div class="mt-3 mt-md-0 ms-md-3">
+                    <a href="{{ add_client_url }}" class="btn btn-success w-100 w-md-auto">
+                        <i class="bi bi-person-plus-fill me-1"></i>Add Client
+                    </a>
+                </div>
+            </div>
+
+            <div class="row g-3 mb-4 d-none">
+                <div class="col-md-6">
+                    <div class="card h-100 border-0 shadow-sm">
+                        <div class="card-body text-center">
+                            <h5 class="card-title text-muted text-uppercase mb-2">Total Clients</h5>
+                            <p class="display-6 fw-bold mb-0">{{ trainer_stats.total_clients or 0 }}</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card h-100 border-0 shadow-sm">
+                        <div class="card-body text-center">
+                            <h5 class="card-title text-muted text-uppercase mb-2">Sessions Completed</h5>
+                            <p class="display-6 fw-bold mb-0">{{ trainer_stats.sessions_completed or 0 }}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <form method="GET" action="{{ url_for('trainer_dashboard') }}" class="mb-4 d-none">
+                <div class="input-group">
+                    <input type="text" name="search" class="form-control" placeholder="Search clients by name, username, or email" value="{{ search_term }}">
+                    <button class="btn btn-brand-outline" type="submit">Search</button>
+                </div>
+            </form>
+
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                            {{ message }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+
+            <div class="table-responsive">
+                <table class="table table-bordered table-hover align-middle mt-2">
+                    <thead class="table-light text-center">
+                        <tr>
+                            <th>First Name</th>
+                            <th>Last Name</th>
+                            <th>Username</th>
+                            <th>Email</th>
+                            <th>Fitness Goals</th>
+                            <th>Workouts Completed</th>
+                            <th>Sessions Remaining</th>
+                            <th>Sessions Booked</th>
+                            <th>Sessions Left to Book</th>
+                            <th>Last Workout Completed</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% if clients %}
+                            {% for client in clients %}
+                                <tr data-client-id="{{ client.id }}">
+                                    {% set client_profile_url = url_for('client_profile', client_id=client.id) %}
+                                    <td><a href="{{ client_profile_url }}" class="text-decoration-none">{{ client.name or '—' }}</a></td>
+                                    <td><a href="{{ client_profile_url }}" class="text-decoration-none">{{ client.last_name or '—' }}</a></td>
+                                    <td><a href="{{ client_profile_url }}" class="text-decoration-none">{{ client.username or '—' }}</a></td>
+                                    <td><a href="{{ client_profile_url }}" class="text-decoration-none">{{ client.email or '—' }}</a></td>
+                                    <td>{{ client.fitness_goals or '—' }}</td>
+                                    <td class="text-center">{{ client.workouts_completed or 0 }}</td>
+                                    <td class="text-center sessions-remaining-cell">{{ client.sessions_remaining if client.sessions_remaining is not none else '—' }}</td>
+                                    <td class="text-center sessions-booked-cell">{{ client.sessions_booked or 0 }}</td>
+                                    <td class="text-center sessions-left-cell">{% if client.sessions_remaining is not none %}{{ [client.sessions_remaining - (client.sessions_booked or 0), 0]|max }}{% else %}—{% endif %}</td>
+                                    <td>{{ client.last_workout_completed or '—' }}</td>
+                                    <td class="text-center">
+                                        <button type="button"
+                                                class="btn btn-sm btn-outline-primary book-client-btn"
+                                                data-client-id="{{ client.id }}"
+                                                data-client-name="{{ client.name or client.username }}"
+                                                data-client-lastname="{{ client.last_name or '' }}"
+                                                data-sessions="{{ client.sessions_remaining if client.sessions_remaining is not none else '' }}"
+                                                data-sessions-booked="{{ client.sessions_booked or 0 }}">
+                                            Book Now
+                                        </button>
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        {% else %}
+                            <tr>
+                                <td colspan="11" class="text-center text-muted">No clients assigned yet.</td>
+                            </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="trainer-calendar-container container-fluid px-3 px-md-4 px-lg-5">
+    <div id="calendar-card" class="card border-0 shadow-lg mt-4 trainer-schedule-card mx-auto" style="border-radius: 20px;">
+        <div class="card-header border-0 d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3"
+             style="background: linear-gradient(135deg, #1EA4E6 0%, #33C3F0 100%); border-top-left-radius: 20px; border-top-right-radius: 20px;">
+            <div>
+                <h4 class="mb-1 text-white">Weekly Schedule</h4>
+                <p class="mb-0 text-white-50">Plan sessions, drag to adjust, and stay aligned with your clients.</p>
+            </div>
+            <div class="calendar-toolbar d-flex flex-wrap gap-2">
+                <div class="btn-group" role="group" aria-label="Calendar navigation">
+                    <button class="btn btn-light btn-sm" id="calendar-prev-week"><i class="bi bi-chevron-left"></i></button>
+                    <button class="btn btn-light btn-sm" id="calendar-today">Today</button>
+                    <button class="btn btn-light btn-sm" id="calendar-next-week"><i class="bi bi-chevron-right"></i></button>
+                </div>
+                <button class="btn btn-outline-light btn-sm" id="calendar-edit-window">
+                    <i class="bi bi-sliders"></i> Edit Available Window
+                </button>
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-md-between gap-3 mb-3">
+                <div>
+                    <span class="badge bg-primary-subtle text-primary fw-semibold">Selected Client</span>
+                    <div id="selected-client-display" class="mt-2 fw-bold text-primary">Pick a client from the table to start booking.</div>
+                </div>
+                <div class="text-muted small" id="calendar-week-label"></div>
+            </div>
+
+            <div class="calendar-wrapper" id="trainer-calendar" data-mode="trainer"
+                 data-view-start="{{ schedule_prefs.view_start }}" data-view-end="{{ schedule_prefs.view_end }}">
+                <div class="calendar-scroll" id="calendar-scroll">
+                    <div class="calendar-header" id="calendar-days-header"></div>
+                    <div class="calendar-grid">
+                        <div class="calendar-times" id="calendar-times"></div>
+                        <div class="calendar-columns" id="calendar-day-columns"></div>
+                    </div>
+                </div>
+                <div class="calendar-empty-state" id="calendar-empty-state" hidden>
+                    <p class="mb-0">Select a client to begin scheduling.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="windowModal" class="calendar-modal" hidden>
+    <div class="calendar-modal-content">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5 class="mb-0">Edit Visible Hours</h5>
+            <button type="button" class="btn-close" id="windowModalClose"></button>
+        </div>
+        <form id="windowForm" class="row g-3">
+            <div class="col-6">
+                <label for="windowStart" class="form-label">Start hour</label>
+                <input type="time" class="form-control" id="windowStart" step="900" value="05:00">
+            </div>
+            <div class="col-6">
+                <label for="windowEnd" class="form-label">End hour</label>
+                <input type="time" class="form-control" id="windowEnd" step="900" value="21:00">
+            </div>
+            <div class="col-12 text-end">
+                <button type="button" class="btn btn-outline-secondary me-2" id="windowCancel">Cancel</button>
+                <button type="submit" class="btn btn-primary">Apply</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<template id="calendar-event-template">
+    <div class="calendar-event" draggable="false">
+        <div class="calendar-event-title"></div>
+        <div class="calendar-event-time"></div>
+        <button type="button" class="calendar-event-delete" title="Delete booking"><i class="bi bi-x"></i></button>
+        <div class="calendar-event-handle calendar-event-handle-top"></div>
+        <div class="calendar-event-handle calendar-event-handle-bottom"></div>
+    </div>
+</template>
+
+<script>
+(function(){
+    const calendarRoot = document.getElementById('trainer-calendar');
+    if (!calendarRoot) return;
+
+    const dayHeaderEl = document.getElementById('calendar-days-header');
+    const timesEl = document.getElementById('calendar-times');
+    const columnsEl = document.getElementById('calendar-day-columns');
+    const emptyState = document.getElementById('calendar-empty-state');
+    const weekLabel = document.getElementById('calendar-week-label');
+    const displaySelected = document.getElementById('selected-client-display');
+    const prevWeekBtn = document.getElementById('calendar-prev-week');
+    const nextWeekBtn = document.getElementById('calendar-next-week');
+    const todayBtn = document.getElementById('calendar-today');
+    const editWindowBtn = document.getElementById('calendar-edit-window');
+    const windowModal = document.getElementById('windowModal');
+    const windowModalClose = document.getElementById('windowModalClose');
+    const windowCancel = document.getElementById('windowCancel');
+    const windowForm = document.getElementById('windowForm');
+    const windowStartInput = document.getElementById('windowStart');
+    const windowEndInput = document.getElementById('windowEnd');
+    const eventTemplate = document.getElementById('calendar-event-template');
+    const bookButtons = document.querySelectorAll('.book-client-btn');
+    const globalToast = document.getElementById('globalToast');
+    const toastMessageEl = document.getElementById('toastMessage');
+    const toastVariants = ['toast-success', 'toast-warning', 'toast-danger', 'toast-info'];
+    let toastTimeout = null;
+
+    const datasetStart = Number(calendarRoot.dataset.viewStart);
+    const datasetEnd = Number(calendarRoot.dataset.viewEnd);
+    let initialStart = Number.isFinite(datasetStart) ? datasetStart : 5;
+    let initialEnd = Number.isFinite(datasetEnd) ? datasetEnd : 21;
+    if (initialEnd <= initialStart) {
+        initialStart = 5;
+        initialEnd = 21;
+    }
+
+    const FIFTEEN_MINUTES = 15;
+    const DEFAULT_DURATION = 60;
+    const MILLI_IN_MINUTE = 60000;
+
+    const state = {
+        selectedClient: null,
+        selectedClientButton: null,
+        weekStart: startOfWeek(new Date()),
+        viewStart: initialStart,
+        viewEnd: initialEnd,
+        events: [],
+        dragging: null,
+        dragPointer: null
+    };
+
+    let dayColumns = [];
+
+    function startOfWeek(date) {
+        const d = new Date(date);
+        const day = d.getDay();
+        const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+        d.setDate(diff);
+        d.setHours(0,0,0,0);
+        return d;
+    }
+
+    function showDashboardToast(message, variant = 'success') {
+        if (!globalToast || !toastMessageEl) {
+            alert(message);
+            return;
+        }
+        toastMessageEl.textContent = message;
+        toastVariants.forEach(cls => globalToast.classList.remove(cls));
+        const className = `toast-${variant}`;
+        globalToast.classList.add(className);
+        globalToast.style.display = 'block';
+        if (toastTimeout) clearTimeout(toastTimeout);
+        if (variant !== 'danger') {
+            toastTimeout = setTimeout(() => {
+                globalToast.style.display = 'none';
+            }, 4000);
+        }
+    }
+
+    function updateClientRowCounts(clientId, totalSessions, bookedSessions) {
+        const row = document.querySelector(`tr[data-client-id="${clientId}"]`);
+        if (!row) return;
+        const bookedCell = row.querySelector('.sessions-booked-cell');
+        const leftCell = row.querySelector('.sessions-left-cell');
+        if (bookedCell) {
+            bookedCell.textContent = bookedSessions;
+        }
+        if (leftCell) {
+            if (totalSessions === null || totalSessions === undefined || totalSessions === '') {
+                leftCell.textContent = '—';
+            } else {
+                const left = Math.max(totalSessions - bookedSessions, 0);
+                leftCell.textContent = left;
+            }
+        }
+    }
+
+    function formatDay(date) {
+        return date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+    }
+
+    function toISODate(date) {
+        const copy = new Date(date);
+        return copy.toISOString();
+    }
+
+    function clampHour(value) {
+        return Math.min(23, Math.max(0, value));
+    }
+
+    function updateWeekLabel() {
+        const end = new Date(state.weekStart);
+        end.setDate(end.getDate() + 6);
+        weekLabel.textContent = `${state.weekStart.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} – ${end.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
+    }
+
+    function renderHeaders() {
+        dayHeaderEl.innerHTML = '';
+        columnsEl.innerHTML = '';
+        dayColumns = [];
+
+        const spacer = document.createElement('div');
+        spacer.className = 'calendar-time-spacer';
+        dayHeaderEl.appendChild(spacer);
+
+        for (let i = 0; i < 7; i += 1) {
+            const dayDate = new Date(state.weekStart);
+            dayDate.setDate(dayDate.getDate() + i);
+
+            const header = document.createElement('div');
+            header.className = 'calendar-day-header';
+            header.dataset.date = dayDate.toISOString();
+            header.textContent = formatDay(dayDate);
+            dayHeaderEl.appendChild(header);
+
+            const col = document.createElement('div');
+            col.className = 'calendar-day-column';
+            col.dataset.date = dayDate.toISOString();
+            columnsEl.appendChild(col);
+            dayColumns.push(col);
+        }
+    }
+
+    function renderTimes() {
+        timesEl.innerHTML = '';
+        const total = (state.viewEnd - state.viewStart) * 4;
+        for (let i = 0; i < total; i += 1) {
+            const slotHour = state.viewStart + Math.floor(i / 4);
+            const slotMinutes = (i % 4) * 15;
+            const time = document.createElement('div');
+            time.className = 'calendar-time-label';
+            if (slotMinutes === 0) {
+                const label = new Date();
+                label.setHours(slotHour, slotMinutes, 0, 0);
+                time.textContent = label.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+            }
+            timesEl.appendChild(time);
+        }
+    }
+
+    function renderSlots() {
+        const totalSlots = (state.viewEnd - state.viewStart) * 4;
+        const now = new Date();
+        dayColumns.forEach((column, index) => {
+            column.innerHTML = '';
+            const date = new Date(state.weekStart);
+            date.setDate(date.getDate() + index);
+
+            for (let i = 0; i < totalSlots; i += 1) {
+                const slot = document.createElement('div');
+                slot.className = 'calendar-slot';
+                const slotHour = state.viewStart + Math.floor(i / 4);
+                const slotMinutes = (i % 4) * 15;
+                const slotDate = new Date(date);
+                slotDate.setHours(slotHour, slotMinutes, 0, 0);
+                slot.dataset.start = slotDate.toISOString();
+                if (slotDate < now) {
+                    slot.classList.add('calendar-slot-past');
+                }
+                column.appendChild(slot);
+            }
+        });
+    }
+
+    function renderEvents() {
+        dayColumns.forEach(col => col.querySelectorAll('.calendar-event').forEach(el => el.remove()));
+        if (state.events.length === 0) {
+            if (state.selectedClient) {
+                emptyState.hidden = false;
+                emptyState.textContent = 'Tap a time slot to schedule their next session.';
+            } else {
+                emptyState.hidden = false;
+                emptyState.textContent = 'Select a client to begin scheduling.';
+            }
+        } else {
+            emptyState.hidden = true;
+        }
+
+        state.events.forEach(event => {
+            const start = new Date(event.start_time);
+            const end = new Date(event.end_time);
+            const dayIndex = Math.floor((start - state.weekStart) / (24 * 60 * 60 * 1000));
+            if (dayIndex < 0 || dayIndex >= dayColumns.length) return;
+            const column = dayColumns[dayIndex];
+            const totalMinutes = (state.viewEnd - state.viewStart) * 60;
+            const eventStartMinutes = start.getHours() * 60 + start.getMinutes();
+            const eventEndMinutes = end.getHours() * 60 + end.getMinutes();
+            const windowStart = state.viewStart * 60;
+            const windowEnd = state.viewEnd * 60;
+            const visibleStart = Math.max(windowStart, eventStartMinutes);
+            const visibleEnd = Math.min(windowEnd, eventEndMinutes);
+            if (visibleEnd <= windowStart || visibleStart >= windowEnd) return;
+            const top = ((visibleStart - windowStart) / totalMinutes) * 100;
+            const durationVisible = Math.max(FIFTEEN_MINUTES, visibleEnd - visibleStart);
+            const height = (durationVisible / totalMinutes) * 100;
+
+            const eventNode = eventTemplate.content.firstElementChild.cloneNode(true);
+            eventNode.dataset.id = event.id;
+            eventNode.dataset.clientId = event.client_id;
+            eventNode.style.top = `${top}%`;
+            eventNode.style.height = `${height}%`;
+
+            const title = eventNode.querySelector('.calendar-event-title');
+            title.textContent = event.client_name ? `${event.client_name} ${event.client_last_name || ''}`.trim() : event.client_username;
+
+            const timeEl = eventNode.querySelector('.calendar-event-time');
+            timeEl.textContent = `${formatTime(start)} – ${formatTime(end)}`;
+
+            const delBtn = eventNode.querySelector('.calendar-event-delete');
+            delBtn.addEventListener('click', () => deleteEvent(event.id));
+
+            eventNode.addEventListener('pointerdown', (evt) => beginDrag(evt, event, column));
+            const topHandle = eventNode.querySelector('.calendar-event-handle-top');
+            const bottomHandle = eventNode.querySelector('.calendar-event-handle-bottom');
+            topHandle.addEventListener('pointerdown', (evt) => beginResize(evt, event, column, 'top'));
+            bottomHandle.addEventListener('pointerdown', (evt) => beginResize(evt, event, column, 'bottom'));
+
+            column.appendChild(eventNode);
+        });
+    }
+
+    function formatTime(date) {
+        return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    }
+
+    function fetchEvents() {
+        const startIso = toISODate(state.weekStart);
+        const end = new Date(state.weekStart);
+        end.setDate(end.getDate() + 7);
+        const endIso = toISODate(end);
+        fetch(`/trainer/schedule/data?start=${encodeURIComponent(startIso)}&end=${encodeURIComponent(endIso)}`)
+            .then(res => res.json())
+            .then(data => {
+                if (!data.success) throw new Error(data.error || 'Failed to load schedule.');
+                state.events = data.events || [];
+                renderEvents();
+            })
+            .catch(err => {
+                console.error(err);
+                emptyState.hidden = false;
+                emptyState.textContent = 'Unable to load schedule.';
+                showDashboardToast('Unable to load schedule.', 'danger');
+            });
+    }
+
+    function selectClient(button) {
+        bookButtons.forEach(btn => btn.classList.remove('active'));
+        button.classList.add('active');
+        const name = button.dataset.clientName || 'Client';
+        const last = button.dataset.clientLastname || '';
+        displaySelected.textContent = `Booking for ${name} ${last}`.trim();
+        const sessionsTotal = button.dataset.sessions === '' ? null : Number(button.dataset.sessions);
+        const sessionsBooked = Number(button.dataset.sessionsBooked || '0');
+        state.selectedClient = {
+            id: Number(button.dataset.clientId),
+            name,
+            last,
+            sessions: sessionsTotal,
+            sessionsBooked
+        };
+        state.selectedClientButton = button;
+        if (state.selectedClient.sessions !== null && state.selectedClient.sessionsBooked >= state.selectedClient.sessions) {
+            showDashboardToast(`${name} ${last} has no sessions remaining.`, 'danger');
+            state.selectedClient = null;
+            state.selectedClientButton = null;
+            displaySelected.textContent = 'Pick a client from the table to start booking.';
+            bookButtons.forEach(btn => btn.classList.remove('active'));
+            return;
+        }
+        calendarRoot.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        renderEvents();
+    }
+
+    function handleSlotClick(event) {
+        const slot = event.target.closest('.calendar-slot');
+        if (!slot) return;
+        if (!state.selectedClient) {
+            showDashboardToast('Select a client before booking a slot.', 'warning');
+            return;
+        }
+        if (state.selectedClient.sessions !== null && state.selectedClient.sessionsBooked >= state.selectedClient.sessions) {
+            showDashboardToast('That client has no sessions remaining.', 'danger');
+            state.selectedClient = null;
+            state.selectedClientButton = null;
+            displaySelected.textContent = 'Pick a client from the table to start booking.';
+            bookButtons.forEach(btn => btn.classList.remove('active'));
+            return;
+        }
+        if (slot.classList.contains('calendar-slot-past')) {
+            showDashboardToast('Pick a future time slot to book.', 'warning');
+            return;
+        }
+        const start = new Date(slot.dataset.start);
+        const end = new Date(start.getTime() + DEFAULT_DURATION * MILLI_IN_MINUTE);
+        createBooking(start, end);
+    }
+
+    function createBooking(startDate, endDate) {
+        const payload = {
+            client_id: state.selectedClient.id,
+            start_time: startDate.toISOString(),
+            end_time: endDate.toISOString(),
+            duration_minutes: (endDate - startDate) / MILLI_IN_MINUTE
+        };
+        fetch('/trainer/schedule/book', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        })
+            .then(async res => {
+                let data = {};
+                try {
+                    data = await res.json();
+                } catch (_) {}
+                if (!res.ok || !data.success) {
+                    const message = data.error || 'Unable to book that slot.';
+                    showDashboardToast(message, 'danger');
+                    return;
+                }
+                state.events.push(data.event);
+                renderEvents();
+                if (state.selectedClient) {
+                    state.selectedClient.sessionsBooked = (state.selectedClient.sessionsBooked || 0) + 1;
+                    if (state.selectedClientButton) {
+                        state.selectedClientButton.dataset.sessionsBooked = String(state.selectedClient.sessionsBooked);
+                    }
+                    updateClientRowCounts(
+                        state.selectedClient.id,
+                        state.selectedClient.sessions,
+                        state.selectedClient.sessionsBooked
+                    );
+                }
+                showDashboardToast('Session booked!', 'success');
+            })
+            .catch(() => showDashboardToast('Unable to connect to the scheduler.', 'danger'));
+    }
+
+    function deleteEvent(eventId) {
+        if (!confirm('Remove this booking?')) return;
+        const target = state.events.find(ev => ev.id === eventId);
+        const targetClientId = target ? target.client_id : null;
+        fetch(`/trainer/schedule/${eventId}`, { method: 'DELETE' })
+            .then(res => res.json())
+            .then(data => {
+                if (!data.success) {
+                    showDashboardToast(data.error || 'Unable to remove booking.', 'danger');
+                    return;
+                }
+                state.events = state.events.filter(ev => ev.id !== eventId);
+                renderEvents();
+                if (targetClientId) {
+                    if (state.selectedClient && state.selectedClient.id === targetClientId) {
+                        state.selectedClient.sessionsBooked = Math.max((state.selectedClient.sessionsBooked || 1) - 1, 0);
+                        if (state.selectedClientButton) {
+                            state.selectedClientButton.dataset.sessionsBooked = String(state.selectedClient.sessionsBooked);
+                        }
+                    }
+                    const totalSessions = state.selectedClient && state.selectedClient.id === targetClientId ? state.selectedClient.sessions : null;
+                    const booked = state.selectedClient && state.selectedClient.id === targetClientId ? state.selectedClient.sessionsBooked : null;
+                    if (booked !== null) {
+                        updateClientRowCounts(targetClientId, totalSessions, booked);
+                    } else {
+                        const btn = document.querySelector(`.book-client-btn[data-client-id="${targetClientId}"]`);
+                        if (btn) {
+                            const total = btn.dataset.sessions === '' ? null : Number(btn.dataset.sessions);
+                            const currentBooked = Number(btn.dataset.sessionsBooked || '0');
+                            const newBooked = Math.max(currentBooked - 1, 0);
+                            btn.dataset.sessionsBooked = String(newBooked);
+                            updateClientRowCounts(targetClientId, total, newBooked);
+                        }
+                    }
+                }
+                showDashboardToast('Booking removed.', 'success');
+            })
+            .catch(() => showDashboardToast('Network issue deleting booking.', 'danger'));
+    }
+
+    function beginDrag(evt, eventData, column) {
+        if (evt.target.closest('.calendar-event-handle') || evt.target.closest('.calendar-event-delete')) return;
+        evt.preventDefault();
+        const rect = column.getBoundingClientRect();
+        const columnIndex = dayColumns.indexOf(column);
+        state.dragging = {
+            type: 'move',
+            id: eventData.id,
+            column,
+            columnIndex,
+            currentColumnIndex: columnIndex,
+            startY: evt.clientY,
+            startX: evt.clientX,
+            rect,
+            initialWidth: rect.width || 1,
+            originalStart: new Date(eventData.start_time),
+            originalEnd: new Date(eventData.end_time)
+        };
+        setPointerCapture(evt, evt.currentTarget || evt.target);
+    }
+
+    function beginResize(evt, eventData, column, direction) {
+        evt.preventDefault();
+        const rect = column.getBoundingClientRect();
+        const columnIndex = dayColumns.indexOf(column);
+        state.dragging = {
+            type: direction === 'top' ? 'resize-start' : 'resize-end',
+            id: eventData.id,
+            column,
+            columnIndex,
+            currentColumnIndex: columnIndex,
+            startY: evt.clientY,
+            startX: evt.clientX,
+            rect,
+            initialWidth: rect.width || 1,
+            originalStart: new Date(eventData.start_time),
+            originalEnd: new Date(eventData.end_time)
+        };
+        setPointerCapture(evt, evt.currentTarget || evt.target);
+    }
+
+    function setPointerCapture(evt, target) {
+        const captureTarget = target || evt.target;
+        state.dragPointer = { target: captureTarget, id: evt.pointerId };
+        if (captureTarget.setPointerCapture) {
+            try { captureTarget.setPointerCapture(evt.pointerId); } catch (_) {}
+        }
+        document.addEventListener('pointermove', handlePointerMove);
+        document.addEventListener('pointerup', handlePointerUp, { once: true });
+        document.addEventListener('pointercancel', handlePointerUp, { once: true });
+    }
+
+    function handlePointerMove(evt) {
+        if (!state.dragging) return;
+        const { type, originalStart, originalEnd, columnIndex, initialWidth } = state.dragging;
+        let currentColumnIndex = state.dragging.currentColumnIndex;
+        const deltaY = evt.clientY - state.dragging.startY;
+        const totalMinutes = (state.viewEnd - state.viewStart) * 60;
+
+        if (type === 'move' && initialWidth) {
+            const deltaX = evt.clientX - state.dragging.startX;
+            const rawDayDelta = Math.round(deltaX / initialWidth);
+            let targetIndex = columnIndex + rawDayDelta;
+            targetIndex = Math.max(0, Math.min(dayColumns.length - 1, targetIndex));
+            if (targetIndex !== currentColumnIndex) {
+                const eventElement = columnsEl.querySelector(`.calendar-event[data-id="${state.dragging.id}"]`);
+                if (eventElement && dayColumns[targetIndex]) {
+                    dayColumns[targetIndex].appendChild(eventElement);
+                    state.dragging.currentColumnIndex = targetIndex;
+                    const newRect = dayColumns[targetIndex].getBoundingClientRect();
+                    state.dragging.rect = newRect;
+                    state.dragging.initialWidth = newRect.width || state.dragging.initialWidth;
+                    state.dragging.column = dayColumns[targetIndex];
+                }
+                currentColumnIndex = targetIndex;
+            }
+        }
+
+        const column = dayColumns[currentColumnIndex];
+        if (!column) return;
+        const columnRect = column.getBoundingClientRect();
+        const minutesPerPixel = totalMinutes / (columnRect.height || 1);
+        const offsetMinutes = Math.round(deltaY * minutesPerPixel / FIFTEEN_MINUTES) * FIFTEEN_MINUTES;
+
+        const effectiveDayDelta = state.dragging.currentColumnIndex - columnIndex;
+        let newStart = new Date(originalStart.getTime() + (offsetMinutes + effectiveDayDelta * 1440) * MILLI_IN_MINUTE);
+        let newEnd = new Date(originalEnd.getTime() + (offsetMinutes + effectiveDayDelta * 1440) * MILLI_IN_MINUTE);
+
+        const minMinutes = FIFTEEN_MINUTES;
+        if ((newEnd - newStart) / MILLI_IN_MINUTE < minMinutes) return;
+
+        const eventElement = columnsEl.querySelector(`.calendar-event[data-id="${state.dragging.id}"]`);
+        if (!eventElement) return;
+
+        const durationMinutes = (newEnd - newStart) / MILLI_IN_MINUTE;
+        const startMinutesRelative = (newStart.getHours() - state.viewStart) * 60 + newStart.getMinutes();
+        let visibleStart = Math.max(0, startMinutesRelative);
+        const maxStart = totalMinutes - durationMinutes;
+        visibleStart = Math.min(maxStart, visibleStart);
+        const adjustment = visibleStart - startMinutesRelative;
+        if (adjustment !== 0) {
+            newStart = new Date(newStart.getTime() + adjustment * MILLI_IN_MINUTE);
+            newEnd = new Date(newEnd.getTime() + adjustment * MILLI_IN_MINUTE);
+        }
+
+        const visibleEnd = Math.min(totalMinutes, visibleStart + durationMinutes);
+        const top = (visibleStart / totalMinutes) * 100;
+        const height = Math.max((visibleEnd - visibleStart) / totalMinutes * 100, 2);
+        eventElement.style.top = `${top}%`;
+        eventElement.style.height = `${height}%`;
+        eventElement.querySelector('.calendar-event-time').textContent = `${formatTime(newStart)} – ${formatTime(newEnd)}`;
+
+        state.dragging.previewStart = newStart;
+        state.dragging.previewEnd = newEnd;
+    }
+
+    function handlePointerUp() {
+        document.removeEventListener('pointermove', handlePointerMove);
+        const dragPointer = state.dragPointer;
+        if (dragPointer && dragPointer.target && dragPointer.target.releasePointerCapture) {
+            try { dragPointer.target.releasePointerCapture(dragPointer.id); } catch (_) {}
+        }
+        state.dragPointer = null;
+        if (!state.dragging) return;
+        const { previewStart, previewEnd, id } = state.dragging;
+        state.dragging = null;
+        if (!previewStart || !previewEnd) {
+            renderEvents();
+            return;
+        }
+        fetch(`/trainer/schedule/${id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                start_time: previewStart.toISOString(),
+                end_time: previewEnd.toISOString()
+            })
+        })
+            .then(res => res.json())
+            .then(data => {
+                if (!data.success) {
+                    showDashboardToast(data.error || 'Unable to update booking.', 'danger');
+                    fetchEvents();
+                    return;
+                }
+                const idx = state.events.findIndex(ev => ev.id === id);
+                if (idx !== -1) state.events[idx] = data.event;
+                renderEvents();
+                showDashboardToast('Booking updated.', 'success');
+            })
+            .catch(() => {
+                showDashboardToast('Network error updating booking.', 'danger');
+                fetchEvents();
+            });
+    }
+
+    function openWindowModal() {
+        windowStartInput.value = `${String(state.viewStart).padStart(2, '0')}:00`;
+        windowEndInput.value = `${String(state.viewEnd).padStart(2, '0')}:00`;
+        windowModal.hidden = false;
+    }
+
+    function closeWindowModal() {
+        windowModal.hidden = true;
+    }
+
+    function applyWindow(event) {
+        event.preventDefault();
+        const startValue = (windowStartInput.value || '05:00').split(':')[0];
+        const endValue = (windowEndInput.value || '21:00').split(':')[0];
+        const start = clampHour(parseInt(startValue, 10));
+        const end = clampHour(parseInt(endValue, 10));
+        if (end <= start) {
+            showDashboardToast('End hour must be after start hour.', 'danger');
+            return;
+        }
+        state.viewStart = start;
+        state.viewEnd = end;
+        closeWindowModal();
+        rebuildGrid();
+        renderEvents();
+        saveWindowPreference(start, end);
+    }
+
+    function saveWindowPreference(start, end) {
+        fetch('/trainer/schedule/preferences', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ view_start: start, view_end: end })
+        })
+            .then(res => res.json())
+            .then(data => {
+                if (!data.success) {
+                    showDashboardToast(data.error || 'Unable to save availability window.', 'danger');
+                    return;
+                }
+                showDashboardToast('Availability window saved.', 'success');
+                calendarRoot.dataset.viewStart = String(data.view_start);
+                calendarRoot.dataset.viewEnd = String(data.view_end);
+            })
+            .catch(() => showDashboardToast('Network error saving availability window.', 'danger'));
+    }
+
+    function rebuildGrid() {
+        renderHeaders();
+        renderTimes();
+        renderSlots();
+        const scrollWrap = document.getElementById('calendar-scroll');
+        if (scrollWrap) scrollWrap.scrollLeft = 0;
+    }
+
+    function init() {
+        rebuildGrid();
+        updateWeekLabel();
+        fetchEvents();
+
+        bookButtons.forEach(btn => {
+            btn.addEventListener('click', () => selectClient(btn));
+        });
+
+        prevWeekBtn.addEventListener('click', () => {
+            state.weekStart.setDate(state.weekStart.getDate() - 7);
+            rebuildGrid();
+            updateWeekLabel();
+            fetchEvents();
+        });
+        nextWeekBtn.addEventListener('click', () => {
+            state.weekStart.setDate(state.weekStart.getDate() + 7);
+            rebuildGrid();
+            updateWeekLabel();
+            fetchEvents();
+        });
+        todayBtn.addEventListener('click', () => {
+            state.weekStart = startOfWeek(new Date());
+            rebuildGrid();
+            updateWeekLabel();
+            fetchEvents();
+        });
+
+        editWindowBtn.addEventListener('click', openWindowModal);
+        windowModalClose.addEventListener('click', closeWindowModal);
+        windowCancel.addEventListener('click', closeWindowModal);
+        windowForm.addEventListener('submit', applyWindow);
+
+        columnsEl.addEventListener('click', handleSlotClick);
+    }
+
+    init();
+})();
+</script>
+{% endblock %}
