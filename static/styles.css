@@ -20,6 +20,30 @@ html, body {
     background-attachment: fixed;   /* Optional: makes background stay in place on scroll */
 }
 
+@property --glow-intensity {
+  syntax: '<number>';
+  inherits: false;
+  initial-value: 0.6;
+}
+
+@property --orb-pulse-scale {
+  syntax: '<number>';
+  inherits: false;
+  initial-value: 1;
+}
+
+@property --orb-glow-alpha {
+  syntax: '<number>';
+  inherits: false;
+  initial-value: 0.6;
+}
+
+@property --orb-hue {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+
 .orb-container {
   display: flex;
   justify-content: center;
@@ -37,16 +61,27 @@ html, body {
 /* Orb controls glow, scale, and hue */
 #fitbase-orb {
   --glow-intensity: 0.6;
+  --orb-glow-alpha: 0.6;
+  --orb-pulse-scale: 1;
+  --orb-glow-scale: 1;
+  --orb-glow-strength: 1;
+  --orb-extra-brightness: 1;
+  --orb-extra-saturation: 1;
+  --orb-hue: 0deg;
   width: 220px;
   height: 220px;
   transition: transform 0.4s ease, filter 0.4s ease;
   backface-visibility: hidden;
   will-change: transform, filter;
+  transform: scale(calc(var(--orb-pulse-scale) * var(--orb-glow-scale)));
   filter:
-    drop-shadow(0 0 calc(40px + var(--glow-intensity) * 40px)
-      rgba(0,178,255,var(--glow-intensity)))
-    drop-shadow(0 0 calc(80px + var(--glow-intensity) * 60px)
-      rgba(247,147,26,var(--glow-intensity)));
+    drop-shadow(0 0 calc((40px + var(--glow-intensity) * 40px) * var(--orb-glow-strength))
+      rgba(0,178,255,var(--orb-glow-alpha)))
+    drop-shadow(0 0 calc((80px + var(--glow-intensity) * 60px) * var(--orb-glow-strength))
+      rgba(247,147,26,var(--orb-glow-alpha)))
+    hue-rotate(var(--orb-hue))
+    brightness(var(--orb-extra-brightness))
+    saturate(var(--orb-extra-saturation));
 
   mask-image: radial-gradient(circle at center, rgba(0,0,0,1) 25%, rgba(0,0,0,0) 65%);
   -webkit-mask-image: radial-gradient(circle at center, rgba(0,0,0,1) 25%, rgba(0,0,0,0) 65%);
@@ -67,29 +102,45 @@ html, body {
 
 /* Outer glow and expansion */
 @keyframes smoothPulse {
-  0%   { --glow-intensity: 0.6; transform: scale(1); }
-  30%  { --glow-intensity: 1;   transform: scale(1.1); }
-  40%  { --glow-intensity: 0.95;transform: scale(1.11); }
-  100% { --glow-intensity: 0.6; transform: scale(1); }
+  0% {
+    --glow-intensity: 0.6;
+    --orb-glow-alpha: 0.6;
+    --orb-pulse-scale: 1;
+  }
+  30% {
+    --glow-intensity: 1;
+    --orb-glow-alpha: 0.9;
+    --orb-pulse-scale: 1.1;
+  }
+  40% {
+    --glow-intensity: 0.95;
+    --orb-glow-alpha: 0.85;
+    --orb-pulse-scale: 1.11;
+  }
+  100% {
+    --glow-intensity: 0.6;
+    --orb-glow-alpha: 0.6;
+    --orb-pulse-scale: 1;
+  }
 }
 
 @keyframes hueShift {
-  0%, 100% { filter: hue-rotate(0deg); }
-  50% { filter: hue-rotate(8deg); }
+  0%, 100% { --orb-hue: 0deg; }
+  50% { --orb-hue: 8deg; }
 }
 
 #fitbase-orb.glow {
-  animation: none !important;
-  transform: scale(1.18);
-  filter:
-    /* stronger blue halo, wider radius */
-    drop-shadow(0 0 180px rgba(0,178,255,1))
-    drop-shadow(0 0 90px rgba(0,178,255,0.9))
-    /* subtle orange core accent, pulled in closer */
-    drop-shadow(0 0 50px rgba(247,147,26,0.5))
-    brightness(1.5)
-    saturate(1.25);
-  transition: all 0.3s ease-out;
+  --orb-glow-scale: 1.18;
+  --orb-glow-strength: 2.4;
+  --orb-glow-alpha: 1;
+  --orb-extra-brightness: 1.5;
+  --orb-extra-saturation: 1.25;
+  animation-play-state: paused, paused;
+  mask-image: radial-gradient(circle at center, rgba(0,0,0,1) 25%, rgba(0,0,0,0) 65%);
+  -webkit-mask-image: radial-gradient(circle at center, rgba(0,0,0,1) 25%, rgba(0,0,0,0) 65%);
+  mask-mode: alpha;
+  -webkit-mask-mode: alpha;
+  transition: transform 0.3s ease-out, filter 0.3s ease-out;
 }
 
 /* Set up the main layout container */
