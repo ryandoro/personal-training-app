@@ -169,27 +169,21 @@
                 launchLink.addEventListener('click', e => {
                     e.preventDefault();
 
-                    // 🧊 Pause breathing animation so glow can dominate
-                    orb.style.animationPlayState = 'paused';
-
-                    // 🌀 Force reflow (ensure Safari paints paused state cleanly)
-                    orb.offsetHeight;
-
-                    // ⚡ Instantly snap to glow state — temporarily disable transitions
-                    orb.style.transition = 'none';
+                    // 🟠 Instantly trigger glow (no delay)
                     orb.classList.add('glow');
-
-                    // ⚡ Add focus ring simultaneously
                     launchLink.classList.add('focus-ring');
 
-                    // 🕒 Wait one animation frame, then restore transitions for natural fade
+                    // 🕓 Natural transition 
                     requestAnimationFrame(() => {
-                        orb.style.transition = ''; // re-enable transitions for future animations
+                        // 🧊 Pause breathing animation AFTER glow paints
+                        orb.style.animationPlayState = 'paused';
+                        // Re-enable transitions for smoother fade afterward
+                        orb.style.transition = '';
 
-                        // 🕓 Navigate after visible glow
+                        // 🌐 Navigate after visible glow (adjust delay to taste)
                         setTimeout(() => {
                             window.location.href = launchLink.href;
-                        }, 700);
+                        }, 1500); // 1.5s before navigation
                     });
                 });
             }
