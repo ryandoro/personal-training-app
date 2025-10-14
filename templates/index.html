@@ -161,6 +161,14 @@
             igniteButtons.forEach(btn => {
                 btn.addEventListener('touchstart', () => {
                     btn.classList.add('focus-ring');
+                    // ⚡ Mobile fix: Trigger orb glow instantly on touch
+                    if (btn === launchLink && orb) {
+                        orb.classList.add('glow');
+                        // Slight delay helps Safari render before pausing animation
+                        requestAnimationFrame(() => {
+                            orb.style.animationPlayState = 'paused';
+                        });
+                    }
                 });
             });
 
