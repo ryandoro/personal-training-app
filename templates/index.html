@@ -161,6 +161,7 @@
             igniteButtons.forEach(btn => {
                 btn.addEventListener('touchstart', () => {
                     btn.classList.add('focus-ring');
+                    orb.classList.add('glow');
                 });
             });
 
@@ -183,7 +184,7 @@
                         // 🌐 Navigate after visible glow (adjust delay to taste)
                         setTimeout(() => {
                             window.location.href = launchLink.href;
-                        }, 3000); // 3s before navigation
+                        }, 1500); // 1.5s before navigation
                     });
                 });
             }
