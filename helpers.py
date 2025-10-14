@@ -1,6 +1,6 @@
 from functools import wraps
 from flask import session, redirect, url_for, flash
-import os, psycopg2, re
+import os, psycopg2, re, json
 import hmac, secrets, hashlib, math
 from psycopg2 import connect
 from psycopg2.extras import RealDictCursor, Json
@@ -51,6 +51,123 @@ WORKOUT_STRUCTURE = {
         "Cardio": {"CARDIO": 3},
     },
 }
+
+
+CARDIO_RESTRICTION_TOKEN = 'cardio'
+
+# Map body regions collected from the training questionnaire to workout categories
+# that should be avoided when generating workouts.
+INJURY_REGION_CATEGORY_MAP = {
+    'neck': {'SHOULDERS', 'BACK', 'CHEST'},
+    'shoulders': {'SHOULDERS', 'CHEST', 'BACK'},
+    'elbows': {'TRICEPS', 'BICEPS', 'SHOULDERS', 'BACK', 'CHEST'},
+    'wrists': {'BICEPS', 'TRICEPS', 'SHOULDERS', 'BACK', 'CHEST'},
+    'lower_back': {'BACK'},
+    'hips': {'LEGS', 'CARDIO'},
+    'knees': {'LEGS', 'CARDIO'},
+    'ankles': {'LEGS', 'CARDIO'},
+    'upper_back': {'BACK', 'SHOULDERS'},
+    'shoulder_left': {'SHOULDERS', 'CHEST', 'BACK'},
+    'shoulder_right': {'SHOULDERS', 'CHEST', 'BACK'},
+    'elbow_left': {'TRICEPS', 'BICEPS', 'SHOULDERS', 'BACK', 'CHEST'},
+    'elbow_right': {'TRICEPS', 'BICEPS', 'SHOULDERS', 'BACK', 'CHEST'},
+    'wrist_left': {'BICEPS', 'TRICEPS', 'SHOULDERS', 'BACK', 'CHEST'},
+    'wrist_right': {'BICEPS', 'TRICEPS', 'SHOULDERS', 'BACK', 'CHEST'},
+    'hip_left': {'LEGS', 'CARDIO'},
+    'hip_right': {'LEGS', 'CARDIO'},
+    'knee_left': {'LEGS', 'CARDIO'},
+    'knee_right': {'LEGS', 'CARDIO'},
+    'ankle_left': {'LEGS', 'CARDIO'},
+    'ankle_right': {'LEGS', 'CARDIO'},
+}
+
+
+def _normalize_region(value):
+    if not value:
+        return None
+    normalized = re.sub(r"[^a-z0-9]+", "_", str(value).strip().lower())
+    normalized = normalized.strip("_")
+    return normalized or None
+
+
+def parse_injury_payload(raw):
+    """Return normalized injury regions and cardio flag from a JSON/text payload."""
+    if raw is None:
+        entries = []
+    elif isinstance(raw, (list, tuple)):
+        entries = list(raw)
+    else:
+        text = str(raw).strip()
+        if not text:
+            entries = []
+        else:
+            try:
+                decoded = json.loads(text)
+            except (json.JSONDecodeError, TypeError, ValueError):
+                decoded = [part for part in re.split(r",|;|\s", text) if part]
+            if isinstance(decoded, dict):
+                entries = decoded.get('regions') or decoded.get('injury') or []
+            else:
+                entries = decoded
+
+    regions = []
+    cardio_flag = False
+
+    for entry in entries:
+        slug = _normalize_region(entry)
+        if not slug:
+            continue
+        if slug == CARDIO_RESTRICTION_TOKEN:
+            cardio_flag = True
+            continue
+        if slug not in regions:
+            regions.append(slug)
+
+    return {
+        'regions': regions,
+        'cardio': cardio_flag,
+    }
+
+
+def compute_injury_exclusions(regions, cardio_restriction=False):
+    """Translate injury regions into category/subcategory exclusions."""
+    exclusions = set()
+
+    for region in regions or []:
+        mapped = INJURY_REGION_CATEGORY_MAP.get(region)
+        if mapped:
+            exclusions.update(mapped)
+    if cardio_restriction:
+        exclusions.add('CARDIO')
+    return {entry.upper() for entry in exclusions}
+
+
+def get_user_injury_profile(user_id):
+    """Fetch stored injury preferences for a user."""
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+            cursor.execute(
+                "SELECT injury, injury_details, cardio_restriction FROM users WHERE id = %s",
+                (user_id,),
+            )
+            row = cursor.fetchone() or {}
+
+    payload = parse_injury_payload(row.get('injury'))
+    cardio_flag = bool(row.get('cardio_restriction')) or payload['cardio']
+    return {
+        'regions': payload['regions'],
+        'cardio_restriction': cardio_flag,
+        'injury_details': row.get('injury_details') or '',
+    }
+
+
+def get_user_injury_exclusions(user_id):
+    profile = get_user_injury_profile(user_id)
+    exclusions = compute_injury_exclusions(profile['regions'], profile['cardio_restriction'])
+    return {
+        'profile': profile,
+        'excluded_categories': exclusions,
+    }
 
 
 # --- Exercise history → numeric level mapping ---
@@ -362,9 +479,8 @@ def get_user_level(exercise_history: str | None) -> int:
 def generate_workout(selected_category, user_level, user_id, duration_minutes=60):
     """
     Generate a workout based on the selected category, user level, and preferred duration.
-    :param selected_category: The category selected by the user (e.g., 'Chest and Triceps')
-    :param user_level: The user's fitness level (1 = Beginner, 2 = Intermediate, 3 = Advanced)
-    :return: A list of exercises grouped by subcategory.
+    Respects user injury restrictions by omitting excluded categories.
+    Returns the workout plan and a metadata dictionary describing skipped content.
     """
     try:
         duration_minutes = int(duration_minutes or 60)
@@ -382,13 +498,35 @@ def generate_workout(selected_category, user_level, user_id, duration_minutes=60
     subcategories = WORKOUT_STRUCTURE.get(user_level, {}).get(selected_category, {})
     workout_plan = OrderedDict()
 
+    profile = get_user_injury_profile(user_id)
+    excluded_categories = compute_injury_exclusions(profile['regions'], profile['cardio_restriction'])
+
     counts = allocate_counts(subcategories, scale, selected_category)
+
+    skipped = {
+        'regions': list(profile['regions']),
+        'cardio_restriction': profile['cardio_restriction'],
+        'categories': set(),
+        'subcategories': set(),
+    }
 
     with get_connection() as conn:
         with conn.cursor() as cursor:
             for subcategory, n in counts.items():
                 if n <= 0:
                     continue
+                normalized_subcategory = _normalize_region(subcategory)
+                subcategory_key = (subcategory or '').strip().upper()
+                if normalized_subcategory and normalized_subcategory in INJURY_REGION_CATEGORY_MAP:
+                    mapped = INJURY_REGION_CATEGORY_MAP[normalized_subcategory]
+                    if mapped & excluded_categories:
+                        skipped['subcategories'].add(subcategory_key)
+                        skipped['categories'].update(mapped)
+                        continue
+                if subcategory_key in excluded_categories:
+                    skipped['subcategories'].add(subcategory_key)
+                    continue
+
                 query = """
                     SELECT
                         w.id AS workout_id,
@@ -409,9 +547,16 @@ def generate_workout(selected_category, user_level, user_id, duration_minutes=60
                 """
                 cursor.execute(query, (user_id, subcategory, user_level, n))
                 exercises = cursor.fetchall()
+                if not exercises and subcategory_key in excluded_categories:
+                    skipped['subcategories'].add(subcategory_key)
+                    continue
                 workout_plan[subcategory] = exercises
 
-    return workout_plan
+    skipped['categories'].update(excluded_categories)
+    skipped['categories'] = sorted({cat.upper() for cat in skipped['categories']})
+    skipped['subcategories'] = sorted({sub.upper() for sub in skipped['subcategories']})
+
+    return workout_plan, skipped
 
 
 def parse_range(value):

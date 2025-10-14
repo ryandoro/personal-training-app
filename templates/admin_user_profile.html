@@ -114,6 +114,10 @@ Edit User Profile
         {% endif %}
   
       <form id="admin-user-form" method="POST">
+        {% set injury_status_value = injury_status or 'No' %}
+        {% set injury_regions_json = (injury_regions | default([], true)) | tojson %}
+        {% set cardio_checked = cardio_restriction %}
+        {% set chip_region_slugs = ['neck','shoulders','upper_back','lower_back','elbows','wrists','hips','knees','ankles','cardio'] %}
         <div class="row g-4">
 
           <!-- Account -->
@@ -280,23 +284,104 @@ Edit User Profile
                 <input type="number" class="form-control" name="sessions_remaining" min="0" value="{{ user.sessions_remaining if user.sessions_remaining is not none else '' }}" placeholder="Optional">
               </div>
 
-              <div class="col-md-6">
-                <label class="form-label d-block">Injury Status</label>
-                <div class="form-check form-check-inline">
-                  <input class="form-check-input" type="radio" name="injury" id="injury-yes" value="Yes"
-                         {% if user.injury == 'Yes' %}checked{% endif %}>
-                  <label class="form-check-label" for="injury-yes">Yes</label>
+              <div class="col-12">
+                <div class="border rounded-3 p-3 bg-light-subtle">
+                  <p class="form-label fw-bold mb-1">Injury or Restriction Intake</p>
+                  <p class="form-text text-muted mb-3">Selecting "Yes" ensures workouts skip the selected areas.</p>
+
+                  <div class="d-flex flex-wrap justify-content-center gap-4 mb-3">
+                    <div class="form-check">
+                      <input type="radio"
+                             class="form-check-input"
+                             id="injury-status-yes"
+                             name="injury_status"
+                             value="Yes"
+                             {% if injury_status_value == 'Yes' %}checked{% endif %}>
+                      <label class="form-check-label" for="injury-status-yes">Yes</label>
+                    </div>
+                    <div class="form-check">
+                      <input type="radio"
+                             class="form-check-input"
+                             id="injury-status-no"
+                             name="injury_status"
+                             value="No"
+                             {% if injury_status_value != 'Yes' %}checked{% endif %}>
+                      <label class="form-check-label" for="injury-status-no">No</label>
+                    </div>
+                  </div>
+
+                  <div id="injury-fields-wrapper"
+                       class="injury-fields-wrapper {% if injury_status_value == 'Yes' %}expanded{% else %}collapsed{% endif %}">
+                    <div id="injury-fields"
+                         class="injury-fields text-center"
+                         data-initial-regions='{{ injury_regions_json | e }}'
+                         data-cardio-prefill="{{ 'true' if cardio_checked else 'false' }}">
+                      <p class="text-muted small mb-2">Tap the buttons to mark areas this client should avoid.</p>
+                      <div class="injury-chip-cloud mb-3">
+                        {% for slug in chip_region_slugs %}
+                          {% set label = slug.replace('_', ' ')|title %}
+                          <button type="button"
+                                  class="injury-chip"
+                                  data-region="{{ slug }}"
+                                  {% if slug in injury_regions %}data-active="true" aria-pressed="true"{% else %}data-active="false" aria-pressed="false"{% endif %}>
+                            {{ label }}
+                          </button>
+                        {% endfor %}
+                      </div>
+
+                      <input type="hidden" id="cardio-restriction" name="cardio_restriction" value="{% if cardio_checked %}yes{% endif %}">
+
+                      <div class="mt-3 text-center">
+                        <label for="injury-details" class="form-label fw-bold">Additional Details</label>
+                        <textarea class="form-control"
+                                  id="injury-details"
+                                  name="injury_details"
+                                  rows="3"
+                                  placeholder="Provide context for these restrictions"
+                                  required>{{ injury_details }}</textarea>
+                      </div>
+
+                      <div class="mt-3 text-start">
+                        <span class="small text-muted d-block">Selected areas:</span>
+                        <div id="injury-selected" class="injury-selected-pills mt-2 text-start"></div>
+                      </div>
+
+                      <input type="hidden" id="injury-input" name="injury" value='{{ injury_regions_json | e }}'>
+                    </div>
+                  </div>
+
+                  {% set skip_namespace = namespace(items=[]) %}
+                  {% if injury_excluded_categories %}
+                    {% for token in injury_excluded_categories %}
+                      {% if token not in skip_namespace.items %}
+                        {% set _ = skip_namespace.items.append(token) %}
+                      {% endif %}
+                    {% endfor %}
+                  {% endif %}
+                  {% if injury_skipped_subcategories %}
+                    {% for token in injury_skipped_subcategories %}
+                      {% if token not in skip_namespace.items %}
+                        {% set _ = skip_namespace.items.append(token) %}
+                      {% endif %}
+                    {% endfor %}
+                  {% endif %}
+
+                  <div id="injury-alert-banner"
+                       class="alert alert-success mt-3 {% if not skip_namespace.items %}d-none{% endif %}"
+                       role="status"
+                       data-default-categories='{{ (injury_excluded_categories | default([], true)) | tojson }}'
+                       data-default-subcategories='{{ (injury_skipped_subcategories | default([], true)) | tojson }}'
+                       data-default-cardio="{{ 'true' if cardio_checked else 'false' }}">
+                      <strong>Workout adjustments applied:</strong>
+                      <span id="injury-alert-message">
+                        {% if skip_namespace.items %}
+                          Skipping {{ skip_namespace.items | join(', ') }} exercises based on the restrictions above.
+                        {% else %}
+                          Update this section to configure the client's restrictions.
+                        {% endif %}
+                      </span>
+                    </div>
                 </div>
-                <div class="form-check form-check-inline">
-                  <input class="form-check-input" type="radio" name="injury" id="injury-no" value="No"
-                         {% if user.injury == 'No' %}checked{% endif %}>
-                  <label class="form-check-label" for="injury-no">No</label>
-                </div>
-              </div>
-              
-              <div class="col-md-6">
-                <label class="form-label">Injury Details</label>
-                <input type="text" class="form-control" name="injury_details" value="{{ user.injury_details or '' }}">
               </div>
 
               <div class="col-12">
@@ -326,20 +411,215 @@ Edit User Profile
 document.addEventListener('DOMContentLoaded', function () {
   const goalCheckboxes = document.querySelectorAll('.goal-checkbox');
   const goalWarning = document.getElementById('goal-warning');
-  const form = document.getElementById('admin-user-form');
 
-  goalCheckboxes.forEach(cb => {
+  goalCheckboxes.forEach((cb) => {
     cb.addEventListener('change', () => {
-      const checked = Array.from(goalCheckboxes).filter(c => c.checked);
+      const checked = Array.from(goalCheckboxes).filter((c) => c.checked);
       if (checked.length > 2) {
         cb.checked = false;
-        goalWarning.style.display = 'block';
-        goalWarning.textContent = "You can only select up to 2 fitness goals.";
-      } else {
+        if (goalWarning) {
+          goalWarning.style.display = 'block';
+          goalWarning.textContent = 'You can only select up to 2 fitness goals.';
+        }
+      } else if (goalWarning) {
         goalWarning.style.display = 'none';
       }
     });
   });
+
+  const injuryFields = document.getElementById('injury-fields');
+  const injuryBanner = document.getElementById('injury-alert-banner');
+  const injuryMessage = document.getElementById('injury-alert-message');
+  const yesRadio = document.getElementById('injury-status-yes');
+  const noRadio = document.getElementById('injury-status-no');
+  const injuryInput = document.getElementById('injury-input');
+  const cardioInput = document.getElementById('cardio-restriction');
+  const selectedContainer = document.getElementById('injury-selected');
+  const textarea = document.getElementById('injury-details');
+
+  function safeParseJSON(value, fallback) {
+    if (!value) return Array.isArray(fallback) ? fallback : [];
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) return parsed;
+      if (parsed && typeof parsed === 'object') return Object.values(parsed);
+    } catch (_) {
+      // ignore
+    }
+    return Array.isArray(fallback) ? fallback : [];
+  }
+
+  function normalizeRegionSlug(value) {
+    return String(value || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '');
+  }
+
+  function formatToken(token) {
+    return String(token || '')
+      .toLowerCase()
+      .replace(/_/g, ' ')
+      .replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+
+  function updateInjuryAlertBanner(skipped) {
+    if (!injuryBanner || !injuryMessage) return;
+
+    const tokens = new Set();
+    let cardioLimited = false;
+
+    if (skipped && typeof skipped === 'object') {
+      (skipped.categories || []).forEach((entry) => tokens.add(String(entry).toUpperCase()));
+      (skipped.subcategories || []).forEach((entry) => tokens.add(String(entry).toUpperCase()));
+      if (skipped.cardio_restriction) cardioLimited = true;
+    }
+
+    if (cardioLimited) tokens.add('CARDIO');
+
+    if (!tokens.size) {
+      injuryBanner.classList.add('d-none');
+      injuryMessage.textContent = 'Update this section to configure the client\'s restrictions.';
+      return;
+    }
+
+    const pretty = Array.from(tokens).map(formatToken).join(', ');
+    injuryMessage.textContent = `Skipping ${pretty} exercises based on the restrictions above.`;
+    injuryBanner.classList.remove('d-none');
+  }
+
+  function hydrateDefaultInjuryAlert() {
+    if (!injuryBanner) return;
+    const defaults = {
+      categories: safeParseJSON(injuryBanner.dataset.defaultCategories, []),
+      subcategories: safeParseJSON(injuryBanner.dataset.defaultSubcategories, []),
+      cardio_restriction: injuryBanner.dataset.defaultCardio === 'true',
+    };
+    updateInjuryAlertBanner(defaults);
+  }
+
+  if (!injuryFields) {
+    hydrateDefaultInjuryAlert();
+    return;
+  }
+
+  const chips = Array.from(injuryFields.querySelectorAll('.injury-chip'));
+  const labels = new Map();
+  chips.forEach((chip) => labels.set(chip.dataset.region, chip.textContent.trim()));
+  const state = { regions: new Set() };
+
+  function loadInitialState() {
+    const initialRegions = safeParseJSON(injuryFields.dataset.initialRegions, []);
+    initialRegions.forEach((region) => {
+      const slug = normalizeRegionSlug(region);
+      if (slug) state.regions.add(slug);
+    });
+    if (injuryFields.dataset.cardioPrefill === 'true') state.regions.add('cardio');
+  }
+
+  function syncHiddenFields() {
+    if (injuryInput) {
+      injuryInput.value = JSON.stringify(Array.from(state.regions));
+    }
+    if (cardioInput) {
+      const restrictCardio = state.regions.has('cardio');
+      cardioInput.value = restrictCardio ? 'yes' : '';
+      cardioInput.disabled = false;
+    }
+  }
+
+  function syncChips() {
+    chips.forEach((chip) => {
+      const slug = chip.dataset.region;
+      const active = state.regions.has(slug);
+      chip.classList.toggle('active', active);
+      chip.dataset.active = active ? 'true' : 'false';
+      chip.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+  }
+
+  function prettyLabel(slug) {
+    return labels.get(slug) || slug.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+
+  function syncSelectedList() {
+    if (!selectedContainer) return;
+    selectedContainer.innerHTML = '';
+    if (!state.regions.size) {
+      selectedContainer.innerHTML =
+        '<span class="badge bg-secondary-subtle text-muted">No areas selected</span>';
+      return;
+    }
+    state.regions.forEach((slug) => {
+      const pill = document.createElement('span');
+      pill.className = 'badge injury-pill bg-bitcoin text-dark me-1 mb-1';
+      pill.textContent = prettyLabel(slug);
+      selectedContainer.appendChild(pill);
+    });
+  }
+
+  function syncAll() {
+    syncHiddenFields();
+    syncChips();
+    syncSelectedList();
+  }
+
+  function clearInjurySection() {
+    state.regions.clear();
+    syncAll();
+    if (textarea) textarea.value = '';
+  }
+
+  function toggleInjuryFields(enabled) {
+    const wrapper = document.getElementById('injury-fields-wrapper');
+    if (wrapper) {
+      wrapper.classList.toggle('expanded', enabled);
+      wrapper.classList.toggle('collapsed', !enabled);
+    }
+    injuryFields.classList.toggle('is-disabled', !enabled);
+    setTimeout(() => {
+      chips.forEach((chip) => (chip.disabled = !enabled));
+      if (textarea) textarea.disabled = !enabled;
+    }, 200);
+    if (!enabled) clearInjurySection();
+  }
+
+  function toggleRegion(slug) {
+    const normalized = normalizeRegionSlug(slug);
+    if (!normalized) return;
+    if (state.regions.has(normalized)) state.regions.delete(normalized);
+    else state.regions.add(normalized);
+    syncAll();
+  }
+
+  chips.forEach((chip) => {
+    chip.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      toggleRegion(chip.dataset.region);
+    });
+    chip.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        toggleRegion(chip.dataset.region);
+      }
+    });
+  });
+
+  yesRadio?.addEventListener('change', () => {
+    if (yesRadio.checked) toggleInjuryFields(true);
+  });
+  noRadio?.addEventListener('change', () => {
+    if (noRadio.checked) toggleInjuryFields(false);
+  });
+
+  loadInitialState();
+  syncAll();
+  requestAnimationFrame(() => {
+    toggleInjuryFields(!!(yesRadio && yesRadio.checked));
+  });
+  hydrateDefaultInjuryAlert();
 });
 </script>
 {% endblock %}

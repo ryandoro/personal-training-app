@@ -13,11 +13,82 @@ html, body {
     display: flex;
     flex-direction: column;
     overflow-x: hidden;
-    background-image: url('/static/images/westernracquetbackground.png');
+    background-image: url('/static/images/blue_orange_background7.png');
     background-size: cover;         /* Scales to cover entire screen */
     background-repeat: no-repeat;   /* Prevents tiling */
     background-position: center;    /* Centers the image */
     background-attachment: fixed;   /* Optional: makes background stay in place on scroll */
+}
+
+.orb-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-top: -3rem;
+  margin-bottom: -1.5rem;
+}
+
+/* Wrapper controls brightness (the “inner light”) */
+.orb-wrapper {
+  display: inline-block;
+  animation: breathingBrightness 6s cubic-bezier(0.55, 0.03, 0.45, 0.95) infinite;
+}
+
+/* Orb controls glow, scale, and hue */
+#fitbase-orb {
+  --glow-intensity: 0.6;
+  width: 220px;
+  height: 220px;
+  transition: transform 0.4s ease, filter 0.4s ease;
+  backface-visibility: hidden;
+  will-change: transform, filter;
+  filter:
+    drop-shadow(0 0 calc(40px + var(--glow-intensity) * 40px)
+      rgba(0,178,255,var(--glow-intensity)))
+    drop-shadow(0 0 calc(80px + var(--glow-intensity) * 60px)
+      rgba(247,147,26,var(--glow-intensity)));
+
+  mask-image: radial-gradient(circle at center, rgba(0,0,0,1) 25%, rgba(0,0,0,0) 65%);
+  -webkit-mask-image: radial-gradient(circle at center, rgba(0,0,0,1) 25%, rgba(0,0,0,0) 65%);
+  mask-mode: alpha;
+  -webkit-mask-mode: alpha;
+
+  animation: smoothPulse 6s cubic-bezier(0.42, 0, 0.58, 1) infinite,
+             hueShift 18s ease-in-out infinite;
+}
+
+/* Brightness breathing */
+@keyframes breathingBrightness {
+  0%   { filter: brightness(1); }
+  35%  { filter: brightness(1.4); }
+  45%  { filter: brightness(1.45); }
+  100% { filter: brightness(1); }
+}
+
+/* Outer glow and expansion */
+@keyframes smoothPulse {
+  0%   { --glow-intensity: 0.6; transform: scale(1); }
+  30%  { --glow-intensity: 1;   transform: scale(1.1); }
+  40%  { --glow-intensity: 0.95;transform: scale(1.11); }
+  100% { --glow-intensity: 0.6; transform: scale(1); }
+}
+
+@keyframes hueShift {
+  0%, 100% { filter: hue-rotate(0deg); }
+  50% { filter: hue-rotate(8deg); }
+}
+
+#fitbase-orb.glow {
+  transform: scale(1.18);
+  filter:
+    /* stronger blue halo, wider radius */
+    drop-shadow(0 0 180px rgba(0,178,255,1))
+    drop-shadow(0 0 90px rgba(0,178,255,0.9))
+    /* subtle orange core accent, pulled in closer */
+    drop-shadow(0 0 50px rgba(247,147,26,0.5))
+    brightness(1.5)
+    saturate(1.25);
+  transition: all 0.3s ease-out;
 }
 
 /* Set up the main layout container */
@@ -39,6 +110,109 @@ html, body {
     text-align: center;
     padding: 4px; 
 } 
+
+.injury-fields.is-disabled {
+  opacity: 0.6;
+  pointer-events: none;
+  user-select: none;
+  filter: grayscale(0.3);
+  transition: opacity 0.25s ease, filter 0.25s ease;
+}
+
+.injury-fields {
+    position: relative;
+    background: rgba(255, 255, 255, 0.95);
+    border-radius: 16px;
+    padding: 1rem;
+    overflow: hidden;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.injury-fields-wrapper {
+  overflow: hidden;
+  transition: max-height 0.55s cubic-bezier(0.25, 0.1, 0.25, 1), opacity 0.35s ease;
+}
+
+.injury-fields-wrapper.collapsed {
+  max-height: 0;
+  opacity: 0;
+}
+
+.injury-fields-wrapper.expanded {
+  max-height: 1000px; /* or slightly more if you have lots of content */
+  opacity: 1;
+}
+
+.injury-chip-cloud {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.injury-chip {
+  border: 1px solid rgba(34, 48, 67, 0.15);
+  border-radius: 999px;
+  background-color: rgba(255, 255, 255, 0.9);
+  color: #223043;
+  text-transform: capitalize;
+  transition: all 0.15s ease;
+  padding: 0.4rem 0.9rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.injury-chip:hover {
+  border-color: #FF9500;
+  color: #FF9500;
+}
+
+.injury-chip.active {
+  background-color: #FF9500 !important;
+  border-color: #FF9500 !important;
+  color: #1b1f23 !important;
+  box-shadow: 0 0 12px rgba(255, 149, 0, 0.35);
+}
+
+.injury-chip-cloud.error {
+  border: 1px solid #dc3545; /* Bootstrap danger red */
+  border-radius: 12px;
+  padding: 0.5rem;
+  background-color: rgba(220, 53, 69, 0.05);
+}
+
+.injury-radio-group {
+    justify-content: center;
+}
+
+.injury-radio-group .form-check {
+    margin-bottom: 0;
+}
+
+.injury-selected-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    justify-content: center;
+}
+
+.injury-pill {
+    text-transform: capitalize;
+}
+
+.injury-pill.bg-bitcoin {
+    color: #1b1f23;
+}
+
+.bg-bitcoin {
+    background-color: #FF9500 !important;
+}
+
+@media (max-width: 767px) {
+    .injury-chip-cloud {
+        gap: 0.4rem;
+    }
+}
 
 main {
   padding-top: 50px;
@@ -650,30 +824,50 @@ iframe.fullscreen-sim {
   border-bottom-right-radius: 20px;
 }
 
+/* 🔶 Brand Alert — Bitcoin Orange */
 .brand-alert {
-  background: rgba(247, 147, 26, 0.15);
-  border: 1px solid rgba(247, 147, 26, 0.4);
-  color: #a35a07;
+  background: #ff9500;
+  border: 1.5px solid #d97706;
+  color: #ffffff;
+  border-radius: 12px;
+  padding: 1rem 1.25rem;
+  font-weight: 600;
+  box-shadow: 0 4px 14px rgba(255, 149, 0, 0.25);
 }
 
+/* ⚠️ Warning — amber/yellow tone */
 .alert-warning {
-  background: rgba(247, 147, 26, 0.15);
-  border: 1px solid rgba(247, 147, 26, 0.35);
-  color: #7c4502;
+  background: #f7a600;
+  border: 1.5px solid #c97f00;
+  color: #ffffff;
+  border-radius: 12px;
+  padding: 1rem 1.25rem;
+  font-weight: 600;
+  box-shadow: 0 4px 14px rgba(247, 166, 0, 0.25);
 }
 
+/* ✅ Success — mint green */
 .alert-success {
-  background: rgba(48, 198, 129, 0.18);
-  border: 1px solid rgba(25, 135, 84, 0.35);
-  color: #155d36;
+  background: #30c681;
+  border: 1.5px solid #2aa46c;
+  color: #ffffff;
+  border-radius: 12px;
+  padding: 1rem 1.25rem;
+  font-weight: 600;
+  box-shadow: 0 4px 14px rgba(48, 198, 129, 0.25);
 }
 
+/* ❌ Danger — red */
 .alert-danger {
-  background: rgba(220, 53, 69, 0.15);
-  border: 1px solid rgba(220, 53, 69, 0.35);
-  color: #8a1c28;
+  background: #dc3545;
+  border: 1.5px solid #b02a37;
+  color: #ffffff;
+  border-radius: 12px;
+  padding: 1rem 1.25rem;
+  font-weight: 600;
+  box-shadow: 0 4px 14px rgba(220, 53, 69, 0.25);
+  backdrop-filter: saturate(120%);
 }
-
 
 /* Bitcoin Orange Styles */
 .bitcoin-orange {
@@ -984,7 +1178,7 @@ iframe.fullscreen-sim {
   background: #d1e7dd;
   color: #0f5132;
   box-shadow: 0 12px 28px rgba(15, 81, 50, 0.18);
-  border: 1px solid rgba(15, 81, 50, 0.35);
+  border: 1px solid #0f5132;
   top: 95px;
 }
 
@@ -992,19 +1186,22 @@ iframe.fullscreen-sim {
   background: #e9f7ff;
   color: #1b5678;
   box-shadow: 0 12px 28px rgba(30, 164, 230, 0.18);
+  border: 1px solid #1ea4e6;
   top: 40px;
 }
 
 .toast-floating.toast-warning {
-  background: rgba(247, 147, 26, 0.18);
+  background: #ffe8cc;
   color: #7c4502;
   box-shadow: 0 12px 28px rgba(247, 147, 26, 0.2);
+  border: 1px solid #f7931a;
 }
 
 .toast-floating.toast-danger {
-  background: rgba(220, 53, 69, 0.2);
+  background: #f8d7da;
   color: #842029;
   box-shadow: 0 12px 28px rgba(220, 53, 69, 0.22);
+  border: 1px solid #842029;
 }
 
 /* Training workout cards */

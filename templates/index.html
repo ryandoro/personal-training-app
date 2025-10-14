@@ -6,7 +6,7 @@
 
 {% block content %}
 <div class="index-hero">
-    <div class="index-card" style="background: rgba(255, 255, 255, 0.75); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);">
+    <div class="index-card mb-0" style="background: rgba(255, 255, 255, 0.75); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);">
         <header class="index-header text-center">
             <div class="collab-branding">
                 <span class="collab-logo-pill">
@@ -74,8 +74,9 @@
         </section>
 
         <section class="index-cta text-center">
-            <p class="cta-copy">Ready for your next workout? Head over to the training page and get started with your personalized plan.</p>
+            <p class="cta-copy mb-4">Ready for your next workout? Head over to the training page and get started with your personalized plan.</p>
             <a href="/training" 
+               id="launch-training"
                class="btn btn-lg btn-ignite"
                role="button"
                tabindex="0">
@@ -83,8 +84,15 @@
             </a>
         </section>
     </div>
-</div>
+</div> 
 
+<div class="orb-container text-center">
+    <div class="orb-wrapper">
+        <img id="fitbase-orb"
+            src="{{ url_for('static', filename='images/fitbaseai_orb.png') }}"
+            alt="FitBaseAI Energy Core">
+    </div>
+</div> 
 
 <!-- Update Goals Modal -->
 <div class="modal fade" id="updateGoalsModal" tabindex="-1" aria-labelledby="updateGoalsModalLabel" aria-hidden="true">
@@ -144,10 +152,36 @@
             updateCheckboxStates();
         });
 
-        document.querySelectorAll('.btn-ignite').forEach(btn => {
-            btn.addEventListener('touchstart', () => {
-                btn.classList.add('focus-ring'); // stays on after tap
+        document.addEventListener('DOMContentLoaded', () => {
+            const orb = document.getElementById('fitbase-orb');
+            const launchLink = document.getElementById('launch-training');
+            const igniteButtons = document.querySelectorAll('.btn-ignite');
+
+            // Touch highlight (mobile-friendly focus ring)
+            igniteButtons.forEach(btn => {
+                btn.addEventListener('touchstart', () => {
+                btn.classList.add('focus-ring');
+                });
             });
+
+            // Orb + button ignition click
+            if (launchLink && orb) {
+                launchLink.addEventListener('click', e => {
+                e.preventDefault();
+
+                // ⚡ Instantly freeze current animation state
+                orb.style.animation = 'none';
+
+                // ⚡ Add simultaneous glow + focus ring
+                orb.classList.add('glow');
+                launchLink.classList.add('focus-ring');
+
+                // ⚡ Hold the glow for dramatic effect, then navigate
+                setTimeout(() => {
+                    window.location.href = launchLink.href;
+                }, 900); // duration of glow before transition
+                });
+            }
         });
-    </script>
+</script>
 {% endblock %}

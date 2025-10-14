@@ -2,7 +2,35 @@ import os, re, logging, json, psycopg2, psycopg2.extras, psycopg2.errors, stripe
 from flask import Flask, flash, redirect, render_template, request, session, jsonify, url_for, current_app
 from markupsafe import Markup
 from werkzeug.security import generate_password_hash, check_password_hash
-from helpers import login_required, calculate_target_heart_rate, generate_workout, get_guidelines, get_connection, is_admin, normalize_email, upsert_invited_user, issue_single_use_token, validate_token, mark_token_used, username_available, fmt_utc, int_or_none, inches_0_11_or_none, float_or_none, hash_token, get_category_groups, get_user_level, LEVEL_MAP, check_and_downgrade_trial, check_subscription_expiry, get_active_workout, set_active_workout, clear_active_workout  
+from helpers import (
+    login_required,
+    calculate_target_heart_rate,
+    generate_workout,
+    get_guidelines,
+    get_connection,
+    is_admin,
+    normalize_email,
+    upsert_invited_user,
+    issue_single_use_token,
+    validate_token,
+    mark_token_used,
+    username_available,
+    fmt_utc,
+    int_or_none,
+    inches_0_11_or_none,
+    float_or_none,
+    hash_token,
+    get_category_groups,
+    get_user_level,
+    LEVEL_MAP,
+    check_and_downgrade_trial,
+    check_subscription_expiry,
+    get_active_workout,
+    set_active_workout,
+    clear_active_workout,
+    parse_injury_payload,
+    compute_injury_exclusions,
+)
 from collections import OrderedDict
 from dotenv import load_dotenv
 from datetime import datetime, date, timedelta, timezone
@@ -482,20 +510,54 @@ def training():
     check_and_downgrade_trial(user_id)
     check_subscription_expiry(user_id)
     form_completed = False  # Default flag to determine what to show
+    injury_regions_prefill = []
+    cardio_restriction_prefill = False
+    injury_details_prefill = ''
+    injury_status_prefill = 'No'
 
     try:
         # Check if the form has already been completed
         with get_connection() as conn:
             with conn.cursor() as cursor:
-                cursor.execute("SELECT form_completed, exercise_history, fitness_goals, workout_duration FROM users WHERE id = %s", (user_id,))
+                cursor.execute(
+                    """
+                    SELECT form_completed, exercise_history, fitness_goals, workout_duration,
+                           injury, injury_details, cardio_restriction
+                      FROM users
+                     WHERE id = %s
+                    """,
+                    (user_id,)
+                )
                 result = cursor.fetchone()
                 form_completed = bool(result[0])  # Retrieve form_completed status
                 exercise_history = result[1]  # Fetch exercise history
                 fitness_goals = result[2]  # Fetch fitness goals
                 workout_duration = result[3]
+                injury_profile = parse_injury_payload(result[4])
+                injury_regions_prefill = injury_profile['regions']
+                cardio_restriction_prefill = bool(result[6]) or injury_profile['cardio']
+                injury_details_prefill = result[5]
+                injury_status_prefill = 'Yes' if (injury_regions_prefill or cardio_restriction_prefill or (injury_details_prefill or '').strip()) else 'No'
     except Exception as e:
         flash(f"An error occurred: {e}", "danger")
-        return render_template('training.html', form_completed=False)
+        return render_template(
+            'training.html',
+            user=None,
+            form_completed=False,
+            workouts=[],
+            grouped_workouts={},
+            target_heart_rate_zone=None,
+            guidelines={},
+            fitness_goals=None,
+            workout_duration=None,
+            current_date=date.today(),
+            injury_regions=injury_regions_prefill,
+            injury_details=injury_details_prefill,
+            injury_status=injury_status_prefill,
+            cardio_restriction=cardio_restriction_prefill,
+            injury_excluded_categories=[],
+            injury_skipped_subcategories=[],
+        )
 
     # If the user submits the form and it hasn't been completed yet
     if request.method == 'POST' and not form_completed:
@@ -509,14 +571,19 @@ def training():
         gender = request.form.get('gender')
         exercise_history = request.form.get('exercise_history')
         fitness_goals = request.form.getlist('fitness_goals')  # List of selected goals
-        injury = request.form.get('injury')
+        injury_status = request.form.get('injury_status') or 'No'
+        injury_payload_raw = request.form.get('injury') or '[]'
         injury_details = request.form.get('injury_details')
+        cardio_restriction_input = (request.form.get('cardio_restriction') == 'yes')
+        injury_payload_form = parse_injury_payload(injury_payload_raw)
+        injury_regions_selected = injury_payload_form['regions']
+        cardio_restriction_value = cardio_restriction_input or injury_payload_form['cardio']
         workout_duration_raw = request.form.get('workout_duration')
         commitment = request.form.get('commitment')
         additional_notes = request.form.get('additional_notes')
         waiver = request.form.get('waiver')
 
-    
+
         # Combine fitness goals into a single string
         fitness_goals_str = ", ".join(fitness_goals)
 
@@ -547,13 +614,20 @@ def training():
         if not commitment:
             errors['commitment'] = "Please select your weekly commitment."
 
+        injury_status_normalized = injury_status.strip().title()
+        if injury_status_normalized not in ("Yes", "No"):
+            errors['injury_status'] = "Please let us know if you currently have injuries or restrictions."
+
         # Checkboxes (1–2 goals)
         if len(fitness_goals) < 1 or len(fitness_goals) > 2:
             errors['fitness_goals'] = "Please select 1–2 fitness goals."
 
-        # Injury details (only if 'Yes')
-        if injury == "Yes" and not (injury_details or "").strip():
-            errors['injury_details'] = "Please describe your injury/illness."
+        # Injury requirements (only if 'Yes')
+        if injury_status_normalized == "Yes":
+            if not injury_regions_selected and not cardio_restriction_value:
+                errors['injury'] = "Please choose at least one area FitBaseAI should skip."
+            if not (injury_details or "").strip():
+                errors['injury_details'] = "Please share a few details about the injury or restriction."
 
         allowed_durations = {"20", "30", "45", "60"}
         if workout_duration_raw not in allowed_durations:
@@ -569,10 +643,17 @@ def training():
                 'training.html',
                 form_completed=False,
                 form_data=request.form,
-                errors=errors
+                errors=errors,
+                injury_regions=injury_regions_selected,
+                injury_details=injury_details or '',
+                injury_status=injury_status_normalized,
+                cardio_restriction=cardio_restriction_value,
+                injury_excluded_categories=compute_injury_exclusions(injury_regions_selected, cardio_restriction_value),
+                injury_skipped_subcategories=[],
             ), 400
         
         workout_duration = int(workout_duration_raw)
+        injury_json = json.dumps(injury_regions_selected)
 
         # Connect to the database and update user information
         try:
@@ -584,14 +665,16 @@ def training():
                         SET 
                             age = %s, weight = %s, height_feet = %s, height_inches = %s, 
                             gender = %s, exercise_history = %s, fitness_goals = %s, 
-                            injury = %s, injury_details = %s, commitment = %s, additional_notes = %s, 
+                            injury = %s, injury_details = %s, cardio_restriction = %s,
+                            commitment = %s, additional_notes = %s, 
                             name = %s, last_name = %s, form_completed = TRUE, workout_duration = %s,
                             subscription_type = 'premium',
                             trial_end_date = %s
                         WHERE id = %s
                     """, (
                         age, weight, height_feet, height_inches, gender, 
-                        exercise_history, fitness_goals_str, injury, injury_details, 
+                        exercise_history, fitness_goals_str, injury_json, injury_details,
+                        cardio_restriction_value,
                         commitment, additional_notes, name, last_name, workout_duration, 
                         trial_end_date, user_id
                     ))
@@ -600,10 +683,33 @@ def training():
                     flash("✅ Your 14-day free Premium trial has started! You now have full access to the personalized workout generator and tracking.", "success")
 
             form_completed = True  # Mark the form as completed
+            injury_regions_prefill = injury_regions_selected
+            cardio_restriction_prefill = cardio_restriction_value
+            injury_details_prefill = injury_details
+            injury_status_prefill = 'Yes' if (injury_regions_selected or cardio_restriction_value or (injury_details or '').strip()) else 'No'
             flash("Your information has been successfully updated!", "success")
         except Exception as e:
             flash(f"An error occurred: {e}", "danger")
-            return render_template('training.html', form_completed=False)
+            return render_template(
+                'training.html',
+                user=None,
+                form_completed=False,
+                form_data=request.form,
+                workouts=[],
+                grouped_workouts={},
+                target_heart_rate_zone=None,
+                guidelines={},
+                fitness_goals=fitness_goals_str,
+                workout_duration=None,
+                current_date=date.today(),
+                injury_regions=injury_regions_selected,
+                injury_details=injury_details or '',
+                injury_status=injury_status_normalized,
+                cardio_restriction=cardio_restriction_value,
+                injury_excluded_categories=[],
+                injury_skipped_subcategories=[],
+                errors=None,
+            )
 
     categories = get_category_groups()
     grouped_workouts = {}
@@ -623,13 +729,27 @@ def training():
                     grouped_workouts[category] = cursor.fetchall()
 
                 # Fetch the user's exercise history and age
-                cursor.execute("SELECT exercise_history, age, fitness_goals FROM users WHERE id = %s", (user_id,))
+                cursor.execute(
+                    """
+                    SELECT exercise_history, age, fitness_goals, injury, cardio_restriction
+                      FROM users
+                     WHERE id = %s
+                    """,
+                    (user_id,)
+                )
                 user_data = cursor.fetchone()
 
                 if user_data:
                     exercise_history = user_data[0]
                     age = int(user_data[1]) if user_data[1] else None
                     fitness_goals = user_data[2] if user_data[2] else "Not set yet"
+                    injury_for_filter = parse_injury_payload(user_data[3])
+                    cardio_flag_for_filter = bool(user_data[4]) or injury_for_filter['cardio']
+                    injury_regions_prefill = injury_regions_prefill or injury_for_filter['regions']
+                    cardio_restriction_prefill = cardio_restriction_prefill or cardio_flag_for_filter
+                    injury_status_prefill = 'Yes' if (injury_regions_prefill or cardio_restriction_prefill or (injury_details_prefill or '').strip()) else 'No'
+                    injury_excluded_categories = compute_injury_exclusions(injury_for_filter['regions'], cardio_flag_for_filter)
+                    skipped_subcategories = set()
 
                     user_level = get_user_level(exercise_history)
 
@@ -638,8 +758,23 @@ def training():
                         target_heart_rate_zone = calculate_target_heart_rate(age)
 
                     # Fetch workouts matching the user's level
-                    cursor.execute("SELECT name, description FROM workouts WHERE level <= %s", (user_level,))
-                    workouts = cursor.fetchall()
+                    cursor.execute(
+                        "SELECT name, description, category, subcategory FROM workouts WHERE level <= %s",
+                        (user_level,)
+                    )
+                    all_workouts = cursor.fetchall()
+                    filtered_workouts = []
+                    for workout_row in all_workouts:
+                        category_name = (workout_row[2] or '').upper()
+                        subcategory_name = (workout_row[3] or '').upper()
+                        if category_name in injury_excluded_categories or subcategory_name in injury_excluded_categories:
+                            if subcategory_name:
+                                skipped_subcategories.add(subcategory_name)
+                            elif category_name:
+                                skipped_subcategories.add(category_name)
+                            continue
+                        filtered_workouts.append(workout_row[:2])
+                    workouts = filtered_workouts
 
                     # Fetch guidelines based on user's level and fitness goals
                     if exercise_history and fitness_goals:
@@ -650,6 +785,9 @@ def training():
 
             except Exception as e:
                 flash(f"An error occurred: {e}", "danger")
+
+    injury_excluded_categories = compute_injury_exclusions(injury_regions_prefill, cardio_restriction_prefill)
+    skipped_subcategories = locals().get('skipped_subcategories', set())
 
     # Fetch full user row (including subscription_type, trial_end_date, etc.)
     with get_connection() as conn:
@@ -667,7 +805,13 @@ def training():
         guidelines=guidelines,
         fitness_goals=fitness_goals, 
         workout_duration=workout_duration,
-        current_date=date.today()
+        current_date=date.today(),
+        injury_regions=injury_regions_prefill,
+        injury_details=injury_details_prefill,
+        injury_status=injury_status_prefill,
+        cardio_restriction=cardio_restriction_prefill,
+        injury_excluded_categories=sorted(injury_excluded_categories),
+        injury_skipped_subcategories=sorted({sub for sub in skipped_subcategories if sub})
     )
 
 
@@ -802,7 +946,8 @@ def client_profile(client_id):
                 SELECT id, trainer_id, username, name, last_name, email,
                        fitness_goals, workouts_completed, last_workout_completed,
                        exercise_history, workout_duration, subscription_type,
-                       sessions_remaining, commitment, additional_notes
+                       sessions_remaining, commitment, additional_notes,
+                       injury, injury_details, cardio_restriction
                   FROM users
                  WHERE id = %s
                 """,
@@ -824,13 +969,25 @@ def client_profile(client_id):
             )
             active = cursor.fetchone()
 
+    injury_payload = parse_injury_payload(client.get('injury') if client else None)
+    cardio_restriction_flag = bool(client.get('cardio_restriction') if client else False) or injury_payload['cardio']
+    injury_regions = injury_payload['regions']
+    injury_details = (client.get('injury_details') or '').strip() if client else ''
+    injury_status = 'Yes' if (injury_regions or cardio_restriction_flag or injury_details) else 'No'
+    injury_excluded_categories = compute_injury_exclusions(injury_regions, cardio_restriction_flag)
+
     active_workout = None
+    active_skipped = {}
     if active:
         workout_payload = active.get('workout_data') or {}
         plan = workout_payload.get('plan') if isinstance(workout_payload, dict) else None
         formatted_plan = None
         if plan:
             formatted_plan = format_workout_for_response(active['category'], plan)
+        if isinstance(workout_payload, dict):
+            skipped_payload = workout_payload.get('skipped')
+            if isinstance(skipped_payload, dict):
+                active_skipped = skipped_payload
 
         created_at = active.get('created_at')
         if created_at:
@@ -846,9 +1003,21 @@ def client_profile(client_id):
             'duration_minutes': workout_payload.get('duration_minutes') if isinstance(workout_payload, dict) else None,
             'created_at': created_display,
             'plan': formatted_plan,
+            'skipped': active_skipped,
         }
 
     category_options = list(get_category_groups().keys())
+    active_skip_categories = sorted(set(active_skipped.get('categories') or []))
+    active_skip_subcategories = sorted(set(active_skipped.get('subcategories') or []))
+    banner_categories = sorted(set(injury_excluded_categories) | set(active_skip_categories))
+    banner_subcategories = sorted(set(active_skip_subcategories))
+    banner_cardio = cardio_restriction_flag or bool(active_skipped.get('cardio_restriction'))
+    injury_region_labels = [region.replace('_', ' ').title() for region in injury_regions]
+    skip_token_set = set(banner_categories) | set(banner_subcategories)
+    if banner_cardio:
+        skip_token_set.add('CARDIO')
+    injury_skip_tokens_display = sorted(token.replace('_', ' ').title() for token in skip_token_set)
+    injury_regions_json = json.dumps(injury_regions)
 
     return render_template(
         'client_profile.html',
@@ -856,6 +1025,15 @@ def client_profile(client_id):
         client=client,
         active_workout=active_workout,
         category_options=category_options,
+        injury_status=injury_status,
+        injury_regions=injury_regions,
+        injury_region_labels=injury_region_labels,
+        injury_details=injury_details,
+        cardio_restriction=cardio_restriction_flag,
+        injury_excluded_categories=banner_categories,
+        injury_skipped_subcategories=banner_subcategories,
+        injury_skip_tokens=injury_skip_tokens_display,
+        injury_regions_json=injury_regions_json,
     )
 
 
@@ -1432,14 +1610,28 @@ def generate_client_workout(client_id):
 
     user_level = get_user_level(client.get('exercise_history'))
 
-    workout_plan = generate_workout(selected_category, user_level, client_id, duration_minutes)
+    workout_plan, skipped_meta = generate_workout(selected_category, user_level, client_id, duration_minutes)
     workout_payload = {
         'plan': workout_plan,
         'duration_minutes': duration_minutes,
+        'skipped': skipped_meta,
     }
     set_active_workout(client_id, selected_category, workout_payload)
 
-    flash("Client workout generated and synced.", "success")
+    flash_message = "Client workout generated and synced."
+    skipped_summary = []
+    if skipped_meta:
+        categories = skipped_meta.get('categories') or []
+        subcategories = skipped_meta.get('subcategories') or []
+        combined = sorted(set(categories) | set(subcategories))
+        if combined:
+            skipped_summary.append(f"Skipped: {', '.join(combined)}")
+        if skipped_meta.get('cardio_restriction'):
+            skipped_summary.append("Cardio restricted")
+    if skipped_summary:
+        flash_message = f"{flash_message} ({'; '.join(skipped_summary)})"
+
+    flash(flash_message, "success")
     return redirect(url_for('client_profile', client_id=client_id, focus='active'))
 
 
@@ -1585,6 +1777,132 @@ def trainer_update_client_duration(client_id):
             conn.commit()
 
     return jsonify({'success': True, 'workout_duration': int(raw)})
+
+
+@app.route('/trainer/clients/<int:client_id>/injury', methods=['POST'])
+@login_required
+def trainer_update_client_injury(client_id):
+    trainer = _require_trainer(session['user_id'])
+    if not trainer:
+        flash("Trainer access required.", "danger")
+        return redirect(url_for('home'))
+
+    injury_status = (request.form.get('injury_status') or 'No').strip().title()
+    injury_payload_raw = request.form.get('injury') or '[]'
+    injury_details = (request.form.get('injury_details') or '').strip()
+    cardio_flag_input = request.form.get('cardio_restriction') == 'yes'
+
+    injury_payload_form = parse_injury_payload(injury_payload_raw)
+    injury_regions_selected = injury_payload_form['regions']
+    cardio_restriction_value = cardio_flag_input or injury_payload_form['cardio']
+
+    if injury_status not in ('Yes', 'No'):
+        flash("Please specify if this client currently has injuries or restrictions.", "danger")
+        return redirect(url_for('client_profile', client_id=client_id))
+
+    if injury_status == 'No':
+        injury_regions_selected = []
+        cardio_restriction_value = False
+        injury_details = ''
+    else:
+        if not injury_regions_selected and not cardio_restriction_value:
+            flash("Select at least one area or cardio to skip when injury status is Yes.", "danger")
+            return redirect(url_for('client_profile', client_id=client_id))
+        if not injury_details:
+            flash("Please add a brief note describing the injury or restriction.", "danger")
+            return redirect(url_for('client_profile', client_id=client_id))
+
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT trainer_id FROM users WHERE id = %s", (client_id,))
+            row = cursor.fetchone()
+
+    if not row:
+        flash("Client not found.", "danger")
+        return redirect(url_for('trainer_dashboard'))
+
+    client_trainer_id = row[0]
+    if client_trainer_id != session['user_id'] and trainer.get('role') != 'admin':
+        flash("You do not have permission to update this client's restrictions.", "danger")
+        return redirect(url_for('trainer_dashboard'))
+
+    injury_json = json.dumps(injury_regions_selected)
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE users
+                   SET injury = %s,
+                       injury_details = %s,
+                       cardio_restriction = %s
+                 WHERE id = %s
+                """,
+                (injury_json, injury_details, cardio_restriction_value, client_id),
+            )
+            conn.commit()
+
+    skipped = compute_injury_exclusions(injury_regions_selected, cardio_restriction_value)
+    skipped_display = ", ".join(token.replace('_', ' ').title() for token in sorted(skipped)) if skipped else "no categories"
+    flash(f"Injury settings updated. Skipping: {skipped_display}.", "success")
+    return redirect(url_for('client_profile', client_id=client_id))
+
+
+@app.route('/trainer/clients/<int:client_id>/training_profile', methods=['POST'])
+@login_required
+def trainer_update_client_training_profile(client_id):
+    trainer = _require_trainer(session['user_id'])
+    if not trainer:
+        flash("Trainer access required.", "danger")
+        return redirect(url_for('home'))
+
+    goals = [goal.strip() for goal in request.form.getlist('fitness_goals') if goal and goal.strip()]
+    exercise_history = (request.form.get('exercise_history') or '').strip()
+    commitment = (request.form.get('commitment') or '').strip()
+
+    if not exercise_history:
+        flash("Please choose an exercise history option.", "danger")
+        return redirect(url_for('client_profile', client_id=client_id))
+
+    if not commitment:
+        flash("Please choose a weekly commitment.", "danger")
+        return redirect(url_for('client_profile', client_id=client_id))
+
+    if not goals or len(goals) > 2:
+        flash("Select one or two fitness goals.", "danger")
+        return redirect(url_for('client_profile', client_id=client_id))
+
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT trainer_id FROM users WHERE id = %s", (client_id,))
+            row = cursor.fetchone()
+
+    if not row:
+        flash("Client not found.", "danger")
+        return redirect(url_for('trainer_dashboard'))
+
+    client_trainer_id = row[0]
+    if client_trainer_id != session['user_id'] and trainer.get('role') != 'admin':
+        flash("You do not have permission to update this client's profile.", "danger")
+        return redirect(url_for('trainer_dashboard'))
+
+    fitness_goals_str = ", ".join(goals)
+
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE users
+                   SET exercise_history = %s,
+                       fitness_goals = %s,
+                       commitment = %s
+                 WHERE id = %s
+                """,
+                (exercise_history, fitness_goals_str, commitment, client_id),
+            )
+            conn.commit()
+
+    flash("Training profile updated for this client.", "success")
+    return redirect(url_for('client_profile', client_id=client_id))
 
 
 @app.route('/trainer/clients/<int:client_id>/update_pr', methods=['POST'])
@@ -1802,10 +2120,11 @@ def generate_workout_route():
             user_level = get_user_level(exercise_history)
 
     # Generate the workout
-    workout_plan = generate_workout(selected_category, user_level, user_id, duration_minutes)
+    workout_plan, skipped_meta = generate_workout(selected_category, user_level, user_id, duration_minutes)
     workout_payload = {
         'plan': workout_plan,
         'duration_minutes': duration_minutes,
+        'skipped': skipped_meta,
     }
 
     set_active_workout(user_id, selected_category, workout_payload)
@@ -1817,6 +2136,7 @@ def generate_workout_route():
         'category': selected_category,
         'duration_minutes': duration_minutes,
         'workout': formatted_workout,
+        'skipped': skipped_meta,
     })
 
 
@@ -1840,6 +2160,7 @@ def get_active_workout_route():
         'category': row['category'],
         'duration_minutes': data.get('duration_minutes'),
         'workout': formatted_workout,
+        'skipped': data.get('skipped', {}),
     })
 
 
@@ -2374,7 +2695,7 @@ def settings():
         with conn.cursor() as cursor:
             cursor.execute("""
                 SELECT username, name, last_name, email, age, weight, height_feet, height_inches,
-                       gender, exercise_history, fitness_goals, injury, injury_details,
+                       gender, exercise_history, fitness_goals, injury, injury_details, cardio_restriction,
                        commitment, additional_notes, form_completed, workout_duration,
                         subscription_type, trial_end_date
                 FROM users
@@ -2382,7 +2703,7 @@ def settings():
             """, (user_id,))
             row = cursor.fetchone()
     columns = ['username', 'name', 'last_name', 'email', 'age', 'weight', 'height_feet', 'height_inches',
-                'gender', 'exercise_history', 'fitness_goals', 'injury', 'injury_details',
+                'gender', 'exercise_history', 'fitness_goals', 'injury', 'injury_details', 'cardio_restriction',
                 'commitment', 'additional_notes', 'form_completed', 'workout_duration',
                 'subscription_type', 'trial_end_date']
 
@@ -2392,6 +2713,52 @@ def settings():
             user[k] = ""
 
     form_completed = bool(user.get('form_completed'))
+    injury_payload_db = parse_injury_payload(user.get('injury'))
+    cardio_restriction_prefill = bool(user.get('cardio_restriction')) or injury_payload_db['cardio']
+    injury_regions_prefill = injury_payload_db['regions']
+    injury_details_prefill = user.get('injury_details') or ''
+    injury_status_prefill = 'Yes' if (injury_regions_prefill or cardio_restriction_prefill or injury_details_prefill.strip()) else 'No'
+    injury_excluded_categories_prefill = compute_injury_exclusions(injury_regions_prefill, cardio_restriction_prefill)
+    template_prefill_kwargs = dict(
+        injury_regions=injury_regions_prefill,
+        injury_details=injury_details_prefill,
+        injury_status=injury_status_prefill,
+        cardio_restriction=cardio_restriction_prefill,
+        injury_excluded_categories=injury_excluded_categories_prefill,
+        injury_skipped_subcategories=[],
+    )
+
+    def render_settings_template(
+        user_context,
+        form_completed_flag,
+        *,
+        injury_regions=None,
+        injury_details='',
+        injury_status='No',
+        cardio_restriction=False,
+        injury_excluded_categories=None,
+        injury_skipped_subcategories=None,
+    ):
+        regions = injury_regions or []
+        details = injury_details or ''
+        status = injury_status or 'No'
+        cardio_flag = bool(cardio_restriction)
+        excluded = injury_excluded_categories
+        if excluded is None:
+            excluded = compute_injury_exclusions(regions, cardio_flag)
+        skipped = injury_skipped_subcategories or []
+        return render_template(
+            'settings.html',
+            user=user_context,
+            form_completed=form_completed_flag,
+            injury_regions=regions,
+            injury_details=details,
+            injury_status=status,
+            cardio_restriction=cardio_flag,
+            injury_excluded_categories=sorted(excluded),
+            injury_skipped_subcategories=skipped,
+            current_date=date.today(),
+        )
 
     if request.method == 'POST':
             # Get form fields
@@ -2416,16 +2783,16 @@ def settings():
         if password_only:
             if password != confirm_password:
                 flash("Passwords do not match.", "danger")
-                return render_template('settings.html', user=user, form_completed=form_completed)
+                return render_settings_template(user, form_completed, **template_prefill_kwargs)
             if len(password) < 8:
                 flash("Password must be at least 8 characters long.", "danger")
-                return render_template('settings.html', user=user, form_completed=form_completed)
+                return render_settings_template(user, form_completed, **template_prefill_kwargs)
             if not any(char.isupper() for char in password):
                 flash("Password must include at least one uppercase letter.", "danger")
-                return render_template('settings.html', user=user, form_completed=form_completed)
+                return render_settings_template(user, form_completed, **template_prefill_kwargs)
             if not any(char in "!@#$%^&*()-_+=<>?/{}~" for char in password):
                 flash("Password must include at least one special character.", "danger")
-                return render_template('settings.html', user=user, form_completed=form_completed)
+                return render_settings_template(user, form_completed, **template_prefill_kwargs)
 
             hashed_password = generate_password_hash(password)
             with get_connection() as conn:
@@ -2434,7 +2801,7 @@ def settings():
                     conn.commit()
 
             flash("Password updated successfully!", "success")
-            return render_template('settings.html', user=user, form_completed=form_completed)
+            return render_settings_template(user, form_completed, **template_prefill_kwargs)
     
         # Get all other form fields
         username = (request.form.get('username') or '').strip()
@@ -2449,8 +2816,13 @@ def settings():
         exercise_history = request.form.get('exercise_history')
         fitness_goals = request.form.getlist('fitness_goals')
         fitness_goals_cleaned = ", ".join(goal.strip() for goal in fitness_goals if goal.strip())
-        injury = request.form.get('injury')
-        injury_details = request.form.get('injury_details')
+        injury_status = request.form.get('injury_status') or 'No'
+        injury_payload_raw = request.form.get('injury') or '[]'
+        injury_details = (request.form.get('injury_details') or '').strip()
+        cardio_restriction_input = (request.form.get('cardio_restriction') == 'yes')
+        injury_payload_form = parse_injury_payload(injury_payload_raw)
+        injury_regions_selected = injury_payload_form['regions']
+        cardio_restriction_value = cardio_restriction_input or injury_payload_form['cardio']
         commitment = request.form.get('commitment')
         additional_notes = request.form.get('additional_notes')
 
@@ -2458,7 +2830,15 @@ def settings():
         allowed_durations = {"20", "30", "45", "60"}
         if workout_duration_raw not in allowed_durations:
             flash("Please select a valid workout duration.", "danger")
-            return render_template('settings.html', user=user, form_completed=form_completed)
+            return render_settings_template(
+                user,
+                form_completed,
+                injury_regions=injury_regions_selected or injury_regions_prefill,
+                injury_details=injury_details or injury_details_prefill,
+                injury_status=injury_status,
+                cardio_restriction=cardio_restriction_value,
+                injury_excluded_categories=compute_injury_exclusions(injury_regions_selected, cardio_restriction_value),
+            )
         workout_duration = int(workout_duration_raw)
 
         duration_only = (workout_duration_raw in allowed_durations) and not any([
@@ -2472,9 +2852,10 @@ def settings():
             request.form.get('gender'),
             request.form.get('exercise_history'),
             request.form.get('commitment'),
-            len(request.form.getlist('fitness_goals')) > 0,  
-            request.form.get('injury'),
-            request.form.get('injury_details'),
+            len(request.form.getlist('fitness_goals')) > 0,
+            injury_status.strip().lower() == 'yes',
+            bool(injury_regions_selected),
+            bool(injury_details),
             request.form.get('additional_notes'),
             password, confirm_password,
         ])
@@ -2492,8 +2873,9 @@ def settings():
                 with conn.cursor() as cursor:
                     cursor.execute("""
                         SELECT username, name, last_name, email, age, weight, height_feet, height_inches,
-                            gender, exercise_history, fitness_goals, injury, injury_details,
-                            commitment, additional_notes, form_completed, workout_duration
+                            gender, exercise_history, fitness_goals, injury, injury_details, cardio_restriction,
+                            commitment, additional_notes, form_completed, workout_duration,
+                            subscription_type, trial_end_date
                         FROM users
                         WHERE id = %s
                     """, (user_id,))
@@ -2505,7 +2887,22 @@ def settings():
                     user[k] = ""
             form_completed = bool(user.get('form_completed'))
 
-            return render_template('settings.html', user=user, form_completed=form_completed)
+            injury_payload_updated = parse_injury_payload(user.get('injury'))
+            cardio_restriction_updated = bool(user.get('cardio_restriction')) or injury_payload_updated['cardio']
+            injury_regions_updated = injury_payload_updated['regions']
+            injury_details_updated = user.get('injury_details') or ''
+            injury_status_updated = 'Yes' if (injury_regions_updated or cardio_restriction_updated or injury_details_updated.strip()) else 'No'
+            injury_excluded_categories_updated = compute_injury_exclusions(injury_regions_updated, cardio_restriction_updated)
+
+            return render_settings_template(
+                user,
+                form_completed,
+                injury_regions=injury_regions_updated,
+                injury_details=injury_details_updated,
+                injury_status=injury_status_updated,
+                cardio_restriction=cardio_restriction_updated,
+                injury_excluded_categories=injury_excluded_categories_updated,
+            )
 
         # Validate required fields
         missing_required = (
@@ -2523,27 +2920,119 @@ def settings():
 
         if missing_required:
             flash("Please fill out all required fields.", "danger")
-            return render_template('settings.html', user=user, form_completed=form_completed)
+            return render_settings_template(
+                user,
+                form_completed,
+                injury_regions=injury_regions_selected or injury_regions_prefill,
+                injury_details=injury_details or injury_details_prefill,
+                injury_status=injury_status,
+                cardio_restriction=cardio_restriction_value,
+                injury_excluded_categories=compute_injury_exclusions(injury_regions_selected, cardio_restriction_value),
+            )
 
         if not (1 <= len(fitness_goals) <= 2):
             flash("Please select 1 or 2 fitness goals.", "danger")
-            return render_template('settings.html', user=user, form_completed=form_completed)
+            return render_settings_template(
+                user,
+                form_completed,
+                injury_regions=injury_regions_selected or injury_regions_prefill,
+                injury_details=injury_details or injury_details_prefill,
+                injury_status=injury_status,
+                cardio_restriction=cardio_restriction_value,
+                injury_excluded_categories=compute_injury_exclusions(injury_regions_selected, cardio_restriction_value),
+            )
+
+        injury_status_normalized = injury_status.strip().title()
+        if injury_status_normalized not in ("Yes", "No"):
+            flash("Please let us know if you currently have injuries or restrictions.", "danger")
+            return render_settings_template(
+                user,
+                form_completed,
+                injury_regions=injury_regions_selected or injury_regions_prefill,
+                injury_details=injury_details or injury_details_prefill,
+                injury_status=injury_status,
+                cardio_restriction=cardio_restriction_value,
+                injury_excluded_categories=compute_injury_exclusions(injury_regions_selected, cardio_restriction_value),
+            )
+
+        if injury_status_normalized == "No":
+            injury_regions_selected = []
+            cardio_restriction_value = False
+            injury_details = ''
+        else:
+            if not injury_regions_selected and not cardio_restriction_value:
+                flash("Please choose at least one area FitBaseAI should skip.", "danger")
+                return render_settings_template(
+                    user,
+                    form_completed,
+                    injury_regions=injury_regions_selected,
+                    injury_details=injury_details,
+                    injury_status=injury_status_normalized,
+                    cardio_restriction=cardio_restriction_value,
+                    injury_excluded_categories=compute_injury_exclusions(injury_regions_selected, cardio_restriction_value),
+                )
+            if not injury_details:
+                flash("Please share a few details about the injury or restriction.", "danger")
+                return render_settings_template(
+                    user,
+                    form_completed,
+                    injury_regions=injury_regions_selected,
+                    injury_details=injury_details,
+                    injury_status=injury_status_normalized,
+                    cardio_restriction=cardio_restriction_value,
+                    injury_excluded_categories=compute_injury_exclusions(injury_regions_selected, cardio_restriction_value),
+                )
+
+        injury_json = json.dumps(injury_regions_selected)
+        injury_status = injury_status_normalized
 
         # Validate password if provided
         hashed_password = None
         if password:
             if password != confirm_password:
                 flash("Passwords do not match.", "danger")
-                return render_template('settings.html', user=user, form_completed=form_completed)
+                return render_settings_template(
+                    user,
+                    form_completed,
+                    injury_regions=injury_regions_selected or injury_regions_prefill,
+                    injury_details=injury_details,
+                    injury_status=injury_status,
+                    cardio_restriction=cardio_restriction_value,
+                    injury_excluded_categories=compute_injury_exclusions(injury_regions_selected, cardio_restriction_value),
+                )
             if len(password) < 8:
                 flash("Password must be at least 8 characters long.", "danger")
-                return render_template('settings.html', user=user, form_completed=form_completed)
+                return render_settings_template(
+                    user,
+                    form_completed,
+                    injury_regions=injury_regions_selected or injury_regions_prefill,
+                    injury_details=injury_details,
+                    injury_status=injury_status,
+                    cardio_restriction=cardio_restriction_value,
+                    injury_excluded_categories=compute_injury_exclusions(injury_regions_selected, cardio_restriction_value),
+                )
             if not any(char.isupper() for char in password):
                 flash("Password must include at least one uppercase letter.", "danger")
-                return render_template('settings.html', user=user, form_completed=form_completed)
+                return render_settings_template(
+                    user,
+                    form_completed,
+                    injury_regions=injury_regions_selected or injury_regions_prefill,
+                    injury_details=injury_details,
+                    injury_status=injury_status,
+                    cardio_restriction=cardio_restriction_value,
+                    injury_excluded_categories=compute_injury_exclusions(injury_regions_selected, cardio_restriction_value),
+                )
             if not any(char in "!@#$%^&*()-_+=<>?/{}~" for char in password):
                 flash("Password must include at least one special character.", "danger")
-                return render_template('settings.html', user=user, form_completed=form_completed)
+                return render_settings_template(
+                    user,
+                    form_completed,
+                    injury_regions=injury_regions_selected or injury_regions_prefill,
+                    injury_details=injury_details,
+                    injury_status=injury_status,
+                    cardio_restriction=cardio_restriction_value,
+                    injury_excluded_categories=compute_injury_exclusions(injury_regions_selected, cardio_restriction_value),
+                )
 
             hashed_password = generate_password_hash(password)
 
@@ -2556,7 +3045,15 @@ def settings():
                 )
                 if cursor.fetchone():
                     flash("That username is already taken.", "danger")
-                    return render_template('settings.html', user=user, form_completed=form_completed)
+                    return render_settings_template(
+                        user,
+                        form_completed,
+                        injury_regions=injury_regions_selected or injury_regions_prefill,
+                        injury_details=injury_details,
+                        injury_status=injury_status,
+                        cardio_restriction=cardio_restriction_value,
+                        injury_excluded_categories=compute_injury_exclusions(injury_regions_selected, cardio_restriction_value),
+                    )
 
                 if email:
                     cursor.execute(
@@ -2565,7 +3062,15 @@ def settings():
                     )
                     if cursor.fetchone():
                         flash("That email is already in use.", "danger")
-                        return render_template('settings.html', user=user, form_completed=form_completed)
+                        return render_settings_template(
+                            user,
+                            form_completed,
+                            injury_regions=injury_regions_selected or injury_regions_prefill,
+                            injury_details=injury_details,
+                            injury_status=injury_status,
+                            cardio_restriction=cardio_restriction_value,
+                            injury_excluded_categories=compute_injury_exclusions(injury_regions_selected, cardio_restriction_value),
+                        )
                     
             new_form_completed = all([
                 age is not None,
@@ -2585,13 +3090,13 @@ def settings():
                     SET username = %s, name = %s, last_name = %s, email = %s,
                         age = %s, weight = %s, height_feet = %s, height_inches = %s,
                         gender = %s, exercise_history = %s, fitness_goals = %s,
-                        injury = %s, injury_details = %s, commitment = %s,
+                        injury = %s, injury_details = %s, cardio_restriction = %s, commitment = %s,
                         additional_notes = %s, form_completed = %s, workout_duration = %s
                     WHERE id = %s
                 """, (
                     username, name, last_name, email, age, weight, height_feet,
                     height_inches, gender, exercise_history, fitness_goals_cleaned,
-                    injury, injury_details, commitment, additional_notes, new_form_completed, 
+                    injury_json, injury_details, cardio_restriction_value, commitment, additional_notes, new_form_completed, 
                     workout_duration, 
                     user_id
                 ))
@@ -2608,8 +3113,9 @@ def settings():
             with conn.cursor() as cursor:
                 cursor.execute("""
                     SELECT username, name, last_name, email, age, weight, height_feet, height_inches,
-                        gender, exercise_history, fitness_goals, injury, injury_details,
-                        commitment, additional_notes, form_completed, workout_duration
+                        gender, exercise_history, fitness_goals, injury, injury_details, cardio_restriction,
+                        commitment, additional_notes, form_completed, workout_duration,
+                        subscription_type, trial_end_date
                     FROM users
                     WHERE id = %s
                 """, (user_id,))
@@ -2619,8 +3125,24 @@ def settings():
             if user.get(k) is None:
                 user[k] = ""
         form_completed = new_form_completed
+        updated_payload = parse_injury_payload(user.get('injury'))
+        updated_cardio_flag = bool(user.get('cardio_restriction')) or updated_payload['cardio']
+        updated_regions = updated_payload['regions']
+        updated_details = user.get('injury_details') or ''
+        updated_status = 'Yes' if (updated_regions or updated_cardio_flag or updated_details.strip()) else 'No'
+        updated_exclusions = compute_injury_exclusions(updated_regions, updated_cardio_flag)
 
-    return render_template('settings.html', user=user, form_completed=form_completed, current_date=date.today())
+        return render_settings_template(
+            user,
+            form_completed,
+            injury_regions=updated_regions,
+            injury_details=updated_details,
+            injury_status=updated_status,
+            cardio_restriction=updated_cardio_flag,
+            injury_excluded_categories=updated_exclusions,
+        )
+
+    return render_settings_template(user, form_completed, **template_prefill_kwargs)
 
 
 @app.route('/admin/users', methods=['GET'])
@@ -2695,6 +3217,32 @@ def admin_user_profile(user_id):
         goals = request.form.getlist('fitness_goals')
         fitness_goals_str = ", ".join(g.title().strip() for g in goals) or None
 
+        injury_status_input = (request.form.get('injury_status') or 'No').strip().title()
+        injury_payload_raw = request.form.get('injury') or '[]'
+        injury_details = (request.form.get('injury_details') or '').strip()
+        cardio_input_flag = request.form.get('cardio_restriction') == 'yes'
+        injury_payload_form = parse_injury_payload(injury_payload_raw)
+        injury_regions_selected = injury_payload_form['regions']
+        cardio_restriction_value = cardio_input_flag or injury_payload_form['cardio']
+
+        if injury_status_input not in ('Yes', 'No'):
+            flash("Please specify if the user currently has injuries or restrictions.", "danger")
+            return redirect(url_for('admin_user_profile', user_id=user_id))
+
+        if injury_status_input == 'No':
+            injury_regions_selected = []
+            cardio_restriction_value = False
+            injury_details = ''
+        else:
+            if not injury_regions_selected and not cardio_restriction_value:
+                flash("Select at least one restricted area or cardio when injury status is Yes.", "danger")
+                return redirect(url_for('admin_user_profile', user_id=user_id))
+            if not injury_details:
+                flash("Please add a brief note describing the injury or restriction.", "danger")
+                return redirect(url_for('admin_user_profile', user_id=user_id))
+
+        injury_json = json.dumps(injury_regions_selected)
+
         data = {
             'name': request.form.get('name') or None,
             'last_name': request.form.get('last_name') or None,
@@ -2708,8 +3256,9 @@ def admin_user_profile(user_id):
             'height_inches': request.form.get('height_inches') or None,
             'gender': request.form.get('gender'),
             'exercise_history': request.form.get('exercise_history'),
-            'injury': request.form.get('injury'),
-            'injury_details': request.form.get('injury_details'),
+            'injury': injury_json,
+            'injury_details': injury_details,
+            'cardio_restriction': cardio_restriction_value,
             'commitment': request.form.get('commitment'),
             'additional_notes': request.form.get('additional_notes'),
             'workouts_completed': request.form.get('workouts_completed') or 0,
@@ -2743,6 +3292,7 @@ def admin_user_profile(user_id):
                         fitness_goals = %s,
                         injury = %s,
                         injury_details = %s,
+                        cardio_restriction = %s,
                         commitment = %s,
                         additional_notes = %s,
                         workouts_completed = %s,
@@ -2757,7 +3307,7 @@ def admin_user_profile(user_id):
                         data['form_completed'], data['age'], data['weight'],
                         data['height_feet'], data['height_inches'], data['gender'],
                         data['exercise_history'], fitness_goals_str, data['injury'],
-                        data['injury_details'], data['commitment'], data['additional_notes'],
+                        data['injury_details'], data['cardio_restriction'], data['commitment'], data['additional_notes'],
                         data['workouts_completed'], data['sessions_remaining'], trainer_id_val, user_id
                     ))
                     conn.commit()
@@ -2788,7 +3338,26 @@ def admin_user_profile(user_id):
 
     invite_url = request.args.get('invite_url')
     invite_expires_in = request.args.get('invite_expires_in')
-    return render_template('admin_user_profile.html', user=user, invite_url=invite_url, invite_expires_in=invite_expires_in, trainers=trainers)
+    injury_payload = parse_injury_payload(user.get('injury'))
+    cardio_flag = bool(user.get('cardio_restriction')) or injury_payload['cardio']
+    injury_regions = injury_payload['regions']
+    injury_details = (user.get('injury_details') or '').strip()
+    injury_status = 'Yes' if (injury_regions or cardio_flag or injury_details) else 'No'
+    injury_excluded_categories = compute_injury_exclusions(injury_regions, cardio_flag)
+
+    return render_template(
+        'admin_user_profile.html',
+        user=user,
+        invite_url=invite_url,
+        invite_expires_in=invite_expires_in,
+        trainers=trainers,
+        injury_status=injury_status,
+        injury_regions=injury_regions,
+        injury_details=injury_details,
+        cardio_restriction=cardio_flag,
+        injury_excluded_categories=sorted(injury_excluded_categories),
+        injury_skipped_subcategories=[],
+    )
 
 
 @app.route('/admin/users/add', methods=['GET'])

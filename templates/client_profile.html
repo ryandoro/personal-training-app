@@ -74,26 +74,45 @@
                         </div>
                     </div>
                     <hr class="my-4">
-                    <div class="mb-3">
-                        <span class="text-muted d-block small">Fitness Goals</span>
-                        <div class="fw-semibold">{{ client.fitness_goals or '—' }}</div>
-                    </div>
-                    <div class="mb-3">
-                        <span class="text-muted d-block small">Exercise History</span>
-                        <div class="fw-semibold">{{ client.exercise_history or '—' }}</div>
-                    </div>
-                    {% if client.commitment %}
-                        <div class="mb-3">
-                            <span class="text-muted d-block small">Weekly Commitment</span>
-                            <div class="fw-semibold">{{ client.commitment }}</div>
+                    {% if injury_status == 'Yes' %}
+                    <div class="alert alert-danger d-flex flex-column gap-2" role="status">
+                        <div class="d-flex align-items-center gap-2">
+                            <i class="bi bi-exclamation-triangle-fill fs-4"></i>
+                            <div>
+                                <strong>Restrictions Active</strong>
+                                <div class="small">The workout generator is currently skipping these categories:</div>
+                            </div>
                         </div>
+                        <div>
+                            {% if injury_skip_tokens %}
+                                <div class="mb-2">
+                                    {% for token in injury_skip_tokens %}
+                                        <span class="badge bg-light text-dark me-1 mb-1">{{ token }}</span>
+                                    {% endfor %}
+                                </div>
+                            {% endif %}
+                            {% if injury_region_labels %}
+                                <div class="mb-2">
+                                    <span class="small text-uppercase text-white-50 d-block">Areas flagged:</span>
+                                    {% for label in injury_region_labels %}
+                                        <span class="badge bg-danger text-white me-1 mb-1">{{ label }}</span>
+                                    {% endfor %}
+                                </div>
+                            {% endif %}
+                            <div class="mb-0">
+                                <em>{{ injury_details }}</em>
+                            </div>
+                        </div>
+                    </div>
                     {% endif %}
+
                     {% if client.additional_notes %}
                         <div>
-                            <span class="text-muted d-block small">Notes</span>
+                            <span class="text-muted d-block small">Client Notes</span>
                             <div class="fw-semibold">{{ client.additional_notes }}</div>
                         </div>
                     {% endif %}
+
                     <form method="POST" action="{{ url_for('trainer_update_sessions_remaining', client_id=client.id) }}" class="mt-4">
                         <label class="form-label">Update Sessions Remaining</label>
                         <div class="input-group">
@@ -103,6 +122,136 @@
                             <button class="btn btn-outline-primary" type="submit">Save</button>
                         </div>
                         <div class="form-text">Leave empty to treat sessions as unlimited.</div>
+                    </form>
+
+                    {% set trainer_goals_list = (client.fitness_goals or '').split(',') | map('trim') | list %}
+                    <form method="POST" action="{{ url_for('trainer_update_client_training_profile', client_id=client.id) }}" class="mt-4">
+                        <div class="border rounded-3 p-3 bg-light-subtle">
+                            <label class="form-label fw-bold mb-1">Training Focus</label>
+                            <p class="form-text text-muted mb-3">Adjust the goals and training level used when generating workouts.</p>
+
+                            <div class="mb-3">
+                                <span class="form-label d-block">Fitness goals <small>(Select up to 2)</small></span>
+                                <div class="text-danger small mb-2" id="trainer-goal-warning" style="display:none;"></div>
+                                <div class="row row-cols-1 g-1">
+                                    {% for goal in ['Lose Weight','Gain Muscle','Tone Muscle','Abs','Increase Strength','Increase Endurance','Feel Better'] %}
+                                        <div class="col">
+                                            <div class="form-check">
+                                                <input class="form-check-input trainer-goal-checkbox"
+                                                       type="checkbox"
+                                                       id="trainer-goal-{{ loop.index }}"
+                                                       name="fitness_goals"
+                                                       value="{{ goal }}"
+                                                       {% if goal in trainer_goals_list %}checked{% endif %}>
+                                                <label class="form-check-label" for="trainer-goal-{{ loop.index }}">{{ goal }}</label>
+                                            </div>
+                                        </div>
+                                    {% endfor %}
+                                </div>
+                            </div>
+
+                            <div class="row g-3">
+                                <div class="col-md-6">
+                                    <label class="form-label">Exercise history</label>
+                                    <select class="form-select" name="exercise_history" required>
+                                        <option value="" disabled {% if not client.exercise_history %}selected{% endif %}>Select an option</option>
+                                        {% for option in ['No Exercise History','Exercise less than 1 year','Exercise 1-5 years','Exercise 5+ years'] %}
+                                            <option value="{{ option }}" {% if client.exercise_history == option %}selected{% endif %}>{{ option }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">Weekly commitment</label>
+                                    <select class="form-select" name="commitment" required>
+                                        <option value="" disabled {% if not client.commitment %}selected{% endif %}>Select an option</option>
+                                        {% for option in ['1 day per week','2 days per week','3 days per week'] %}
+                                            <option value="{{ option }}" {% if client.commitment == option %}selected{% endif %}>{{ option }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="d-grid mt-3">
+                                <button type="submit" class="btn btn-primary">Save Training Focus</button>
+                            </div>
+                        </div>
+                    </form>
+
+                    {% set trainer_chip_region_slugs = ['neck','shoulders','upper_back','lower_back','elbows','wrists','hips','knees','ankles','cardio'] %}
+                    <form id="trainer-injury-form" method="POST" action="{{ url_for('trainer_update_client_injury', client_id=client.id) }}" class="mt-4">
+                        <div class="border rounded-3 p-3 bg-light-subtle">
+                            <label class="form-label fw-bold mb-1">Update Restrictions</label>
+                            <p class="form-text text-muted mb-3">Changes here update the client's workout generator and account settings.</p>
+
+                            <div class="d-flex flex-wrap justify-content-center gap-3 mb-3">
+                                <div class="form-check">
+                                    <input type="radio"
+                                           class="form-check-input"
+                                           id="trainer-injury-status-yes"
+                                           name="injury_status"
+                                           value="Yes"
+                                           {% if injury_status == 'Yes' %}checked{% endif %}>
+                                    <label class="form-check-label" for="trainer-injury-status-yes">Yes</label>
+                                </div>
+                                <div class="form-check">
+                                    <input type="radio"
+                                           class="form-check-input"
+                                           id="trainer-injury-status-no"
+                                           name="injury_status"
+                                           value="No"
+                                           {% if injury_status != 'Yes' %}checked{% endif %}>
+                                    <label class="form-check-label" for="trainer-injury-status-no">No</label>
+                                </div>
+                            </div>
+
+                            <div id="trainer-injury-fields-wrapper"
+                                 class="injury-fields-wrapper {% if injury_status == 'Yes' %}expanded{% else %}collapsed{% endif %}">
+                                <div id="trainer-injury-fields"
+                                     class="injury-fields text-center"
+                                     data-initial-regions='{{ injury_regions_json | e }}'
+                                     data-cardio-prefill="{{ 'true' if cardio_restriction else 'false' }}">
+
+                                    <p class="text-muted small mb-2">Tap the buttons to mark areas the client should avoid.</p>
+
+                                    <div class="injury-chip-cloud mb-3">
+                                        {% for slug in trainer_chip_region_slugs %}
+                                            {% set label = slug.replace('_', ' ')|title %}
+                                            {% set is_active = (slug in injury_regions) or (slug == 'cardio' and cardio_restriction) %}
+                                            <button type="button"
+                                                    class="injury-chip"
+                                                    data-region="{{ slug }}"
+                                                    {% if is_active %}data-active="true" aria-pressed="true"{% else %}data-active="false" aria-pressed="false"{% endif %}>
+                                                {{ label }}
+                                            </button>
+                                        {% endfor %}
+                                    </div>
+
+                                    <input type="hidden" id="trainer-cardio-restriction" name="cardio_restriction" value="{% if cardio_restriction %}yes{% endif %}">
+
+                                    <div class="mt-3 text-center">
+                                        <label for="trainer-injury-details" class="form-label fw-bold">Restriction Notes</label>
+                                        <textarea class="form-control"
+                                                  id="trainer-injury-details"
+                                                  name="injury_details"
+                                                  rows="3"
+                                                  placeholder="Provide context for these restrictions"
+                                                  {% if injury_status == 'Yes' %}required{% endif %}
+                                                  {% if injury_status != 'Yes' %}disabled{% endif %}>{{ injury_details }}</textarea>
+                                    </div>
+
+                                    <div class="mt-3 text-center">
+                                        <span class="small text-muted d-block">Selected areas:</span>
+                                        <div id="trainer-injury-selected" class="injury-selected-pills mt-2 text-start"></div>
+                                    </div>
+
+                                    <input type="hidden" id="trainer-injury-input" name="injury" value='{{ injury_regions_json | e }}'>
+                                </div>
+                            </div>
+
+                            <div class="d-grid mt-3">
+                                <button type="submit" class="btn btn-primary">Save Restrictions</button>
+                            </div>
+                        </div>
                     </form>
                 </div>
             </div>
@@ -366,12 +515,35 @@
         </div>
     </div>
 
-    <div id="imageModal" style="display:none; position:fixed; z-index:10000; left:0; top:0; width:100%; height:100%; background: rgba(0,0,0,0.8); align-items:center; justify-content:center;">
-        <div style="position:relative; display:inline-block; max-width:90vw; max-height:90vh;">
-            <span id="modalClose" style="position:absolute; top:-6px; right:8px; font-size:1.8rem; color:rgba(220,220,220,0.85); cursor:pointer; z-index:10001;">&times;</span>
-            <img id="modalImage" style="max-width:100%; max-height:100%; cursor:pointer; display:block;">
+    <div id="imageModal" style="
+        display:none;
+        position:fixed;
+        inset:0;
+        z-index:10000;
+        background:rgba(0,0,0,0.8);
+    ">
+        <div id="imageModalContent" style="
+            position:relative;
+            width:100%;
+            height:100%;
+            display:flex;
+            flex-direction:column;
+            align-items:center;
+            justify-content:center;
+        ">
+            <div id="imageWrapper" style="
+                position:relative;
+                max-width:90vw;
+                max-height:80vh;
+                display:flex;
+                align-items:center;
+                justify-content:center;
+            ">
+                <span id="modalClose" style="position:absolute; top:-6px; right:8px; font-size:1.8rem; color:rgba(220,220,220,0.85); cursor:pointer; z-index:10001;">&times;</span>
+                <img id="modalImage" style="max-width:100%; max-height:100%; display:block; border-radius:12px; box-shadow:0 18px 36px rgba(0,0,0,0.35);">
+            </div>
+            <div id="swipeOverlay" style="margin-top:16px; text-align:center; color:rgba(220,220,220,0.8); font-size:1.5rem; font-weight:bold; pointer-events:none; text-shadow:0 0 8px rgba(0,0,0,0.65);">&lt;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&gt;</div>
         </div>
-        <div id="swipeOverlay" style="margin-top:12px; text-align:center; color:rgba(220,220,220,0.8); font-size:1.5rem; font-weight:bold; pointer-events:none;">&lt;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&gt;</div>
     </div>
 
 </div>
@@ -394,8 +566,30 @@
     const categorySelect = document.getElementById('category');
     const generateWorkoutBtn = document.getElementById('generate-client-workout-btn');
     const generateWorkoutForm = document.getElementById('generate-client-workout');
+    const trainerGoalCheckboxes = document.querySelectorAll('.trainer-goal-checkbox');
+    const trainerGoalWarning = document.getElementById('trainer-goal-warning');
 
     let currentWorkoutId = null;
+
+    function safeParseJSON(value, fallback) {
+        if (!value) return Array.isArray(fallback) ? fallback : [];
+        try {
+            const parsed = JSON.parse(value);
+            if (Array.isArray(parsed)) return parsed;
+            if (parsed && typeof parsed === 'object') return Object.values(parsed);
+            return Array.isArray(fallback) ? fallback : [];
+        } catch {
+            return Array.isArray(fallback) ? fallback : [];
+        }
+    }
+
+    function normalizeRegionSlug(value) {
+        return String(value || '')
+            .trim()
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '_')
+            .replace(/^_+|_+$/g, '');
+    }
 
     function escapeHtml(value) {
         if (value === null || value === undefined) return '';
@@ -418,7 +612,7 @@
             toast.style.background = '#f8d7da';
             toast.style.color = '#842029';
         }
-        setTimeout(() => { toast.style.display = 'none'; }, 2500);
+        setTimeout(() => { toast.style.display = 'none'; }, 3000);
     }
 
     function openModal(modal) {
@@ -468,6 +662,41 @@
         syncGenerateButtonState();
     }
 
+    function bindTrainerGoalLimit() {
+        if (!trainerGoalCheckboxes || !trainerGoalCheckboxes.length) return;
+        trainerGoalCheckboxes.forEach((checkbox) => {
+            checkbox.addEventListener('change', () => {
+                const checked = Array.from(trainerGoalCheckboxes).filter(cb => cb.checked);
+                if (checked.length > 2) {
+                    checkbox.checked = false;
+                    if (trainerGoalWarning) {
+                        trainerGoalWarning.style.display = 'block';
+                        trainerGoalWarning.textContent = 'You can only select up to 2 goals.';
+                    }
+                } else if (trainerGoalWarning) {
+                    trainerGoalWarning.style.display = checked.length ? 'none' : 'block';
+                    if (!checked.length) {
+                        trainerGoalWarning.textContent = 'Select at least 1 goal.';
+                    }
+                }
+            });
+        });
+
+        const trainerGoalsForm = trainerGoalCheckboxes[0]?.closest('form');
+        if (trainerGoalsForm) {
+            trainerGoalsForm.addEventListener('submit', (event) => {
+                const checked = Array.from(trainerGoalCheckboxes).filter(cb => cb.checked);
+                if (!checked.length || checked.length > 2) {
+                    event.preventDefault();
+                    if (trainerGoalWarning) {
+                        trainerGoalWarning.style.display = 'block';
+                        trainerGoalWarning.textContent = checked.length ? 'You can only select up to 2 goals.' : 'Select at least 1 goal.';
+                    }
+                }
+            });
+        }
+    }
+
     function bindDurationPills() {
         if (!durationPillsWrap) return;
         const updateUrl = durationPillsWrap.dataset.updateUrl || '';
@@ -511,6 +740,154 @@
         });
     }
 
+    function setupTrainerInjuryForm() {
+        const form = document.getElementById('trainer-injury-form');
+        const fields = document.getElementById('trainer-injury-fields');
+        if (!form || !fields) return;
+
+        const wrapper = document.getElementById('trainer-injury-fields-wrapper');
+        const yesRadio = document.getElementById('trainer-injury-status-yes');
+        const noRadio = document.getElementById('trainer-injury-status-no');
+        const chips = Array.from(fields.querySelectorAll('.injury-chip'));
+        const injuryInput = document.getElementById('trainer-injury-input');
+        const cardioInput = document.getElementById('trainer-cardio-restriction');
+        const selectedContainer = document.getElementById('trainer-injury-selected');
+        const textarea = document.getElementById('trainer-injury-details');
+
+        const labels = new Map();
+        chips.forEach((chip) => labels.set(chip.dataset.region, chip.textContent.trim()));
+
+        const state = { regions: new Set() };
+
+        function loadInitialState() {
+            const initialRegions = safeParseJSON(fields.dataset.initialRegions, []);
+            initialRegions.forEach((region) => {
+                const slug = normalizeRegionSlug(region);
+                if (slug) state.regions.add(slug);
+            });
+            if (fields.dataset.cardioPrefill === 'true') state.regions.add('cardio');
+        }
+
+        function syncHiddenFields() {
+            if (injuryInput) {
+                injuryInput.value = JSON.stringify(Array.from(state.regions));
+            }
+            if (cardioInput) {
+                const restrictCardio = state.regions.has('cardio');
+                cardioInput.value = restrictCardio ? 'yes' : '';
+                cardioInput.disabled = false;
+            }
+        }
+
+        function syncChips() {
+            chips.forEach((chip) => {
+                const slug = chip.dataset.region;
+                const active = state.regions.has(slug);
+                chip.classList.toggle('active', active);
+                chip.dataset.active = active ? 'true' : 'false';
+                chip.setAttribute('aria-pressed', active ? 'true' : 'false');
+            });
+        }
+
+        function prettyLabel(slug) {
+            return labels.get(slug) || slug.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+        }
+
+        function syncSelectedList() {
+            if (!selectedContainer) return;
+            selectedContainer.innerHTML = '';
+            if (!state.regions.size) {
+                selectedContainer.innerHTML =
+                    '<span class="badge bg-secondary-subtle text-muted">No areas selected</span>';
+                return;
+            }
+            state.regions.forEach((slug) => {
+                const pill = document.createElement('span');
+                pill.className = 'badge injury-pill bg-bitcoin text-dark me-1 mb-1';
+                pill.textContent = prettyLabel(slug);
+                selectedContainer.appendChild(pill);
+            });
+        }
+
+        function syncAll() {
+            syncHiddenFields();
+            syncChips();
+            syncSelectedList();
+        }
+
+        function clearInjurySection() {
+            state.regions.clear();
+            syncAll();
+            if (textarea) {
+                textarea.value = '';
+            }
+        }
+
+        function toggleInjuryFields(enabled) {
+            if (wrapper) {
+                wrapper.classList.toggle('expanded', enabled);
+                wrapper.classList.toggle('collapsed', !enabled);
+            }
+            fields.classList.toggle('is-disabled', !enabled);
+
+            setTimeout(() => {
+                chips.forEach((chip) => (chip.disabled = !enabled));
+                if (textarea) {
+                    textarea.disabled = !enabled;
+                    textarea.required = enabled;
+                }
+            }, 200);
+
+            if (!enabled) {
+                clearInjurySection();
+            }
+        }
+
+        function toggleRegion(slug) {
+            const normalized = normalizeRegionSlug(slug);
+            if (!normalized) return;
+            if (state.regions.has(normalized)) {
+                state.regions.delete(normalized);
+            } else {
+                state.regions.add(normalized);
+            }
+            syncAll();
+        }
+
+        chips.forEach((chip) => {
+            chip.addEventListener('click', (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                toggleRegion(chip.dataset.region);
+            });
+            chip.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    toggleRegion(chip.dataset.region);
+                }
+            });
+        });
+
+        yesRadio?.addEventListener('change', () => {
+            if (yesRadio.checked) {
+                toggleInjuryFields(true);
+            }
+        });
+        noRadio?.addEventListener('change', () => {
+            if (noRadio.checked) {
+                toggleInjuryFields(false);
+            }
+        });
+
+        loadInitialState();
+        syncAll();
+
+        requestAnimationFrame(() => {
+            const enabled = !!(yesRadio && yesRadio.checked);
+            toggleInjuryFields(enabled);
+        });
+    }
+
     function bindImageClickEvents() {
         const modal = document.getElementById('imageModal');
         const modalImg = document.getElementById('modalImage');
@@ -521,6 +898,21 @@
         let currentGroup = null;
         let currentIndex = 0;
         let groupImages = [];
+
+        function showModal(src) {
+            if (!src) return;
+            modalImg.src = src;
+            modal.style.display = 'flex';
+            modal.style.alignItems = 'center';
+            modal.style.justifyContent = 'center';
+            if (overlay) overlay.style.opacity = groupImages.length > 1 ? '0.85' : '0';
+        }
+
+        function hideModal() {
+            modal.style.display = 'none';
+            modalImg.src = '';
+            if (overlay) overlay.style.opacity = '0';
+        }
 
         document.querySelectorAll('.clickable-img').forEach(img => {
             img.addEventListener('click', () => {
@@ -534,19 +926,11 @@
             });
         });
 
-        function showModal(src) {
-            if (!src) return;
-            modalImg.src = src;
-            modal.style.display = 'flex';
-            if (overlay) overlay.style.opacity = groupImages.length > 1 ? '0.85' : '0';
-        }
-
-        function hideModal() {
-            modal.style.display = 'none';
-            modalImg.src = '';
-        }
-
-        modal.addEventListener('click', hideModal);
+        modal.addEventListener('click', (event) => {
+            if (event.target.id === 'imageModal' || event.target.id === 'modalClose') {
+                hideModal();
+            }
+        });
         closeIcon?.addEventListener('click', hideModal);
         modalImg.addEventListener('click', hideModal);
 
@@ -703,6 +1087,8 @@
     }
 
     document.addEventListener('DOMContentLoaded', () => {
+        setupTrainerInjuryForm();
+        bindTrainerGoalLimit();
         bindImageClickEvents();
 
         document.body.addEventListener('click', handleUpdatePrClick);
@@ -742,12 +1128,6 @@
         document.getElementById('saveNotesBtn')?.addEventListener('click', handleSaveNotes);
         document.getElementById('closeNotesModal')?.addEventListener('click', () => closeModal(notesModal));
         document.getElementById('notesModalClose')?.addEventListener('click', () => closeModal(notesModal));
-
-        document.getElementById('imageModal')?.addEventListener('click', (event) => {
-            if (event.target.id === 'imageModal' || event.target.id === 'modalClose') {
-                closeModal(document.getElementById('imageModal'));
-            }
-        });
 
         bindDurationPills();
 
