@@ -79,6 +79,7 @@ html, body {
 }
 
 #fitbase-orb.glow {
+  animation: none !important;
   transform: scale(1.18);
   filter:
     /* stronger blue halo, wider radius */
@@ -716,7 +717,6 @@ iframe.fullscreen-sim {
   background-position: right center;
 }
 
-.btn-ignite:focus,
 .btn-ignite:active,
 .btn-ignite.focus-ring {
   color: #fff !important;                     /* switch to white */

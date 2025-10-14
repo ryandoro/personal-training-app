@@ -157,26 +157,40 @@
             const launchLink = document.getElementById('launch-training');
             const igniteButtons = document.querySelectorAll('.btn-ignite');
 
-            // Touch highlight (mobile-friendly focus ring)
+            // 💡 Touch highlight (mobile-friendly focus ring)
             igniteButtons.forEach(btn => {
                 btn.addEventListener('touchstart', () => {
-                btn.classList.add('focus-ring');
+                    btn.classList.add('focus-ring');
                 });
             });
 
-            // Orb + button ignition click
+            // ⚡ Orb + button ignition click/tap
             if (launchLink && orb) {
                 launchLink.addEventListener('click', e => {
                     e.preventDefault();
 
-                    // ⚡ Instantly freeze current animation state
-                    orb.style.animation = 'none';
+                    // 🧊 Pause breathing animation so glow can dominate
+                    orb.style.animationPlayState = 'paused';
 
-                    // ⚡ Add simultaneous glow + focus ring
+                    // 🌀 Force reflow (ensure Safari paints paused state cleanly)
+                    orb.offsetHeight;
+
+                    // ⚡ Instantly snap to glow state — temporarily disable transitions
+                    orb.style.transition = 'none';
                     orb.classList.add('glow');
+
+                    // ⚡ Add focus ring simultaneously
                     launchLink.classList.add('focus-ring');
 
-                    window.location.href = launchLink.href;
+                    // 🕒 Wait one animation frame, then restore transitions for natural fade
+                    requestAnimationFrame(() => {
+                        orb.style.transition = ''; // re-enable transitions for future animations
+
+                        // 🕓 Navigate after visible glow
+                        setTimeout(() => {
+                            window.location.href = launchLink.href;
+                        }, 700);
+                    });
                 });
             }
         });
