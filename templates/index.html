@@ -167,19 +167,16 @@
             // Orb + button ignition click
             if (launchLink && orb) {
                 launchLink.addEventListener('click', e => {
-                e.preventDefault();
+                    e.preventDefault();
 
-                // ⚡ Instantly freeze current animation state
-                orb.style.animation = 'none';
+                    // ⚡ Instantly freeze current animation state
+                    orb.style.animation = 'none';
 
-                // ⚡ Add simultaneous glow + focus ring
-                orb.classList.add('glow');
-                launchLink.classList.add('focus-ring');
+                    // ⚡ Add simultaneous glow + focus ring
+                    orb.classList.add('glow');
+                    launchLink.classList.add('focus-ring');
 
-                // ⚡ Hold the glow for dramatic effect, then navigate
-                setTimeout(() => {
                     window.location.href = launchLink.href;
-                }, 900); // duration of glow before transition
                 });
             }
         });
