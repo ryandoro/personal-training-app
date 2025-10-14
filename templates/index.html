@@ -157,12 +157,6 @@
             const launchLink = document.getElementById('launch-training');
             const igniteButtons = document.querySelectorAll('.btn-ignite');
 
-            if (orb) {
-                orb.classList.remove('glow');
-                orb.style.removeProperty('animation');
-                orb.style.removeProperty('animationPlayState');
-            }
-
             // 💡 Touch highlight (mobile-friendly focus ring)
             igniteButtons.forEach(btn => {
                 btn.addEventListener('touchstart', () => {
@@ -174,6 +168,9 @@
             if (launchLink && orb) {
                 launchLink.addEventListener('click', e => {
                     e.preventDefault();
+
+                    // 🧊 Pause breathing animation so glow can dominate
+                    orb.style.animationPlayState = 'paused';
 
                     // 🌀 Force reflow (ensure Safari paints paused state cleanly)
                     orb.offsetHeight;
