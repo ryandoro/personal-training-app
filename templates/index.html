@@ -158,11 +158,6 @@
             document.querySelectorAll('.btn-ignite').forEach(btn => {
                 btn.addEventListener('pointerdown', () => {
                     btn.classList.add('focus-ring'); // stays on after tap
-                    
-                    orb.style.animation = 'none';
-                    
-                    // 🟠 make the orb glow without breaking animations
-                    orb.classList.add('glow');
                 });
             });
         });
