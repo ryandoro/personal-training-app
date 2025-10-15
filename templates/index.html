@@ -154,42 +154,13 @@
 
         document.addEventListener('DOMContentLoaded', () => {
             const orb = document.getElementById('fitbase-orb');
-            const launchLink = document.getElementById('launch-training');
-            const igniteButtons = document.querySelectorAll('.btn-ignite');
-            if (!orb || !launchLink) return;
-
-            let launched = false;
-
-            // 💡 Touch highlight (mobile-friendly focus ring for all ignite buttons)
-            igniteButtons.forEach(btn => {
-                ['click', 'touchstart'].forEach(evt => {
-                btn.addEventListener(evt, () => {
-                    btn.classList.add('focus-ring');
-                });
-                });
-            });
-
-            // ⚡ Orb glow + navigation only for the Launch Training button
-            ['click', 'touchstart'].forEach(evt => {
-                launchLink.addEventListener(evt, () => {
-                    if (launched) return;
-                    launched = true;
-
+            
+            document.querySelectorAll('.btn-ignite').forEach(btn => {
+                btn.addEventListener('touchstart', () => {
+                    btn.classList.add('focus-ring'); // stays on after tap
                     // 🟠 Instantly trigger glow
                     orb.classList.add('glow');
                     orb.style.animationPlayState = 'paused';
-
-                    // Pause wrapper pulse if present
-                    const wrapper = orb.closest('.orb-wrapper');
-                    if (wrapper) wrapper.style.animationPlayState = 'paused';
-
-                    // ⚡ Reinforce focus ring visual
-                    launchLink.classList.add('focus-ring');
-
-                    // 🌐 Smooth navigation after visible glow
-                    //setTimeout(() => {
-                    window.location.replace(launchLink.href);
-                    //}, 600); // tuned for iPhone Safari
                 });
             });
         });
