@@ -156,41 +156,40 @@
             const orb = document.getElementById('fitbase-orb');
             const launchLink = document.getElementById('launch-training');
             const igniteButtons = document.querySelectorAll('.btn-ignite');
-
             if (!orb || !launchLink) return;
 
-            let launched = false; // define once, not inside the loop
+            let launched = false;
 
-        
-            // 💡 Touch highlight (mobile-friendly focus ring)
+            // 💡 Touch highlight (mobile-friendly focus ring for all ignite buttons)
             igniteButtons.forEach(btn => {
                 ['click', 'touchstart'].forEach(evt => {
-                    btn.addEventListener(evt, e => {
-                        btn.classList.add('focus-ring');
+                btn.addEventListener(evt, () => {
+                    btn.classList.add('focus-ring');
+                });
+                });
+            });
 
-                        // Only trigger full launch sequence on Launch Training button
-                        if (btn !== launchLink || launched) return;
-                        launched = true;
+            // ⚡ Orb glow + navigation only for the Launch Training button
+            ['click', 'touchstart'].forEach(evt => {
+                launchLink.addEventListener(evt, () => {
+                    if (launched) return;
+                    launched = true;
 
-                        e.preventDefault();
+                    // 🟠 Instantly trigger glow
+                    orb.classList.add('glow');
+                    orb.style.animationPlayState = 'paused';
 
-                        // 🟠 Instantly trigger glow (no delay)
-                        orb.classList.add('glow');
-                        launchLink.classList.add('focus-ring');
+                    // Pause wrapper pulse if present
+                    const wrapper = orb.closest('.orb-wrapper');
+                    if (wrapper) wrapper.style.animationPlayState = 'paused';
 
-                        // 🕓 Natural transition
-                        requestAnimationFrame(() => {
-                            // 🧊 Pause breathing animation AFTER glow paints
-                            orb.style.animationPlayState = 'paused';
-                            // Re-enable transitions for smoother fade afterward
-                            orb.style.transition = '';
+                    // ⚡ Reinforce focus ring visual
+                    launchLink.classList.add('focus-ring');
 
-                            // 🌐 Navigate after visible glow
-                            setTimeout(() => {
-                                window.location.href = launchLink.href;
-                            }, 1500); // 1.5s before navigation
-                        });
-                    });
+                    // 🌐 Smooth navigation after visible glow
+                    //setTimeout(() => {
+                    window.location.replace(launchLink.href);
+                    //}, 600); // tuned for iPhone Safari
                 });
             });
         });
