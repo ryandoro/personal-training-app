@@ -156,34 +156,40 @@
             const orb = document.getElementById('fitbase-orb');
             const launchLink = document.getElementById('launch-training');
             const igniteButtons = document.querySelectorAll('.btn-ignite');
-
+        
             // 💡 Touch highlight (mobile-friendly focus ring)
             igniteButtons.forEach(btn => {
                 btn.addEventListener('touchstart', () => {
                     btn.classList.add('focus-ring');
                 });
             });
-
+        
             // ⚡ Orb + button ignition click/tap
             if (launchLink && orb) {
-                launchLink.addEventListener('click', e => {
-                    e.preventDefault();
-
-                    // 🟠 Instantly trigger glow (no delay)
-                    orb.classList.add('glow');
-                    launchLink.classList.add('focus-ring');
-
-                    // 🕓 Natural transition 
-                    requestAnimationFrame(() => {
-                        // 🧊 Pause breathing animation AFTER glow paints
-                        orb.style.animationPlayState = 'paused';
-                        // Re-enable transitions for smoother fade afterward
-                        orb.style.transition = '';
-
-                        // 🌐 Navigate after visible glow (adjust delay to taste)
-                        setTimeout(() => {
-                            window.location.href = launchLink.href;
-                        }, 1500); // 1.5s before navigation
+                let launched = false;
+        
+                ['click', 'touchstart'].forEach(evt => {
+                    launchLink.addEventListener(evt, e => {
+                        if (launched) return;
+                        launched = true;
+                        e.preventDefault();
+        
+                        // 🟠 Instantly trigger glow (no delay)
+                        orb.classList.add('glow');
+                        launchLink.classList.add('focus-ring');
+        
+                        // 🕓 Natural transition 
+                        requestAnimationFrame(() => {
+                            // 🧊 Pause breathing animation AFTER glow paints
+                            orb.style.animationPlayState = 'paused';
+                            // Re-enable transitions for smoother fade afterward
+                            orb.style.transition = '';
+        
+                            // 🌐 Navigate after visible glow (adjust delay to taste)
+                            setTimeout(() => {
+                                window.location.replace(launchLink.href);
+                            }, 1500); // 1.5s before navigation
+                        });
                     });
                 });
             }
