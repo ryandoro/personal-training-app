@@ -37,8 +37,8 @@ html, body {
 /* Orb controls glow, scale, and hue */
 #fitbase-orb {
   --glow-intensity: 0.6;
-  width: 220px;
-  height: 220px;
+  width: 250px;
+  height: 250px;
   transition: transform 0.4s ease, filter 0.4s ease;
   backface-visibility: hidden;
   will-change: transform, filter;
@@ -79,7 +79,14 @@ html, body {
 }
 
 #fitbase-orb.glow {
+  animation: smoothPulse 0s cubic-bezier(0.42, 0, 0.58, 1) infinite,
+             hueShift 0s ease-in-out infinite;
   transform: scale(1.18);
+  mask-image: radial-gradient(circle at center, rgba(0,0,0,1) 25%, rgba(0,0,0,0) 65%);
+  -webkit-mask-image: radial-gradient(circle at center, rgba(0,0,0,1) 25%, rgba(0,0,0,0) 65%);
+  mask-mode: alpha;
+  -webkit-mask-mode: alpha;
+
   filter:
     drop-shadow(0 0 180px rgba(0,178,255,1))
     drop-shadow(0 0 90px rgba(0,178,255,0.9))
