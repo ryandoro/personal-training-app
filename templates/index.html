@@ -158,9 +158,6 @@
             document.querySelectorAll('.btn-ignite').forEach(btn => {
                 btn.addEventListener('touchstart', () => {
                     btn.classList.add('focus-ring'); // stays on after tap
-                    // 🟠 Instantly trigger glow
-                    orb.classList.add('glow');
-                    orb.style.animationPlayState = 'paused';
                 });
             });
         });
