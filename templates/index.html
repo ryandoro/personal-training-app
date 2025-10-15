@@ -158,6 +158,10 @@
             document.querySelectorAll('.btn-ignite').forEach(btn => {
                 btn.addEventListener('touchstart', () => {
                     btn.classList.add('focus-ring'); // stays on after tap
+                    
+                    // 🟠 make the orb glow without breaking animations
+                    orb.classList.add('glow');
+                    orb.style.animationPlayState = 'running'; // keep it alive on iOS
                 });
             });
         });
