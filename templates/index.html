@@ -156,12 +156,11 @@
             const orb = document.getElementById('fitbase-orb');
             
             document.querySelectorAll('.btn-ignite').forEach(btn => {
-                btn.addEventListener('click', () => {
+                btn.addEventListener('pointerdown', () => {
                     btn.classList.add('focus-ring'); // stays on after tap
                     
                     orb.style.animation = 'none';
-                    orb.offsetHeight; // 👈 forces reflow on iOS
-
+                    
                     // 🟠 make the orb glow without breaking animations
                     orb.classList.add('glow');
                 });
