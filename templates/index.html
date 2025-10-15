@@ -156,10 +156,11 @@
             const orb = document.getElementById('fitbase-orb');
             
             document.querySelectorAll('.btn-ignite').forEach(btn => {
-                btn.addEventListener('touchstart', () => {
+                btn.addEventListener('click', () => {
                     btn.classList.add('focus-ring'); // stays on after tap
                     
-                    orb.style.animationPlayState = 'running'; // keep it alive on iOS
+                    orb.style.animation = 'none';
+                    orb.offsetHeight; // 👈 forces reflow on iOS
 
                     // 🟠 make the orb glow without breaking animations
                     orb.classList.add('glow');
