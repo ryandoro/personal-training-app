@@ -31,29 +31,26 @@ html, body {
 /* Wrapper controls brightness (the “inner light”) */
 .orb-wrapper {
   display: inline-block;
+  animation: breathingBrightness 6s cubic-bezier(0.55, 0.03, 0.45, 0.95) infinite;
 }
 
 /* Orb controls glow, scale, and hue */
 #fitbase-orb {
   --glow-intensity: 0.6;
-  width: 250px;
-  height: 250px;
+  width: 275px;
+  height: 275px;
   transition: transform 0.4s ease, filter 0.4s ease;
   backface-visibility: hidden;
   will-change: transform, filter;
-  filter:
-    drop-shadow(0 0 calc(40px + var(--glow-intensity) * 40px)
-      rgba(0,178,255,var(--glow-intensity)))
-    drop-shadow(0 0 calc(80px + var(--glow-intensity) * 60px)
-      rgba(247,147,26,var(--glow-intensity)));
+  filter: drop-shadow(0 0 40px rgba(0,178,255,0.6))
+          drop-shadow(0 0 80px rgba(247,147,26,0.6));
 
   mask-image: radial-gradient(circle at center, rgba(0,0,0,1) 25%, rgba(0,0,0,0) 65%);
   -webkit-mask-image: radial-gradient(circle at center, rgba(0,0,0,1) 25%, rgba(0,0,0,0) 65%);
   mask-mode: alpha;
   -webkit-mask-mode: alpha;
-  animation: breathingBrightness 6s cubic-bezier(0.55, 0.03, 0.45, 0.95) infinite,
-  smoothPulse 6s cubic-bezier(0.42, 0, 0.58, 1) infinite,
-  hueShift 18s ease-in-out infinite;
+  animation: smoothPulse 6s cubic-bezier(0.42, 0, 0.58, 1) infinite,
+             hueShift 18s ease-in-out infinite;
 }
 
 /* Brightness breathing */
@@ -66,10 +63,26 @@ html, body {
 
 /* Outer glow and expansion */
 @keyframes smoothPulse {
-  0%   { --glow-intensity: 0.6; transform: scale(1); }
-  30%  { --glow-intensity: 1;   transform: scale(1.1); }
-  40%  { --glow-intensity: 0.95;transform: scale(1.11); }
-  100% { --glow-intensity: 0.6; transform: scale(1); }
+  0% {
+    filter: drop-shadow(0 0 40px rgba(0,178,255,0.6))
+            drop-shadow(0 0 80px rgba(247,147,26,0.6));
+    transform: scale(1);
+  }
+  30% {
+    filter: drop-shadow(0 0 70px rgba(0,178,255,1))
+            drop-shadow(0 0 120px rgba(247,147,26,1));
+    transform: scale(1.1);
+  }
+  40% {
+    filter: drop-shadow(0 0 65px rgba(0,178,255,0.95))
+            drop-shadow(0 0 115px rgba(247,147,26,0.95));
+    transform: scale(1.11);
+  }
+  100% {
+    filter: drop-shadow(0 0 40px rgba(0,178,255,0.6))
+            drop-shadow(0 0 80px rgba(247,147,26,0.6));
+    transform: scale(1);
+  }
 }
 
 @keyframes hueShift {

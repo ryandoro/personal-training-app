@@ -89,7 +89,7 @@
 <div class="orb-container text-center">
     <div class="orb-wrapper">
         <img id="fitbase-orb"
-            src="{{ url_for('static', filename='images/fitbaseai_orb.png') }}"
+            src="{{ url_for('static', filename='images/fitbase_orb1.png') }}"
             alt="FitBaseAI Energy Core">
     </div>
 </div> 
@@ -168,6 +168,7 @@
                 btn.addEventListener(downEvent, () => {
                     btn.classList.add('focus-ring');
                     orb.style.animation = 'none';
+                    wrapper.style.animation = 'none';
                     orb.classList.add('glow');
                 });
             });
