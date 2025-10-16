@@ -91,7 +91,7 @@ html, body {
 }
 
 #fitbase-orb.glow {
-  transform: scale(1.18);
+  transform: scale(1.25);
   filter:
     drop-shadow(0 0 200px rgba(0,178,255,1))
     drop-shadow(0 0 200px rgba(247,147,26,1));
