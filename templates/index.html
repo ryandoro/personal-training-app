@@ -154,11 +154,21 @@
 
         document.addEventListener('DOMContentLoaded', () => {
             const orb = document.getElementById('fitbase-orb');
-            
-            document.querySelectorAll('.btn-ignite').forEach(btn => {
-                btn.addEventListener('pointerdown', () => {
-                    btn.classList.add('focus-ring'); // stays on after tap
-                    orb.classList.add('glow')
+            const launchButton = document.getElementById('launch-training');
+            const igniteButtons = document.querySelectorAll('.btn-ignite');
+            const wrapper = document.querySelector('.orb-wrapper');
+
+            // ✅ Handle touch + click (mobile-safe)
+            const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+            const downEvent = isTouch ? 'touchstart' : 'pointerdown';
+            const clickEvent = isTouch ? 'touchend' : 'click';
+
+            // 🔹 Add quick highlight when tapped
+            igniteButtons.forEach(btn => {
+                btn.addEventListener(downEvent, () => {
+                    btn.classList.add('focus-ring');
+                    orb.style.animation = 'none';
+                    orb.classList.add('glow');
                 });
             });
         });
