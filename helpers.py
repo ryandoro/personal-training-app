@@ -52,6 +52,64 @@ WORKOUT_STRUCTURE = {
     },
 }
 
+CUSTOM_WORKOUT_TOKEN = "Custom Workout"
+CUSTOM_WORKOUT_CATEGORIES = (
+    "CHEST",
+    "TRICEPS",
+    "BACK",
+    "BICEPS",
+    "SHOULDERS",
+    "ABS",
+    "LEGS",
+    "CARDIO",
+)
+
+# Weighted baseline so condensed sessions still hit big movers first.
+CUSTOM_WORKOUT_BASE_COUNTS = {
+    "LEGS": 8,
+    "BACK": 6,
+    "CHEST": 6,
+    "SHOULDERS": 5,
+    "BICEPS": 4,
+    "TRICEPS": 4,
+    "ABS": 4,
+    "CARDIO": 3,
+}
+
+CUSTOM_WORKOUT_SELECTION_LIMITS = {
+    20: {"min": 1, "max": 3},
+    30: {"min": 1, "max": 4},
+    45: {"min": 1, "max": 6},
+    60: {"min": 1, "max": 8},
+}
+
+CUSTOM_WORKOUT_TOTAL_EXERCISES = {
+    20: 3,
+    30: 4,
+    45: 7,
+    60: 10,
+}
+
+def normalize_custom_workout_categories(categories) -> list[str]:
+    seen = set()
+    normalized: list[str] = []
+    for raw in categories or []:
+        token = (str(raw) or '').strip().upper()
+        if token and token in CUSTOM_WORKOUT_CATEGORIES and token not in seen:
+            seen.add(token)
+            normalized.append(token)
+    return normalized
+
+
+def custom_selection_bounds(duration_minutes: int) -> tuple[int, int]:
+    limits = CUSTOM_WORKOUT_SELECTION_LIMITS.get(
+        duration_minutes,
+        {"min": 1, "max": len(CUSTOM_WORKOUT_CATEGORIES)},
+    )
+    min_req = max(1, int(limits.get("min", 1)))
+    max_allowed = max(min_req, int(limits.get("max", len(CUSTOM_WORKOUT_CATEGORIES))))
+    return min_req, max_allowed
+
 
 CARDIO_RESTRICTION_TOKEN = 'cardio'
 
@@ -387,10 +445,11 @@ def calculate_target_heart_rate(age):
     }
 
 
-def allocate_counts(subcategories: dict, scale: float, selected_category: str) -> dict:
+def allocate_counts(subcategories: dict, scale: float, selected_category: str, total_override: int | None = None) -> dict:
     """
-    Allocate a total exercise budget across subcategories with priority emphasis
-    for 'big movers' when time is short.
+    Allocate a total exercise budget across subcategories with priority emphasis.
+    When ``total_override`` is provided, it is used as the exact number of exercises
+    to distribute across the selected subcategories.
     """
     # ---- 1) Define priority per category ----
     PRIORITY_MAP = {
@@ -406,12 +465,16 @@ def allocate_counts(subcategories: dict, scale: float, selected_category: str) -
         "Shoulders and Abs": ["SHOULDERS", "ABS"],
         "Arms": ["SHOULDERS", "BICEPS", "TRICEPS"],
         "Cardio": ["CARDIO"],
+        CUSTOM_WORKOUT_TOKEN: ["LEGS", "BACK", "CHEST", "SHOULDERS", "BICEPS", "TRICEPS", "ABS", "CARDIO"],
     }
     priority = PRIORITY_MAP.get(selected_category, [])
 
     # ---- 2) Budget math ----
     base_total = sum(subcategories.values())
-    target_total = max(1, math.floor(base_total * scale))
+    if total_override is not None:
+        target_total = max(1, int(total_override))
+    else:
+        target_total = max(1, math.floor(base_total * scale))
 
     # Edge cases
     if base_total == 0 or not subcategories:
@@ -476,7 +539,7 @@ def get_user_level(exercise_history: str | None) -> int:
     return LEVEL_MAP.get(exercise_history, 1)
 
 
-def generate_workout(selected_category, user_level, user_id, duration_minutes=60):
+def generate_workout(selected_category, user_level, user_id, duration_minutes=60, custom_categories=None):
     """
     Generate a workout based on the selected category, user level, and preferred duration.
     Respects user injury restrictions by omitting excluded categories.
@@ -494,14 +557,48 @@ def generate_workout(selected_category, user_level, user_id, duration_minutes=60
     scale = max(0.33, min(1.0, scale))
     # → 20 mins = ~0.33x, 30 = 0.5x, 45 = 0.75x, 60 = 1.0x
 
-    # Fetch the workout structure for the selected category and user level
-    subcategories = WORKOUT_STRUCTURE.get(user_level, {}).get(selected_category, {})
+    category_key = (selected_category or "").strip()
+    is_custom = category_key == CUSTOM_WORKOUT_TOKEN
+
+    if is_custom:
+        normalized = normalize_custom_workout_categories(custom_categories)
+        min_required, max_allowed = custom_selection_bounds(duration_minutes)
+        count = len(normalized)
+        if count < min_required or count > max_allowed:
+            raise ValueError(
+                f"Select between {min_required} and {max_allowed} categories for a {duration_minutes}-minute workout."
+            )
+        if not normalized:
+            raise ValueError("Choose at least one workout category.")
+        subcategories = OrderedDict(
+            (cat, CUSTOM_WORKOUT_BASE_COUNTS.get(cat, 2))
+            for cat in normalized
+        )
+        total_target = CUSTOM_WORKOUT_TOTAL_EXERCISES.get(duration_minutes)
+        if total_target is None:
+            # Default to a proportional scale similar to main program (roughly 10 exercises per hour)
+            proportional = max(3, round((duration_minutes or 60) * (10 / 60)))
+            total_target = proportional
+        total_target = max(len(normalized), total_target)
+    else:
+        structure = WORKOUT_STRUCTURE.get(user_level, {})
+        subcategories = structure.get(category_key, {})
+        if not subcategories:
+            raise ValueError("Invalid workout category selected.")
+        subcategories = OrderedDict(subcategories.items())
+
     workout_plan = OrderedDict()
 
     profile = get_user_injury_profile(user_id)
     excluded_categories = compute_injury_exclusions(profile['regions'], profile['cardio_restriction'])
 
-    counts = allocate_counts(subcategories, scale, selected_category)
+    priority_key = CUSTOM_WORKOUT_TOKEN if is_custom else category_key
+    counts = allocate_counts(
+        subcategories,
+        scale,
+        priority_key,
+        total_override=total_target if is_custom else None,
+    )
 
     skipped = {
         'regions': list(profile['regions']),

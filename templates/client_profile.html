@@ -11,29 +11,28 @@
             <div class="card shadow-sm border-0 h-100 overflow-hidden">
                 <div class="p-4 text-white rounded-3" style="background: linear-gradient(135deg, #1EA4E6 0%, #33C3F0 100%);">
                     <div class="d-flex flex-column gap-3">
-                        <div class="d-flex flex-column flex-md-row gap-3 justify-content-between align-items-md-start">
-                            <div class="d-flex align-items-center gap-3">
-                                <div class="rounded-circle d-flex align-items-center justify-content-center bg-white text-dark"
-                                     style="width: 64px; height: 64px; font-weight: 700;">
-                                    {{ (client.name or '')[:1] ~ (client.last_name or '')[:1] or 'C' }}
-                                </div>
-                                <div>
-                                    <h2 class="mb-1 text-white">{{ client.name or 'Client' }} {{ client.last_name or '' }}</h2>
-                                    <div class="d-flex flex-wrap align-items-center gap-2 small">
-                                        <span class="badge bg-light text-dark">@{{ client.username }}</span>
-                                        {% if client.subscription_type %}
-                                            <span class="badge bg-light text-dark">{{ client.subscription_type|capitalize }} Plan</span>
-                                        {% endif %}
-                                        {% if client.sessions_remaining is not none %}
-                                            <span class="badge bg-light text-dark">{{ client.sessions_remaining }} Sessions Remaining</span>
-                                        {% endif %}
-                                    </div>
-                                </div>
+                        <div class="d-flex justify-content-start">
+                            <a href="{{ url_for('trainer_dashboard') }}"
+                               class="btn btn-outline-light btn-sm">
+                                <i class="bi bi-arrow-left me-1"></i>Back to Dashboard
+                            </a>
+                        </div>
+                        <div class="d-flex align-items-center gap-3">
+                            <div class="rounded-circle d-flex align-items-center justify-content-center bg-white text-dark"
+                                 style="width: 64px; height: 64px; font-weight: 700;">
+                                {{ (client.name or '')[:1] ~ (client.last_name or '')[:1] or 'C' }}
                             </div>
-                            <div class="mt-2 mt-md-0">
-                                <a href="{{ url_for('trainer_dashboard') }}" class="btn btn-outline-light btn-sm">
-                                    <i class="bi bi-arrow-left me-1"></i>Back to Dashboard
-                                </a>
+                            <div>
+                                <h2 class="mb-1 text-white">{{ client.name or 'Client' }} {{ client.last_name or '' }}</h2>
+                                <div class="d-flex flex-wrap align-items-center gap-2 small">
+                                    <span class="badge bg-light text-dark">@{{ client.username }}</span>
+                                    {% if client.subscription_type %}
+                                        <span class="badge bg-light text-dark">{{ client.subscription_type|capitalize }} Plan</span>
+                                    {% endif %}
+                                    {% if client.sessions_remaining is not none %}
+                                        <span class="badge bg-light text-dark">{{ client.sessions_remaining }} Sessions Remaining</span>
+                                    {% endif %}
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -260,7 +259,7 @@
         <div class="col-12 col-lg-8 training-container client-workout">
             <div class="card border-0 shadow-lg mb-4" style="border-radius: 20px;">
                 <div class="card-header border-0" style="background: linear-gradient(135deg, #1EA4E6 0%, #33C3F0 100%); border-top-left-radius: 20px; border-top-right-radius: 20px;">
-                    <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between text-white">
+                    <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-center text-white">
                         <div>
                             <h5 class="mb-1 text-white">Generate Workout for {{ client.name or client.username }}</h5>
                         </div>
@@ -284,27 +283,45 @@
                             {% endfor %}
                         </div>
                     </div>
-                    <div class="row g-4 align-items-end">
-                        <div class="col-md-8">
-                            <div class="mb-3 mb-md-0">
+                    <div class="row g-4">
+                        <div class="col-12">
+                            <div class="mb-3">
                                 <label for="category" class="form-label fw-bold text-primary">Workout Categories</label>
                                 <select id="category" name="category" class="form-select text-center shadow-sm bitcoin-workout" required form="generate-client-workout">
                                     <option value="" disabled selected>Select a Workout Category</option>
                                     {% for category in category_options %}
-                                        <option value="{{ category }}">{{ category }}</option>
+                                        {% if category == custom_workout_token and not client_has_premium_access %}
+                                            {# Skip Custom Workout if the client does not have access #}
+                                        {% else %}
+                                            <option value="{{ category }}">{{ category }}</option>
+                                        {% endif %}
                                     {% endfor %}
                                 </select>
+                                <div id="trainer-custom-controls" class="mt-3 text-center" hidden>
+                                    <button type="button" id="trainer-custom-button" class="btn btn-outline-primary btn-sm fw-semibold px-3">
+                                        Choose Categories
+                                    </button>
+                                    <div id="trainer-custom-feedback" class="small text-muted mt-2"></div>
+                                    <div id="trainer-custom-summary" class="small fw-semibold text-primary mt-1 d-none"></div>
+                                </div>
+                                <input type="hidden"
+                                       id="trainer-custom-input"
+                                       name="custom_categories"
+                                       form="generate-client-workout"
+                                       data-custom-token="{{ custom_workout_token }}"
+                                       data-custom-limits='{{ custom_workout_limits | tojson }}'
+                                       value='{{ active_workout.custom_categories | tojson if active_workout and active_workout.custom_categories else "[]" }}'>
                             </div>
                         </div>
-                        <div class="col-md-4 d-grid">
-                            <button id="generate-client-workout-btn"
-                                    type="submit"
-                                    class="btn btn-primary fw-bold btn-lg border rounded-3 px-4"
-                                    style="text-shadow: 0 0 1px rgba(0,0,0,0.25); box-shadow: 0 0 12px rgba(30,164,230,0.45);"
-                                    form="generate-client-workout">
-                                Generate Workout
-                            </button>
-                        </div>
+                    </div>
+                    <div class="d-grid mt-3">
+                        <button id="generate-client-workout-btn"
+                                type="submit"
+                                class="btn btn-primary fw-bold btn-lg border rounded-3 px-4"
+                                style="text-shadow: 0 0 1px rgba(0,0,0,0.25); box-shadow: 0 0 12px rgba(30,164,230,0.45);"
+                                form="generate-client-workout">
+                            Generate Workout
+                        </button>
                     </div>
                 </div>
                 <form id="generate-client-workout" method="POST" action="{{ url_for('generate_client_workout', client_id=client.id) }}" hidden></form>
@@ -331,7 +348,19 @@
                 <div class="card-body bg-white p-4">
                     {% if active_workout and active_workout.plan %}
                         <div class="d-flex flex-wrap gap-2 mb-3">
-                            <span class="badge text-bg-primary">{{ active_workout.category }}</span>
+                            {% if active_workout.category == custom_workout_token and active_workout.custom_categories %}
+                                {# Render the selected custom categories in a single badge #}
+                                {% set pretty_custom = [] %}
+                                {% for token in active_workout.custom_categories %}
+                                    {% if token %}
+                                        {% set pretty = token|lower|replace('_', ' ')|title %}
+                                        {% set _ = pretty_custom.append(pretty) %}
+                                    {% endif %}
+                                {% endfor %}
+                                <span class="badge text-bg-primary">{{ pretty_custom|join(', ') }}</span>
+                            {% else %}
+                                <span class="badge text-bg-primary">{{ active_workout.category }}</span>
+                            {% endif %}
                             {% if active_workout.duration_minutes %}
                                 <span class="badge text-bg-secondary">{{ active_workout.duration_minutes }} mins</span>
                             {% endif %}
@@ -470,6 +499,31 @@
 
     <div id="toastSuccess" class="toast-floating fw-bold" style="display:none; background:#d1e7dd; color:#0f5132;"></div>
 
+    <div id="trainerCustomModal" class="modal-overlay" style="display: none;">
+        <div class="modal-card custom-workout-modal">
+            <button type="button" id="trainerCustomModalClose" class="btn-close"></button>
+            <h5 class="mb-2">Build Custom Workout</h5>
+            <p class="small text-muted mb-3" id="trainer-custom-limit-text">Select categories to get started.</p>
+            <div class="row g-2">
+                {% for category in custom_workout_categories %}
+                    <div class="col-6">
+                        <div class="form-check custom-workout-check p-2 bg-light rounded-3 h-100">
+                            <input class="form-check-input trainer-custom-checkbox" type="checkbox" value="{{ category }}" id="trainer-custom-cat-{{ loop.index }}">
+                            <label class="form-check-label fw-semibold" for="trainer-custom-cat-{{ loop.index }}">{{ category.title() }}</label>
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+            <div class="d-flex justify-content-between align-items-center mt-3">
+                <button type="button" class="btn btn-link text-decoration-none px-0" id="trainerCustomClear">Clear All</button>
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-outline-secondary" id="trainerCustomCancel">Cancel</button>
+                    <button type="button" class="btn btn-brand" id="trainerCustomApply">Apply</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div id="prModal" class="modal fade" tabindex="-1" style="display:none; align-items:center; justify-content:center;">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content shadow-lg border-0">
@@ -566,6 +620,201 @@
     const categorySelect = document.getElementById('category');
     const generateWorkoutBtn = document.getElementById('generate-client-workout-btn');
     const generateWorkoutForm = document.getElementById('generate-client-workout');
+    const trainerCustomInput = document.getElementById('trainer-custom-input');
+    const trainerCustomControls = document.getElementById('trainer-custom-controls');
+    const trainerCustomButton = document.getElementById('trainer-custom-button');
+    const trainerCustomFeedback = document.getElementById('trainer-custom-feedback');
+    const trainerCustomSummary = document.getElementById('trainer-custom-summary');
+    const trainerCustomModal = document.getElementById('trainerCustomModal');
+    const trainerCustomModalClose = document.getElementById('trainerCustomModalClose');
+    const trainerCustomApply = document.getElementById('trainerCustomApply');
+    const trainerCustomCancel = document.getElementById('trainerCustomCancel');
+    const trainerCustomClear = document.getElementById('trainerCustomClear');
+    const trainerCustomLimitText = document.getElementById('trainer-custom-limit-text');
+    const trainerCustomCheckboxes = trainerCustomModal ? Array.from(trainerCustomModal.querySelectorAll('.trainer-custom-checkbox')) : [];
+    const trainerCustomToken = trainerCustomInput ? trainerCustomInput.dataset.customToken : '';
+    let trainerCustomLimits = {};
+    try {
+        trainerCustomLimits = trainerCustomInput ? JSON.parse(trainerCustomInput.dataset.customLimits || '{}') : {};
+    } catch (err) {
+        console.warn('Failed to parse trainer custom workout limits.', err);
+        trainerCustomLimits = {};
+    }
+    let trainerDraftSelection = new Set();
+    let trainerActiveDuration = parseInt((durationDisplay?.textContent || '').replace(/[^0-9]/g, ''), 10) || 60;
+
+    function normalizeTrainerSelection(values) {
+        const seen = new Set();
+        const normalized = [];
+        (values || []).forEach((raw) => {
+            const token = String(raw || '').trim().toUpperCase();
+            if (!token || seen.has(token)) return;
+            seen.add(token);
+            normalized.push(token);
+        });
+        return normalized;
+    }
+
+    function getTrainerSelection() {
+        if (!trainerCustomInput) return [];
+        try {
+            const parsed = JSON.parse(trainerCustomInput.value || '[]');
+            const arrayValue = Array.isArray(parsed) ? parsed : [parsed];
+            return normalizeTrainerSelection(arrayValue);
+        } catch {
+            return [];
+        }
+    }
+
+    function setTrainerSelection(values) {
+        if (!trainerCustomInput) return;
+        const normalized = normalizeTrainerSelection(values);
+        trainerCustomInput.value = JSON.stringify(normalized);
+        updateTrainerCustomSummary();
+        syncGenerateButtonState();
+    }
+
+    function isTrainerCustomSelected() {
+        return !!(categorySelect && trainerCustomToken && categorySelect.value === trainerCustomToken);
+    }
+
+    function getTrainerDuration() {
+        return trainerActiveDuration;
+    }
+
+    function trainerSelectionBounds(minutes) {
+        const key = String(minutes);
+        const entry = trainerCustomLimits[key] || trainerCustomLimits[minutes] || {};
+        const minRequired = Math.max(1, Number(entry.min ?? 1));
+        const maxAllowed = Math.max(minRequired, Number(entry.max ?? (trainerCustomCheckboxes.length || 1)));
+        return [minRequired, maxAllowed];
+    }
+
+    function isTrainerSelectionValid() {
+        if (!isTrainerCustomSelected()) return true;
+        const selection = getTrainerSelection();
+        const [minRequired, maxAllowed] = trainerSelectionBounds(getTrainerDuration());
+        return selection.length >= minRequired && selection.length <= maxAllowed;
+    }
+
+    function updateTrainerCustomSummary() {
+        if (!trainerCustomControls) return;
+        const isActive = isTrainerCustomSelected();
+        trainerCustomControls.hidden = !isActive;
+        trainerCustomControls.style.display = isActive ? 'block' : 'none';
+        trainerCustomControls.style.pointerEvents = isActive ? 'auto' : 'none';
+        if (trainerCustomButton) {
+            trainerCustomButton.disabled = !isActive;
+            trainerCustomButton.setAttribute('aria-disabled', isActive ? 'false' : 'true');
+        }
+        if (!isActive) {
+            return;
+        }
+
+        const selection = getTrainerSelection();
+        const [minRequired, maxAllowed] = trainerSelectionBounds(getTrainerDuration());
+        const withinBounds = selection.length >= minRequired && selection.length <= maxAllowed;
+
+        if (trainerCustomFeedback) {
+            const rangeText = minRequired === maxAllowed
+                ? `Select exactly ${minRequired}`
+                : `Select ${minRequired}–${maxAllowed}`;
+            trainerCustomFeedback.textContent = `${rangeText} categories for a ${getTrainerDuration()}-minute Custom Workout.`;
+            trainerCustomFeedback.classList.toggle('text-danger', !withinBounds);
+        }
+
+        if (trainerCustomSummary) {
+            trainerCustomSummary.classList.remove('d-none');
+            if (!selection.length) {
+                trainerCustomSummary.textContent = 'No categories selected yet.';
+                trainerCustomSummary.classList.add('text-muted');
+            } else {
+                trainerCustomSummary.textContent = `Selected: ${selection.map(normalizeTrainerLabel).join(', ')}`;
+                trainerCustomSummary.classList.remove('text-muted');
+            }
+            trainerCustomSummary.classList.toggle('text-danger', selection.length > 0 && !withinBounds);
+        }
+    }
+
+    function normalizeTrainerLabel(value) {
+        return String(value || '')
+            .toLowerCase()
+            .replace(/_/g, ' ')
+            .replace(/\b\w/g, (char) => char.toUpperCase());
+    }
+
+    function syncTrainerModalCheckboxes() {
+        if (!trainerCustomCheckboxes.length) return;
+        trainerCustomCheckboxes.forEach((checkbox) => {
+            checkbox.checked = trainerDraftSelection.has(checkbox.value);
+        });
+    }
+
+    function updateTrainerModalStatus() {
+        if (!trainerCustomLimitText) return;
+        const [minRequired, maxAllowed] = trainerSelectionBounds(getTrainerDuration());
+        const selected = trainerDraftSelection.size;
+        const rangeText = minRequired === maxAllowed
+            ? `Select exactly ${minRequired}`
+            : `Select ${minRequired}–${maxAllowed}`;
+        trainerCustomLimitText.textContent = `${rangeText} categories in your preferred order (${selected} selected).`;
+        const valid = selected >= minRequired && selected <= maxAllowed;
+        trainerCustomLimitText.classList.toggle('text-danger', !valid);
+    }
+
+    function flashTrainerModalWarning() {
+        if (!trainerCustomLimitText) return;
+        trainerCustomLimitText.classList.add('text-danger');
+        trainerCustomLimitText.classList.add('fw-semibold');
+        setTimeout(() => trainerCustomLimitText.classList.remove('fw-semibold'), 800);
+    }
+
+    function openTrainerCustomModal() {
+        if (!trainerCustomModal) return;
+        trainerDraftSelection = new Set(getTrainerSelection());
+        syncTrainerModalCheckboxes();
+        updateTrainerModalStatus();
+        trainerCustomModal.style.display = 'flex';
+        requestAnimationFrame(() => trainerCustomModal.classList.add('show'));
+    }
+
+    function closeTrainerCustomModal() {
+        if (!trainerCustomModal) return;
+        trainerCustomModal.classList.remove('show');
+        trainerCustomModal.style.display = 'none';
+        trainerDraftSelection = new Set(getTrainerSelection());
+        syncTrainerModalCheckboxes();
+        updateTrainerModalStatus();
+    }
+
+    function handleTrainerDurationChange(minutes) {
+        if (!trainerCustomInput) return;
+        trainerActiveDuration = parseInt(minutes, 10) || trainerActiveDuration;
+        const selection = getTrainerSelection();
+        const [minRequired, maxAllowed] = trainerSelectionBounds(trainerActiveDuration);
+        let nextSelection = selection;
+
+        if (selection.length > maxAllowed) {
+            nextSelection = selection.slice(0, maxAllowed);
+            setTrainerSelection(nextSelection);
+            if (trainerCustomFeedback) {
+                trainerCustomFeedback.classList.add('text-danger');
+                setTimeout(() => trainerCustomFeedback.classList.remove('text-danger'), 1200);
+            }
+        } else {
+            setTrainerSelection(selection);
+        }
+
+        if (trainerCustomModal && trainerCustomModal.classList.contains('show')) {
+            trainerDraftSelection = new Set(nextSelection);
+            syncTrainerModalCheckboxes();
+            updateTrainerModalStatus();
+        }
+
+        if (selection.length < minRequired) {
+            updateTrainerCustomSummary();
+        }
+    }
     const trainerGoalCheckboxes = document.querySelectorAll('.trainer-goal-checkbox');
     const trainerGoalWarning = document.getElementById('trainer-goal-warning');
 
@@ -608,6 +857,7 @@
         if (variant === 'success') {
             toast.style.background = '#d1e7dd';
             toast.style.color = '#0f5132';
+            toast.style.border = '1px solid #5cb85c';
         } else {
             toast.style.background = '#f8d7da';
             toast.style.color = '#842029';
@@ -635,6 +885,7 @@
                 btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
             });
         }
+        trainerActiveDuration = parseInt(minutes, 10) || trainerActiveDuration;
         if (durationDisplay) {
             durationDisplay.textContent = `${minutes} mins`;
         }
@@ -646,13 +897,15 @@
     function syncSelectStyle() {
         if (!categorySelect) return;
         categorySelect.classList.toggle('select-orange', !!categorySelect.value);
+        updateTrainerCustomSummary();
     }
 
     function syncGenerateButtonState() {
         if (!generateWorkoutBtn) return;
         const hasCategory = !!(categorySelect && categorySelect.value);
         const isLoading = generateWorkoutBtn.dataset.loading === 'true';
-        generateWorkoutBtn.disabled = !hasCategory || isLoading;
+        const customValid = isTrainerSelectionValid();
+        generateWorkoutBtn.disabled = !hasCategory || isLoading || !customValid;
     }
 
     function setGenerateButtonLoading(isLoading) {
@@ -715,6 +968,7 @@
                 const previous = activeMinutes;
                 setDurationUi(minutes, pills);
                 activeMinutes = minutes;
+                handleTrainerDurationChange(minutes);
 
                 fetch(updateUrl, {
                     method: 'POST',
@@ -726,6 +980,7 @@
                     if (!data || !data.success) {
                         activeMinutes = previous;
                         setDurationUi(previous, pills);
+                        handleTrainerDurationChange(previous);
                         alert(data?.error || 'Could not update workout duration.');
                         return;
                     }
@@ -734,6 +989,7 @@
                 .catch(() => {
                     activeMinutes = previous;
                     setDurationUi(previous, pills);
+                     handleTrainerDurationChange(previous);
                     alert('Network error while updating duration.');
                 });
             });
@@ -1131,12 +1387,71 @@
 
         bindDurationPills();
 
+        setTrainerSelection(getTrainerSelection());
+        handleTrainerDurationChange(trainerActiveDuration);
+
         syncSelectStyle();
         syncGenerateButtonState();
 
         categorySelect?.addEventListener('change', () => {
             syncSelectStyle();
             syncGenerateButtonState();
+            if (isTrainerCustomSelected() && !getTrainerSelection().length) {
+                openTrainerCustomModal();
+            }
+        });
+
+        if (trainerCustomButton) {
+            trainerCustomButton.addEventListener('click', (event) => {
+                event.preventDefault();
+                openTrainerCustomModal();
+            });
+        }
+        if (trainerCustomModalClose) {
+            trainerCustomModalClose.addEventListener('click', () => closeTrainerCustomModal());
+        }
+        if (trainerCustomCancel) {
+            trainerCustomCancel.addEventListener('click', (event) => {
+                event.preventDefault();
+                closeTrainerCustomModal();
+            });
+        }
+        if (trainerCustomModal) {
+            trainerCustomModal.addEventListener('click', (event) => {
+                if (event.target === trainerCustomModal) {
+                    closeTrainerCustomModal();
+                }
+            });
+        }
+        if (trainerCustomApply) {
+            trainerCustomApply.addEventListener('click', () => {
+                setTrainerSelection(Array.from(trainerDraftSelection));
+                closeTrainerCustomModal();
+            });
+        }
+        if (trainerCustomClear) {
+            trainerCustomClear.addEventListener('click', (event) => {
+                event.preventDefault();
+                trainerDraftSelection = new Set();
+                syncTrainerModalCheckboxes();
+                updateTrainerModalStatus();
+            });
+        }
+        trainerCustomCheckboxes.forEach((checkbox) => {
+            checkbox.addEventListener('change', () => {
+                const [, maxAllowed] = trainerSelectionBounds(getTrainerDuration());
+                if (checkbox.checked) {
+                    if (trainerDraftSelection.size >= maxAllowed) {
+                        checkbox.checked = false;
+                        flashTrainerModalWarning();
+                        return;
+                    }
+                    trainerDraftSelection.add(checkbox.value);
+                } else {
+                    trainerDraftSelection.delete(checkbox.value);
+                }
+                updateTrainerModalStatus();
+            });
         });
 
         if (generateWorkoutBtn) {
@@ -1147,6 +1462,12 @@
             if (!categorySelect?.value) {
                 event.preventDefault();
                 syncGenerateButtonState();
+                return;
+            }
+            if (isTrainerCustomSelected() && !isTrainerSelectionValid()) {
+                event.preventDefault();
+                syncGenerateButtonState();
+                alert('Select categories within the allowed range for this Custom Workout.');
                 return;
             }
             // Defer to avoid blocking native submit behaviour

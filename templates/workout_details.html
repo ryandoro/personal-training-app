@@ -1,14 +1,14 @@
 {% extends "layout.html" %}
 
 {% block title %}
-    {{ category }} Workout Details
+    {{ display_category }} Workout Details
 {% endblock %}
 
 {% block content %}
 <div class="page-hero page-hero--scroll">
     <div class="page-card page-card--wide page-card--flush" style="background: rgba(255, 255, 255, 0.75); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);">
         <div class="page-section text-center">
-            <h2 class="fw-semibold mb-1">{{ category }}</h2>
+            <h2 class="fw-semibold mb-1">{{ display_category }}</h2>
             <p class="text-muted mb-0">Workout Details</p>
         </div>
 
@@ -22,7 +22,7 @@
                             <li class="list-group-item shadow-sm p-3 rounded-4 mb-3">
                                 <h6 class="mb-2 fw-semibold text-center">{{ exercise.name }}</h6>
                                 
-                                {% set is_cardio = category.lower() == 'cardio' %}
+                                {% set is_cardio = subcategory|lower == 'cardio' %}
                                 {% set is_bodyweight = 'bodyweight' in exercise.name|lower or exercise.max_weight == 0 %}
                                 
                                 {% if is_cardio %}
@@ -103,7 +103,6 @@ document.addEventListener('click', function (e) {
 });
 </script>
 {% endblock %}
-
 
 
 

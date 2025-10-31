@@ -558,7 +558,22 @@
                                 <option value="{{ category }}">{{ category }}</option>
                             {% endif %}
                         {% endfor %}
+                        {% if user and user.subscription_type != 'free' %}
+                            <option value="{{ custom_workout_token }}">{{ custom_workout_token }}</option>
+                        {% endif %}
                     </select>
+                    <div id="custom-workout-controls" class="custom-workout-controls mt-3 text-center" hidden>
+                        <button type="button" id="custom-workout-button" class="btn btn-outline-primary btn-sm fw-semibold px-3">
+                            Choose Categories
+                        </button>
+                        <div id="custom-workout-feedback" class="small text-muted mt-2"></div>
+                        <div id="custom-workout-summary" class="small fw-semibold text-primary mt-1 d-none"></div>
+                    </div>
+                    <input type="hidden"
+                           id="custom-workout-input"
+                           data-custom-token="{{ custom_workout_token }}"
+                           data-custom-limits='{{ custom_workout_limits | tojson }}'
+                           value="[]">
                 </div>                
                 <div class="text-center mb-3">
                     <button id="generate-workout-btn" type="button"
@@ -630,6 +645,7 @@
                     </div>
                 </div>
                 {% endfor %}
+                <div id="custom-workout-workouts" class="d-none"></div>
             </div>
 
             <!-- Arrow Indicator -->
@@ -663,8 +679,206 @@
             const completeWorkoutBtn = document.getElementById('complete-workout-btn');
             const progressTrackingNote = document.getElementById('progress-tracking-note');
             const toastGenerate = document.getElementById('toastGenerate');
+            const durationHiddenInput = document.getElementById('duration-input');
+            const customWorkoutInput = document.getElementById('custom-workout-input');
+            const customWorkoutControls = document.getElementById('custom-workout-controls');
+            const customWorkoutButton = document.getElementById('custom-workout-button');
+            const customWorkoutFeedback = document.getElementById('custom-workout-feedback');
+            const customWorkoutSummary = document.getElementById('custom-workout-summary');
+            let customWorkoutModal;
+            let customWorkoutModalClose;
+            let customWorkoutApply;
+            let customWorkoutCancel;
+            let customWorkoutClear;
+            let customWorkoutLimitText;
+            let customCheckboxes = [];
+            const customToken = customWorkoutInput ? customWorkoutInput.dataset.customToken : '';
+            let customLimits = {};
+            try {
+                customLimits = customWorkoutInput ? JSON.parse(customWorkoutInput.dataset.customLimits || '{}') : {};
+            } catch (err) {
+                console.warn('Failed to parse custom workout limits dataset.', err);
+                customLimits = {};
+            }
+            let draftCustomSelection = new Set();
 
             let toastGenerateTimeout;
+
+            function normalizeCustomSelection(values) {
+                const seen = new Set();
+                const normalized = [];
+                (values || []).forEach((raw) => {
+                    const token = String(raw || '').trim().toUpperCase();
+                    if (!token || seen.has(token)) return;
+                    seen.add(token);
+                    normalized.push(token);
+                });
+                return normalized;
+            }
+
+            function formatCategoryLabel(value) {
+                return String(value || '')
+                    .toLowerCase()
+                    .replace(/_/g, ' ')
+                    .replace(/\b\w/g, (char) => char.toUpperCase());
+            }
+
+            function getCustomSelection() {
+                if (!customWorkoutInput) return [];
+                try {
+                    const parsed = JSON.parse(customWorkoutInput.value || '[]');
+                    const arrayValue = Array.isArray(parsed) ? parsed : [parsed];
+                    return normalizeCustomSelection(arrayValue);
+                } catch {
+                    return [];
+                }
+            }
+
+            function setCustomSelection(values) {
+                if (!customWorkoutInput) return;
+                const normalized = normalizeCustomSelection(values);
+                customWorkoutInput.value = JSON.stringify(normalized);
+                updateCustomSummary();
+                syncGenerateButtonState();
+            }
+
+            function isCustomSelected() {
+                return !!(categorySelect && customToken && categorySelect.value === customToken);
+            }
+
+            function getCurrentDuration() {
+                const raw = durationHiddenInput ? durationHiddenInput.value : '';
+                const parsed = parseInt(raw, 10);
+                return Number.isFinite(parsed) ? parsed : 60;
+            }
+
+            function selectionBounds(minutes) {
+                const key = String(minutes);
+                const entry = customLimits[key] || customLimits[minutes] || {};
+                const minRequired = Math.max(1, Number(entry.min ?? 1));
+                const maxAllowed = Math.max(minRequired, Number(entry.max ?? (customCheckboxes.length || 1)));
+                return [minRequired, maxAllowed];
+            }
+
+            function isCustomSelectionValid() {
+                if (!isCustomSelected()) return true;
+                const selection = getCustomSelection();
+                const [minRequired, maxAllowed] = selectionBounds(getCurrentDuration());
+                return selection.length >= minRequired && selection.length <= maxAllowed;
+            }
+
+            function updateCustomSummary() {
+                if (!customWorkoutControls) return;
+                const isActive = isCustomSelected();
+                customWorkoutControls.hidden = !isActive;
+                customWorkoutControls.style.display = isActive ? 'block' : 'none';
+                customWorkoutControls.style.pointerEvents = isActive ? 'auto' : 'none';
+                if (customWorkoutButton) {
+                    customWorkoutButton.disabled = !isActive;
+                    customWorkoutButton.setAttribute('aria-disabled', isActive ? 'false' : 'true');
+                }
+                if (!isActive) {
+                    return;
+                }
+
+                const selection = getCustomSelection();
+                const minutes = getCurrentDuration();
+                const [minRequired, maxAllowed] = selectionBounds(minutes);
+                const withinBounds = selection.length >= minRequired && selection.length <= maxAllowed;
+
+                if (customWorkoutFeedback) {
+                    const rangeText = minRequired === maxAllowed
+                        ? `Select exactly ${minRequired}`
+                        : `Select ${minRequired}–${maxAllowed}`;
+                    customWorkoutFeedback.textContent = `${rangeText} categories for a ${minutes}-minute Custom Workout.`;
+                    customWorkoutFeedback.classList.toggle('text-danger', !withinBounds);
+                }
+
+                if (customWorkoutSummary) {
+                    customWorkoutSummary.classList.remove('d-none');
+                    if (!selection.length) {
+                        customWorkoutSummary.textContent = 'No categories selected yet.';
+                        customWorkoutSummary.classList.add('text-muted');
+                    } else {
+                        customWorkoutSummary.textContent = `Selected: ${selection.map(formatCategoryLabel).join(', ')}`;
+                        customWorkoutSummary.classList.remove('text-muted');
+                    }
+                    customWorkoutSummary.classList.toggle('text-danger', selection.length > 0 && !withinBounds);
+                }
+            }
+
+            function syncModalCheckboxes() {
+                if (!customCheckboxes.length) return;
+                customCheckboxes.forEach((checkbox) => {
+                    checkbox.checked = draftCustomSelection.has(checkbox.value);
+                });
+            }
+
+            function updateModalStatus() {
+                if (!customWorkoutLimitText) return;
+                const minutes = getCurrentDuration();
+                const [minRequired, maxAllowed] = selectionBounds(minutes);
+                const selected = draftCustomSelection.size;
+                const rangeText = minRequired === maxAllowed
+                    ? `Select exactly ${minRequired}`
+                    : `Select ${minRequired}–${maxAllowed}`;
+                customWorkoutLimitText.textContent = `${rangeText} categories in your preferred order (${selected} selected).`;
+                const valid = selected >= minRequired && selected <= maxAllowed;
+                customWorkoutLimitText.classList.toggle('text-danger', !valid);
+            }
+
+            function flashModalWarning() {
+                if (!customWorkoutLimitText) return;
+                customWorkoutLimitText.classList.add('text-danger');
+                customWorkoutLimitText.classList.add('fw-semibold');
+                setTimeout(() => customWorkoutLimitText.classList.remove('fw-semibold'), 800);
+            }
+
+            function openCustomModal() {
+                if (!customWorkoutModal) return;
+                draftCustomSelection = new Set(getCustomSelection());
+                syncModalCheckboxes();
+                updateModalStatus();
+                customWorkoutModal.style.display = 'flex';
+                requestAnimationFrame(() => customWorkoutModal.classList.add('show'));
+            }
+
+            function closeCustomModal() {
+                if (!customWorkoutModal) return;
+                customWorkoutModal.classList.remove('show');
+                customWorkoutModal.style.display = 'none';
+                draftCustomSelection = new Set(getCustomSelection());
+                syncModalCheckboxes();
+                updateModalStatus();
+            }
+
+            function handleDurationChange(minutes) {
+                if (!customWorkoutInput) return;
+                const selection = getCustomSelection();
+                const [minRequired, maxAllowed] = selectionBounds(minutes);
+                let nextSelection = selection;
+
+                if (selection.length > maxAllowed) {
+                    nextSelection = selection.slice(0, maxAllowed);
+                    setCustomSelection(nextSelection);
+                    if (customWorkoutFeedback) {
+                        customWorkoutFeedback.classList.add('text-danger');
+                        setTimeout(() => customWorkoutFeedback.classList.remove('text-danger'), 1200);
+                    }
+                } else {
+                    setCustomSelection(selection);
+                }
+
+                if (customWorkoutModal && customWorkoutModal.classList.contains('show')) {
+                    draftCustomSelection = new Set(nextSelection);
+                    syncModalCheckboxes();
+                    updateModalStatus();
+                }
+
+                if (selection.length < minRequired) {
+                    updateCustomSummary();
+                }
+            }
 
             initCollapsibleCards();
 
@@ -735,13 +949,15 @@
             function syncSelectStyle() {
                 if (!categorySelect) return;
                 categorySelect.classList.toggle('select-orange', !!categorySelect.value);
+                updateCustomSummary();
             }
 
             function syncGenerateButtonState() {
                 if (!generateWorkoutBtn) return;
                 const hasCategory = !!(categorySelect && categorySelect.value);
                 const isLoading = generateWorkoutBtn.dataset.loading === 'true';
-                generateWorkoutBtn.disabled = !hasCategory || isLoading;
+                const customValid = isCustomSelectionValid();
+                generateWorkoutBtn.disabled = !hasCategory || isLoading || !customValid;
             }
 
             function setGenerateButtonLoading(isLoading) {
@@ -913,7 +1129,7 @@
                 `;
             }
 
-            function renderWorkout(selectedCategory, workoutData) {
+            function renderWorkout(selectedCategory, workoutData, options = {}) {
                 clearWorkoutView();
                 if (!selectedCategory || !Array.isArray(workoutData) || workoutData.length === 0) {
                     return;
@@ -930,7 +1146,18 @@
                 if (completeWorkoutCard) completeWorkoutCard.style.display = 'block';
                 if (completeWorkoutBtn) {
                     completeWorkoutBtn.dataset.category = selectedCategory;
-                    completeWorkoutBtn.textContent = `Complete ${selectedCategory} Workout`;
+                    const customSelection = Array.isArray(options.customCategories) ? options.customCategories : [];
+                    if (selectedCategory === customToken && customSelection.length) {
+                        const pretty = customSelection
+                            .map((token) => String(token || '')
+                                .toLowerCase()
+                                .replace(/_/g, ' ')
+                                .replace(/\b\w/g, (ch) => ch.toUpperCase()))
+                            .join(', ');
+                        completeWorkoutBtn.textContent = `Complete ${pretty} Workout`;
+                    } else {
+                        completeWorkoutBtn.textContent = `Complete ${selectedCategory} Workout`;
+                    }
                 }
                 if (progressTrackingNote) {
                     progressTrackingNote.style.display = 'block';
@@ -949,8 +1176,11 @@
                     if (data.success && data.workout) {
                         if (categorySelect) {
                             categorySelect.value = data.category || '';
+                            if (data.category === customToken && Array.isArray(data.custom_categories)) {
+                                setCustomSelection(data.custom_categories);
+                            }
                         }
-                        renderWorkout(data.category, data.workout);
+                        renderWorkout(data.category, data.workout, { customCategories: data.custom_categories });
                         updateInjuryAlertBanner(data.skipped);
                     } else {
                         renderWorkout(null, []);
@@ -971,14 +1201,35 @@
                     return;
                 }
 
+                if (!isCustomSelectionValid()) {
+                    alert('Select categories within the allowed range for your Custom Workout.');
+                    return;
+                }
+
                 const selectedCategory = categorySelect.value;
                 setGenerateButtonLoading(true);
 
                 try {
-                    const response = await fetch(`/generate_workout?category=${encodeURIComponent(selectedCategory)}`);
+                    let url = `/generate_workout?category=${encodeURIComponent(selectedCategory)}`;
+                    if (selectedCategory === customToken) {
+                        const selection = getCustomSelection();
+                        if (!selection.length) {
+                            alert('Choose at least one category for your Custom Workout.');
+                            setGenerateButtonLoading(false);
+                            return;
+                        }
+                        selection.forEach((token) => {
+                            url += `&custom_categories=${encodeURIComponent(token)}`;
+                        });
+                    }
+
+                    const response = await fetch(url);
                     const data = await response.json();
                     if (data.success) {
-                        renderWorkout(data.category || selectedCategory, data.workout);
+                        if (data.category === customToken && Array.isArray(data.custom_categories)) {
+                            setCustomSelection(data.custom_categories);
+                        }
+                        renderWorkout(data.category || selectedCategory, data.workout, { customCategories: data.custom_categories });
                         showGenerateToast(`⚡ New ${data.category || selectedCategory} workout generated.`);
                         updateInjuryAlertBanner(data.skipped);
                         syncSelectStyle();
@@ -1002,11 +1253,85 @@
                 categorySelect.addEventListener('change', () => {
                     syncSelectStyle();
                     syncGenerateButtonState();
+                    if (isCustomSelected() && !getCustomSelection().length) {
+                        setTimeout(() => openCustomModal(), 50);
+                    }
                 });
             }
 
+            function bindCustomModalEvents() {
+                if (customWorkoutButton) {
+                    customWorkoutButton.addEventListener('click', (event) => {
+                        event.preventDefault();
+                        openCustomModal();
+                    });
+                }
+                if (customWorkoutModalClose) {
+                    customWorkoutModalClose.addEventListener('click', () => closeCustomModal());
+                }
+                if (customWorkoutCancel) {
+                    customWorkoutCancel.addEventListener('click', (event) => {
+                        event.preventDefault();
+                        closeCustomModal();
+                    });
+                }
+                if (customWorkoutModal) {
+                    customWorkoutModal.addEventListener('click', (event) => {
+                        if (event.target === customWorkoutModal) {
+                            closeCustomModal();
+                        }
+                    });
+                }
+                if (customWorkoutApply) {
+                    customWorkoutApply.addEventListener('click', () => {
+                        setCustomSelection(Array.from(draftCustomSelection));
+                        closeCustomModal();
+                    });
+                }
+                if (customWorkoutClear) {
+                    customWorkoutClear.addEventListener('click', (event) => {
+                        event.preventDefault();
+                        draftCustomSelection = new Set();
+                        syncModalCheckboxes();
+                        updateModalStatus();
+                    });
+                }
+                customCheckboxes.forEach((checkbox) => {
+                    checkbox.addEventListener('change', () => {
+                        const [, maxAllowed] = selectionBounds(getCurrentDuration());
+                        if (checkbox.checked) {
+                            if (draftCustomSelection.size >= maxAllowed) {
+                                checkbox.checked = false;
+                                flashModalWarning();
+                                return;
+                            }
+                            draftCustomSelection.add(checkbox.value);
+                        } else {
+                            draftCustomSelection.delete(checkbox.value);
+                        }
+                        updateModalStatus();
+                    });
+                });
+            }
+
+            function cacheCustomModalElements() {
+                customWorkoutModal = document.getElementById('customWorkoutModal');
+                customWorkoutModalClose = document.getElementById('customWorkoutModalClose');
+                customWorkoutApply = document.getElementById('customWorkoutApply');
+                customWorkoutCancel = document.getElementById('customWorkoutCancel');
+                customWorkoutClear = document.getElementById('customWorkoutClear');
+                customWorkoutLimitText = document.getElementById('custom-workout-limit-text');
+                customCheckboxes = customWorkoutModal ? Array.from(customWorkoutModal.querySelectorAll('.custom-workout-checkbox')) : [];
+            }
+
+            document.addEventListener('DOMContentLoaded', () => {
+                cacheCustomModalElements();
+                bindCustomModalEvents();
+            });
+
             syncSelectStyle();
             syncGenerateButtonState();
+            handleDurationChange(getCurrentDuration());
             hydrateActiveWorkout();
 
             if (completeWorkoutBtn) {
@@ -1038,6 +1363,32 @@
                 });
             }
         </script>
+
+        <!-- Custom Workout Modal -->
+        <div id="customWorkoutModal" class="modal-overlay" style="display: none;">
+            <div class="modal-card custom-workout-modal">
+                <button type="button" id="customWorkoutModalClose" class="btn-close"></button>
+                <h5 class="mb-2">Build Your Custom Workout</h5>
+                <p class="small text-muted mb-3" id="custom-workout-limit-text">Select categories to get started.</p>
+                <div class="row g-2">
+                    {% for category in custom_workout_categories %}
+                        <div class="col-6">
+                            <div class="form-check custom-workout-check p-2 bg-light rounded-3 h-100">
+                                <input class="form-check-input custom-workout-checkbox" type="checkbox" value="{{ category }}" id="custom-cat-{{ loop.index }}">
+                                <label class="form-check-label fw-semibold" for="custom-cat-{{ loop.index }}">{{ category.title() }}</label>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+                <div class="d-flex justify-content-between align-items-center mt-3">
+                    <button type="button" class="btn btn-link text-decoration-none px-0" id="customWorkoutClear">Clear All</button>
+                    <div class="d-flex gap-2">
+                        <button type="button" class="btn btn-outline-secondary" id="customWorkoutCancel">Cancel</button>
+                        <button type="button" class="btn btn-brand" id="customWorkoutApply">Apply</button>
+                    </div>
+                </div>
+            </div>
+        </div>
 
         <!-- Success Toast -->
         <div id="toastSuccess" class="toast-floating toast-success">
@@ -1514,6 +1865,7 @@
         btn.addEventListener('click', async () => {
             const minutes = btn.dataset.minutes;
             setActive(minutes);
+            handleDurationChange(parseInt(minutes, 10));
 
             try {
             const res = await fetch('/update_workout_duration', {

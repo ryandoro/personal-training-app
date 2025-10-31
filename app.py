@@ -30,6 +30,11 @@ from helpers import (
     clear_active_workout,
     parse_injury_payload,
     compute_injury_exclusions,
+    CUSTOM_WORKOUT_TOKEN,
+    CUSTOM_WORKOUT_CATEGORIES,
+    CUSTOM_WORKOUT_SELECTION_LIMITS,
+    normalize_custom_workout_categories,
+    custom_selection_bounds,
 )
 from collections import OrderedDict
 from dotenv import load_dotenv
@@ -557,6 +562,9 @@ def training():
             cardio_restriction=cardio_restriction_prefill,
             injury_excluded_categories=[],
             injury_skipped_subcategories=[],
+            custom_workout_categories=CUSTOM_WORKOUT_CATEGORIES,
+            custom_workout_limits=CUSTOM_WORKOUT_SELECTION_LIMITS,
+            custom_workout_token=CUSTOM_WORKOUT_TOKEN,
         )
 
     # If the user submits the form and it hasn't been completed yet
@@ -650,6 +658,9 @@ def training():
                 cardio_restriction=cardio_restriction_value,
                 injury_excluded_categories=compute_injury_exclusions(injury_regions_selected, cardio_restriction_value),
                 injury_skipped_subcategories=[],
+                custom_workout_categories=CUSTOM_WORKOUT_CATEGORIES,
+                custom_workout_limits=CUSTOM_WORKOUT_SELECTION_LIMITS,
+                custom_workout_token=CUSTOM_WORKOUT_TOKEN,
             ), 400
         
         workout_duration = int(workout_duration_raw)
@@ -709,6 +720,9 @@ def training():
                 injury_excluded_categories=[],
                 injury_skipped_subcategories=[],
                 errors=None,
+                custom_workout_categories=CUSTOM_WORKOUT_CATEGORIES,
+                custom_workout_limits=CUSTOM_WORKOUT_SELECTION_LIMITS,
+                custom_workout_token=CUSTOM_WORKOUT_TOKEN,
             )
 
     categories = get_category_groups()
@@ -811,7 +825,10 @@ def training():
         injury_status=injury_status_prefill,
         cardio_restriction=cardio_restriction_prefill,
         injury_excluded_categories=sorted(injury_excluded_categories),
-        injury_skipped_subcategories=sorted({sub for sub in skipped_subcategories if sub})
+        injury_skipped_subcategories=sorted({sub for sub in skipped_subcategories if sub}),
+        custom_workout_categories=CUSTOM_WORKOUT_CATEGORIES,
+        custom_workout_limits=CUSTOM_WORKOUT_SELECTION_LIMITS,
+        custom_workout_token=CUSTOM_WORKOUT_TOKEN,
     )
 
 
@@ -945,7 +962,7 @@ def client_profile(client_id):
                 """
                 SELECT id, trainer_id, username, name, last_name, email,
                        fitness_goals, workouts_completed, last_workout_completed,
-                       exercise_history, workout_duration, subscription_type,
+                       exercise_history, workout_duration, subscription_type, trial_end_date,
                        sessions_remaining, commitment, additional_notes,
                        injury, injury_details, cardio_restriction
                   FROM users
@@ -976,6 +993,14 @@ def client_profile(client_id):
     injury_status = 'Yes' if (injury_regions or cardio_restriction_flag or injury_details) else 'No'
     injury_excluded_categories = compute_injury_exclusions(injury_regions, cardio_restriction_flag)
 
+    subscription_type = client.get('subscription_type') if client else None
+    trial_end_date = client.get('trial_end_date') if client else None
+    today = datetime.today().date()
+    client_has_premium_access = not (
+        subscription_type == 'free'
+        or (subscription_type == 'premium' and trial_end_date and today > trial_end_date)
+    )
+
     active_workout = None
     active_skipped = {}
     if active:
@@ -1004,9 +1029,12 @@ def client_profile(client_id):
             'created_at': created_display,
             'plan': formatted_plan,
             'skipped': active_skipped,
+            'custom_categories': workout_payload.get('custom_categories') if isinstance(workout_payload, dict) else [],
         }
 
     category_options = list(get_category_groups().keys())
+    if CUSTOM_WORKOUT_TOKEN not in category_options:
+        category_options.append(CUSTOM_WORKOUT_TOKEN)
     active_skip_categories = sorted(set(active_skipped.get('categories') or []))
     active_skip_subcategories = sorted(set(active_skipped.get('subcategories') or []))
     banner_categories = sorted(set(injury_excluded_categories) | set(active_skip_categories))
@@ -1034,6 +1062,10 @@ def client_profile(client_id):
         injury_skipped_subcategories=banner_subcategories,
         injury_skip_tokens=injury_skip_tokens_display,
         injury_regions_json=injury_regions_json,
+        custom_workout_categories=CUSTOM_WORKOUT_CATEGORIES,
+        custom_workout_limits=CUSTOM_WORKOUT_SELECTION_LIMITS,
+        custom_workout_token=CUSTOM_WORKOUT_TOKEN,
+        client_has_premium_access=client_has_premium_access,
     )
 
 
@@ -1570,6 +1602,40 @@ def generate_client_workout(client_id):
     if not selected_category:
         flash("Please choose a category before generating a workout.", "danger")
         return redirect(url_for('client_profile', client_id=client_id))
+    def _flatten_custom_payload(entries):
+        flattened = []
+        for entry in entries or []:
+            text = (entry or "").strip()
+            if not text:
+                continue
+            if text.startswith("[") or text.startswith("{"):
+                try:
+                    decoded = json.loads(text)
+                    if isinstance(decoded, (list, tuple)):
+                        flattened.extend(decoded)
+                        continue
+                    if decoded:
+                        flattened.append(decoded)
+                        continue
+                except (json.JSONDecodeError, TypeError, ValueError):
+                    pass
+            else:
+                parts = [part for part in text.split(",") if part]
+                if len(parts) > 1:
+                    flattened.extend(parts)
+                    continue
+            flattened.append(text)
+        return flattened
+
+    raw_custom = request.form.getlist('custom_categories')
+    if not raw_custom:
+        raw_value = request.form.get('custom_categories')
+        if raw_value:
+            raw_custom = _flatten_custom_payload([raw_value])
+    else:
+        raw_custom = _flatten_custom_payload(raw_custom)
+    is_custom = selected_category == CUSTOM_WORKOUT_TOKEN
+    custom_selection: list[str] = []
 
     with get_connection() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
@@ -1609,13 +1675,38 @@ def generate_client_workout(client_id):
             return redirect(url_for('client_profile', client_id=client_id))
 
     user_level = get_user_level(client.get('exercise_history'))
+    if is_custom:
+        custom_selection = normalize_custom_workout_categories(raw_custom)
+        min_required, max_allowed = custom_selection_bounds(duration_minutes)
+        count = len(custom_selection)
+        if count < min_required or count > max_allowed:
+            flash(
+                f"Select between {min_required} and {max_allowed} categories for a {duration_minutes}-minute Custom Workout.",
+                "warning",
+            )
+            return redirect(url_for('client_profile', client_id=client_id))
+        if not custom_selection:
+            flash("Choose at least one category before generating a Custom Workout.", "warning")
+            return redirect(url_for('client_profile', client_id=client_id))
 
-    workout_plan, skipped_meta = generate_workout(selected_category, user_level, client_id, duration_minutes)
+    try:
+        workout_plan, skipped_meta = generate_workout(
+            selected_category,
+            user_level,
+            client_id,
+            duration_minutes,
+            custom_categories=custom_selection if is_custom else None,
+        )
+    except ValueError as exc:
+        flash(str(exc), "warning")
+        return redirect(url_for('client_profile', client_id=client_id))
     workout_payload = {
         'plan': workout_plan,
         'duration_minutes': duration_minutes,
         'skipped': skipped_meta,
     }
+    if is_custom:
+        workout_payload['custom_categories'] = custom_selection
     set_active_workout(client_id, selected_category, workout_payload)
 
     flash_message = "Client workout generated and synced."
@@ -2095,6 +2186,15 @@ def generate_workout_route():
     selected_category = (request.args.get('category') or '').strip()
     if not selected_category:
         return jsonify({'success': False, 'error': 'No category selected'}), 400
+    raw_custom = request.args.getlist('custom_categories')
+    if not raw_custom:
+        raw_custom = request.args.getlist('custom_categories[]')
+    if not raw_custom:
+        raw_value = request.args.get('custom_categories')
+        if raw_value:
+            raw_custom = [part for part in raw_value.split(',') if part]
+    is_custom = selected_category == CUSTOM_WORKOUT_TOKEN
+    custom_selection: list[str] = []
 
     user_id = session['user_id']
 
@@ -2118,14 +2218,34 @@ def generate_workout_route():
                     return jsonify({'success': False, 'error': 'Upgrade to Premium to access this category.'})
 
             user_level = get_user_level(exercise_history)
+            if is_custom:
+                custom_selection = normalize_custom_workout_categories(raw_custom)
+                min_required, max_allowed = custom_selection_bounds(duration_minutes)
+                count = len(custom_selection)
+                if count < min_required or count > max_allowed:
+                    message = f"Select between {min_required} and {max_allowed} categories for a {duration_minutes}-minute Custom Workout."
+                    return jsonify({'success': False, 'error': message}), 400
+                if not custom_selection:
+                    return jsonify({'success': False, 'error': 'Choose at least one category for a Custom Workout.'}), 400
 
     # Generate the workout
-    workout_plan, skipped_meta = generate_workout(selected_category, user_level, user_id, duration_minutes)
+    try:
+        workout_plan, skipped_meta = generate_workout(
+            selected_category,
+            user_level,
+            user_id,
+            duration_minutes,
+            custom_categories=custom_selection if is_custom else None,
+        )
+    except ValueError as exc:
+        return jsonify({'success': False, 'error': str(exc)}), 400
     workout_payload = {
         'plan': workout_plan,
         'duration_minutes': duration_minutes,
         'skipped': skipped_meta,
     }
+    if is_custom:
+        workout_payload['custom_categories'] = custom_selection
 
     set_active_workout(user_id, selected_category, workout_payload)
 
@@ -2137,6 +2257,7 @@ def generate_workout_route():
         'duration_minutes': duration_minutes,
         'workout': formatted_workout,
         'skipped': skipped_meta,
+        'custom_categories': custom_selection if is_custom else [],
     })
 
 
@@ -2161,6 +2282,7 @@ def get_active_workout_route():
         'duration_minutes': data.get('duration_minutes'),
         'workout': formatted_workout,
         'skipped': data.get('skipped', {}),
+        'custom_categories': data.get('custom_categories', []),
     })
 
 
@@ -2335,7 +2457,36 @@ def _complete_workout_for_user(user_id: int) -> tuple[bool, str | None]:
     if not stored_plan:
         return False, 'No workout data available'
 
-    workout_category = active['category']
+    workout_category = active.get('category')
+    workout_payload_meta = {}
+    custom_tokens_seen = set()
+    custom_tokens = []
+    custom_pretty = []
+    if isinstance(workout_data, dict):
+        raw_custom = workout_data.get('custom_categories')
+        if isinstance(raw_custom, list):
+            for token in raw_custom:
+                if not token:
+                    continue
+                token_str = str(token).strip()
+                if not token_str:
+                    continue
+                normalized_token = token_str.upper()
+                if normalized_token in custom_tokens_seen:
+                    continue
+                custom_tokens_seen.add(normalized_token)
+                custom_tokens.append(normalized_token)
+                pretty = token_str.lower().replace('_', ' ').title()
+                custom_pretty.append(pretty)
+    if custom_pretty:
+        display_category = ', '.join(custom_pretty)
+        workout_payload_meta = {
+            'custom_categories': custom_tokens,
+            'custom_categories_pretty': custom_pretty,
+        }
+    else:
+        display_category = workout_category
+
     refreshed_workout = OrderedDict()
 
     with get_connection() as conn:
@@ -2364,6 +2515,9 @@ def _complete_workout_for_user(user_id: int) -> tuple[bool, str | None]:
                             "max_reps": max_reps,
                         })
 
+            if workout_payload_meta:
+                refreshed_workout['_meta'] = workout_payload_meta
+
             cursor.execute(
                 """
                 UPDATE users
@@ -2372,7 +2526,7 @@ def _complete_workout_for_user(user_id: int) -> tuple[bool, str | None]:
                        last_workout_details = %s
                  WHERE id = %s
                 """,
-                (workout_category, json.dumps(refreshed_workout), user_id),
+                (display_category, json.dumps(refreshed_workout), user_id),
             )
             conn.commit()
 
@@ -2446,12 +2600,25 @@ def workout_details(category):
             result = cursor.fetchone()
 
     if not result or not result[0]:
-        return render_template('workout_details.html', category=category, workouts=None)
+        return render_template('workout_details.html', category=category, display_category=category, workouts=None)
 
     # Load and preserve subcategory order
     workouts = json.loads(result[0], object_pairs_hook=OrderedDict)
+    meta = {}
+    if isinstance(workouts, dict) and '_meta' in workouts:
+        meta = workouts.pop('_meta') or {}
+    pretty_custom = meta.get('custom_categories_pretty') if isinstance(meta, dict) else None
+    if isinstance(pretty_custom, list) and pretty_custom:
+        display_category = ', '.join(pretty_custom)
+    else:
+        display_category = category
 
-    return render_template('workout_details.html', category=category, workouts=workouts)
+    return render_template(
+        'workout_details.html',
+        category=category,
+        display_category=display_category,
+        workouts=workouts,
+    )
 
 
 
