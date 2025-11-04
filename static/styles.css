@@ -1742,6 +1742,8 @@ iframe.fullscreen-sim {
   align-items: center;
   justify-content: center;
   z-index: 10500;
+  padding: 1.5rem;
+  overflow-y: auto;
 }
 
 .calendar-modal-content {
@@ -1750,12 +1752,17 @@ iframe.fullscreen-sim {
   padding: 1.5rem;
   width: min(420px, 90vw);
   box-shadow: 0 18px 48px rgba(15, 33, 45, 0.22);
+  max-height: calc(100vh - 3rem);
+  overflow-y: auto;
 }
 
 .event-session-modal {
   padding: 0;
-  overflow: hidden;
   background: #ffffff;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 3rem);
 }
 
 .event-session-modal__header {
@@ -1814,6 +1821,8 @@ iframe.fullscreen-sim {
   flex-direction: column;
   gap: 1.5rem;
   background: linear-gradient(180deg, rgba(30, 164, 230, 0.08) 0%, rgba(255, 255, 255, 0.7) 100%);
+  flex: 1 1 auto;
+  overflow-y: auto;
 }
 
 .event-session-modal__section {
@@ -1841,6 +1850,7 @@ iframe.fullscreen-sim {
   gap: 0.75rem;
   background: #ffffff;
   border-top: 1px solid rgba(30, 164, 230, 0.12);
+  flex-shrink: 0;
 }
 
 .event-session-modal__footer .btn {
@@ -1877,6 +1887,17 @@ iframe.fullscreen-sim {
   }
   .event-session-modal__inline .btn {
     width: 100%;
+  }
+  .calendar-modal {
+    align-items: flex-start;
+    padding: 1.25rem 0.75rem;
+  }
+  .calendar-modal-content {
+    width: 100%;
+    max-width: 420px;
+  }
+  .event-session-modal {
+    max-height: calc(100vh - 1.5rem);
   }
 }
 
