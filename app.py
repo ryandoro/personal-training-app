@@ -149,6 +149,7 @@ def home():
     user_id = session['user_id']        
 
     # Connect to the database to fetch the username
+    sessions: list[dict] = []
     with get_connection() as conn:
         with conn.cursor() as cursor:
             cursor.execute("""
@@ -881,6 +882,37 @@ def trainer_dashboard():
             cursor.execute("\n".join(base_query), params)
             clients = cursor.fetchall() or []
 
+    client_ids = [client['id'] for client in clients]
+    completed_counts: dict[int, int] = {}
+    if client_ids:
+        with get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(
+                    """
+                    SELECT client_id, COUNT(*) AS completed_count
+                      FROM trainer_schedule
+                     WHERE trainer_id = %s
+                       AND client_id = ANY(%s)
+                       AND status = 'completed'
+                     GROUP BY client_id
+                    """,
+                    (user_id, client_ids),
+                )
+                for row in cursor.fetchall() or []:
+                    completed_counts[row['client_id']] = row['completed_count']
+
+    for client in clients:
+        total_sessions = client.get('sessions_remaining')
+        booked_sessions = client.get('sessions_booked') or 0
+        completed_sessions = completed_counts.get(client['id'], 0)
+        client['sessions_completed_count'] = completed_sessions
+        client['sessions_total'] = total_sessions
+        if total_sessions is None:
+            client['sessions_left'] = None
+        else:
+            used = min(total_sessions, booked_sessions + completed_sessions)
+            client['sessions_left'] = max(total_sessions - used, 0)
+
     with get_connection() as conn:
         with conn.cursor() as cursor:
             cursor.execute(
@@ -956,6 +988,7 @@ def client_profile(client_id):
         return redirect(url_for('home'))
 
 
+    sessions_completed_count = 0
     with get_connection() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
             cursor.execute(
@@ -963,7 +996,7 @@ def client_profile(client_id):
                 SELECT id, trainer_id, username, name, last_name, email,
                        fitness_goals, workouts_completed, last_workout_completed,
                        exercise_history, workout_duration, subscription_type, trial_end_date,
-                       sessions_remaining, commitment, additional_notes,
+                       sessions_remaining, sessions_booked, commitment, additional_notes,
                        injury, injury_details, cardio_restriction
                   FROM users
                  WHERE id = %s
@@ -985,6 +1018,19 @@ def client_profile(client_id):
                 (client_id,),
             )
             active = cursor.fetchone()
+
+            cursor.execute(
+                """
+                SELECT COUNT(*)::int AS completed_count
+                  FROM trainer_schedule
+                 WHERE trainer_id = %s
+                   AND client_id = %s
+                   AND status = 'completed'
+                """,
+                (trainer_id, client_id),
+            )
+            completed_row = cursor.fetchone() or {}
+            sessions_completed_count = int(completed_row.get('completed_count') or 0)
 
     injury_payload = parse_injury_payload(client.get('injury') if client else None)
     cardio_restriction_flag = bool(client.get('cardio_restriction') if client else False) or injury_payload['cardio']
@@ -1066,6 +1112,8 @@ def client_profile(client_id):
         custom_workout_limits=CUSTOM_WORKOUT_SELECTION_LIMITS,
         custom_workout_token=CUSTOM_WORKOUT_TOKEN,
         client_has_premium_access=client_has_premium_access,
+        sessions_booked=client.get('sessions_booked') if client else 0,
+        sessions_completed=sessions_completed_count,
     )
 
 
@@ -1152,6 +1200,22 @@ def _schedule_conflicts(cursor, trainer_id: int, client_id: int, start_dt: datet
     if cursor.fetchone():
         return True, 'Client is already booked for that time.'
     return False, None
+
+
+def _adjust_sessions_booked(cursor, client_id: int, delta: int) -> None:
+    if not delta:
+        return
+    cursor.execute(
+        """
+        UPDATE users
+           SET sessions_booked = CASE
+                 WHEN %s >= 0 THEN COALESCE(sessions_booked, 0) + %s
+                 ELSE GREATEST(COALESCE(sessions_booked, 0) + %s, 0)
+             END
+         WHERE id = %s
+        """,
+        (delta, delta, delta, client_id),
+    )
 
 
 def _serialize_schedule_row(row):
@@ -1300,7 +1364,24 @@ def trainer_schedule_book():
             else:
                 sessions_remaining = link_row[1]
                 sessions_booked = link_row[2] or 0
-            if sessions_remaining is not None and sessions_booked >= sessions_remaining:
+
+            sessions_booked = int(sessions_booked or 0)
+            sessions_remaining_val = None if sessions_remaining is None else int(sessions_remaining)
+
+            cursor.execute(
+                """
+                SELECT COUNT(*)::int AS completed_count
+                  FROM trainer_schedule
+                 WHERE trainer_id = %s
+                   AND client_id = %s
+                   AND status = 'completed'
+                """,
+                (trainer_id, client_id),
+            )
+            completed_row = cursor.fetchone() or {}
+            sessions_completed = int(completed_row.get('completed_count') or 0)
+
+            if sessions_remaining_val is not None and (sessions_booked + sessions_completed) >= sessions_remaining_val:
                 flash('That client has no sessions remaining.', 'danger')
                 return jsonify({'success': False, 'error': 'Client has no sessions remaining.', 'flash': True}), 400
 
@@ -1319,16 +1400,12 @@ def trainer_schedule_book():
             new_id_row = cursor.fetchone()
             new_id = new_id_row['id'] if isinstance(new_id_row, dict) else new_id_row[0]
 
-            cursor.execute(
-                """
-                UPDATE users
-                   SET sessions_booked = COALESCE(sessions_booked, 0) + 1
-                 WHERE id = %s
-                """,
-                (client_id,),
-            )
+            _adjust_sessions_booked(cursor, client_id, 1)
             conn.commit()
 
+        event_row = None
+        counts_row: dict[str, int | None] = {}
+        sessions_completed_count = 0
         with get_connection() as conn:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
                 cursor.execute(
@@ -1341,9 +1418,35 @@ def trainer_schedule_book():
                     """,
                     (new_id,),
                 )
-                row = cursor.fetchone()
+                event_row = cursor.fetchone()
+                cursor.execute(
+                    "SELECT sessions_remaining, sessions_booked, workouts_completed FROM users WHERE id = %s",
+                    (client_id,),
+                )
+                counts_row = cursor.fetchone() or {}
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT COUNT(*) FROM trainer_schedule
+                     WHERE trainer_id = %s
+                       AND client_id = %s
+                       AND status = 'completed'
+                    """,
+                    (trainer_id, client_id),
+                )
+                result = cursor.fetchone()
+                if result:
+                    sessions_completed_count = int(result[0] or 0)
 
-    return jsonify({'success': True, 'event': _serialize_schedule_row(row)})
+    payload = {
+        'success': True,
+        'event': _serialize_schedule_row(event_row) if event_row else None,
+        'sessions_remaining': counts_row.get('sessions_remaining') if counts_row else None,
+        'sessions_booked': counts_row.get('sessions_booked') if counts_row else None,
+        'sessions_completed': sessions_completed_count,
+        'workouts_completed': counts_row.get('workouts_completed') if counts_row else None,
+    }
+    return jsonify(payload)
 
 
 @app.route('/trainer/schedule/<int:event_id>', methods=['PATCH', 'DELETE'])
@@ -1356,65 +1459,522 @@ def trainer_schedule_modify(event_id):
 
     if request.method == 'DELETE':
         with get_connection() as conn:
-            with conn.cursor() as cursor:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
                 cursor.execute(
-                    "DELETE FROM trainer_schedule WHERE id = %s AND trainer_id = %s RETURNING client_id",
+                    "DELETE FROM trainer_schedule WHERE id = %s AND trainer_id = %s RETURNING client_id, status",
                     (event_id, trainer_id),
                 )
                 row = cursor.fetchone()
                 if not row:
                     return jsonify({'success': False, 'error': 'Booking not found.'}), 404
-                client_id = row[0]
-                cursor.execute(
-                    """
-                    UPDATE users
-                       SET sessions_booked = GREATEST(COALESCE(sessions_booked, 0) - 1, 0)
-                     WHERE id = %s
-                    """,
-                    (client_id,),
-                )
+                client_id = row['client_id']
+                prior_status = (row.get('status') or 'booked').lower()
+                if prior_status == 'booked':
+                    _adjust_sessions_booked(cursor, client_id, -1)
                 conn.commit()
         return jsonify({'success': True})
 
     payload = request.get_json(silent=True) or {}
+    start_raw = payload.get('start_time')
+    end_raw = payload.get('end_time')
+    status_raw = payload.get('status')
 
-    try:
-        start_dt = _parse_iso_datetime(payload.get('start_time'), 'start time')
-        end_dt = _parse_iso_datetime(payload.get('end_time'), 'end time')
-        _validate_time_window(start_dt, end_dt)
-    except ValueError as exc:
-        return jsonify({'success': False, 'error': str(exc)}), 400
+    if start_raw is None and end_raw is None and status_raw is None:
+        return jsonify({'success': False, 'error': 'No changes specified.'}), 400
+
+    if (start_raw is None) ^ (end_raw is None):
+        return jsonify({'success': False, 'error': 'Both start and end times are required.'}), 400
+
+    start_dt = end_dt = None
+    if start_raw is not None and end_raw is not None:
+        try:
+            start_dt = _parse_iso_datetime(start_raw, 'start time')
+            end_dt = _parse_iso_datetime(end_raw, 'end time')
+            _validate_time_window(start_dt, end_dt)
+        except ValueError as exc:
+            return jsonify({'success': False, 'error': str(exc)}), 400
+
+    new_status = None
+    if status_raw is not None:
+        new_status = str(status_raw).strip().lower()
+        allowed_statuses = {'booked', 'completed', 'cancelled'}
+        if new_status not in allowed_statuses:
+            return jsonify({'success': False, 'error': 'Invalid booking status.'}), 400
 
     with get_connection() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
             cursor.execute(
-                "SELECT client_id FROM trainer_schedule WHERE id = %s AND trainer_id = %s",
+                """
+                SELECT id, client_id, status
+                  FROM trainer_schedule
+                 WHERE id = %s AND trainer_id = %s
+                """,
                 (event_id, trainer_id),
             )
             row = cursor.fetchone()
             if not row:
                 return jsonify({'success': False, 'error': 'Booking not found.'}), 404
             client_id = row['client_id']
+            current_status = (row.get('status') or 'booked').lower()
+            counts_snapshot: dict[str, int | None] = {}
+            if new_status and new_status != current_status and new_status == 'booked':
+                cursor.execute(
+                    "SELECT sessions_remaining, sessions_booked FROM users WHERE id = %s",
+                    (client_id,),
+                )
+                counts_snapshot = cursor.fetchone() or {}
+                remaining = counts_snapshot.get('sessions_remaining')
+                booked_now = int((counts_snapshot.get('sessions_booked') or 0))
+                cursor.execute(
+                    """
+                    SELECT COUNT(*)::int AS completed_count
+                      FROM trainer_schedule
+                     WHERE trainer_id = %s
+                       AND client_id = %s
+                       AND status = 'completed'
+                    """,
+                    (trainer_id, client_id),
+                )
+                completed_row = cursor.fetchone() or {}
+                completed_now = int(completed_row.get('completed_count') or 0)
+                counts_snapshot['sessions_completed'] = completed_now
+                remaining_val = None if remaining is None else int(remaining)
+                if remaining_val is not None and remaining_val <= (booked_now + completed_now):
+                    return jsonify({'success': False, 'error': 'Client has no sessions remaining to mark as booked.'}), 400
 
-        with conn.cursor() as cursor:
-            conflict, message = _schedule_conflicts(cursor, trainer_id, client_id, start_dt, end_dt, exclude_id=event_id)
-            if conflict:
-                return jsonify({'success': False, 'error': message}), 409
+        if start_dt and end_dt:
+            with conn.cursor() as cursor:
+                conflict, message = _schedule_conflicts(cursor, trainer_id, client_id, start_dt, end_dt, exclude_id=event_id)
+                if conflict:
+                    return jsonify({'success': False, 'error': message}), 409
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE trainer_schedule
+                       SET start_time = %s,
+                           end_time = %s
+                     WHERE id = %s AND trainer_id = %s
+                    """,
+                    (start_dt, end_dt, event_id, trainer_id),
+                )
+                if cursor.rowcount == 0:
+                    return jsonify({'success': False, 'error': 'Booking not found.'}), 404
 
+        status_delta = 0
+        workout_delta = 0
+        if new_status and new_status != current_status:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE trainer_schedule
+                       SET status = %s
+                     WHERE id = %s AND trainer_id = %s
+                    """,
+                    (new_status, event_id, trainer_id),
+                )
+                if cursor.rowcount == 0:
+                    return jsonify({'success': False, 'error': 'Booking not found.'}), 404
+            if current_status == 'booked' and new_status != 'booked':
+                status_delta = -1
+            elif current_status != 'booked' and new_status == 'booked':
+                status_delta = 1
+            if current_status != 'completed' and new_status == 'completed':
+                workout_delta = 1
+            elif current_status == 'completed' and new_status != 'completed':
+                workout_delta = -1
+            if status_delta:
+                with conn.cursor() as cursor:
+                    _adjust_sessions_booked(cursor, client_id, status_delta)
+        if workout_delta:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE users
+                       SET workouts_completed = CASE
+                             WHEN %s > 0 THEN COALESCE(workouts_completed, 0) + %s
+                             ELSE GREATEST(COALESCE(workouts_completed, 0) + %s, 0)
+                         END
+                     WHERE id = %s
+                    """,
+                    (workout_delta, workout_delta, workout_delta, client_id),
+                )
+
+        conn.commit()
+
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
             cursor.execute(
                 """
-                UPDATE trainer_schedule
-                   SET start_time = %s,
-                       end_time = %s
+                SELECT ts.id, ts.trainer_id, ts.client_id, ts.start_time, ts.end_time, ts.status,
+                       c.name AS client_name, c.last_name AS client_last_name, c.username AS client_username
+                  FROM trainer_schedule ts
+                  JOIN users c ON c.id = ts.client_id
+                 WHERE ts.id = %s
+                """,
+                (event_id,),
+            )
+            refreshed = cursor.fetchone()
+
+    counts_response = {}
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            cursor.execute(
+                "SELECT sessions_remaining, sessions_booked FROM users WHERE id = %s",
+                (client_id,),
+            )
+            counts_response = cursor.fetchone() or {}
+        with conn.cursor() as cursor:
+            cursor.execute(
+                "SELECT COUNT(*) FROM trainer_schedule WHERE trainer_id = %s AND client_id = %s AND status = 'completed'",
+                (trainer_id, client_id),
+            )
+            counts_response['sessions_completed'] = cursor.fetchone()[0]
+        with conn.cursor() as cursor:
+            cursor.execute(
+                "SELECT workouts_completed FROM users WHERE id = %s",
+                (client_id,),
+            )
+            row_wc = cursor.fetchone()
+            counts_response['workouts_completed'] = row_wc[0] if row_wc else None
+
+    payload = {
+        'success': True,
+        'event': _serialize_schedule_row(refreshed),
+        'sessions_remaining': counts_response.get('sessions_remaining'),
+        'sessions_booked': counts_response.get('sessions_booked'),
+        'sessions_completed': counts_response.get('sessions_completed', 0),
+        'workouts_completed': counts_response.get('workouts_completed'),
+    }
+    return jsonify(payload)
+
+
+def _fetch_client_sessions(cursor, trainer_id: int, client_id: int, limit: int | None, offset: int):
+    cursor.execute(
+        """
+        SELECT COUNT(*) AS total
+          FROM trainer_schedule
+         WHERE trainer_id = %s
+           AND client_id = %s
+        """,
+        (trainer_id, client_id),
+    )
+    count_row = cursor.fetchone() or {}
+    total = int(count_row.get('total') or 0)
+
+    if limit is not None:
+        cursor.execute(
+            """
+            SELECT id, start_time, end_time, status, created_at
+              FROM trainer_schedule
+             WHERE trainer_id = %s
+               AND client_id = %s
+             ORDER BY start_time DESC
+             LIMIT %s OFFSET %s
+            """,
+            (trainer_id, client_id, limit, offset),
+        )
+    else:
+        cursor.execute(
+            """
+            SELECT id, start_time, end_time, status, created_at
+              FROM trainer_schedule
+             WHERE trainer_id = %s
+               AND client_id = %s
+             ORDER BY start_time DESC
+            """,
+            (trainer_id, client_id),
+        )
+    rows = cursor.fetchall() or []
+    return total, rows
+
+
+@app.route('/trainer/clients/<int:client_id>/agenda', methods=['GET', 'POST'])
+@login_required
+def trainer_client_agenda(client_id):
+    trainer_id = session['user_id']
+    trainer = _require_trainer(trainer_id)
+    if not trainer:
+        flash("Trainer access required.", "danger")
+        return redirect(url_for('home'))
+
+    per_page = None
+    offset = 0
+    bulk_action = (request.form.get('bulk_action') or '').strip()
+    selected_ids_raw = request.form.getlist('session_id')
+    selected_ids: list[int] = []
+    for value in selected_ids_raw:
+        try:
+            selected_ids.append(int(value))
+        except (TypeError, ValueError):
+            continue
+
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            cursor.execute(
+                """
+                SELECT id, trainer_id, name, last_name
+                  FROM users
+                 WHERE id = %s
+                """,
+                (client_id,),
+            )
+            client = cursor.fetchone()
+
+        if not client:
+            flash("Client not found.", "danger")
+            return redirect(url_for('trainer_dashboard'))
+
+        if client.get('trainer_id') != trainer_id and trainer.get('role') != 'admin':
+            flash("You do not have access to that client.", "danger")
+            return redirect(url_for('trainer_dashboard'))
+
+        action_performed = False
+        if request.method == 'POST':
+            if not selected_ids:
+                flash("Select at least one session before performing a bulk action.", "warning")
+            elif bulk_action not in {'set_booked', 'set_completed', 'set_cancelled', 'delete'}:
+                flash("Choose a valid bulk action.", "warning")
+            else:
+                with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                    cursor.execute(
+                        """
+                        SELECT id, status
+                          FROM trainer_schedule
+                         WHERE trainer_id = %s
+                           AND client_id = %s
+                           AND id = ANY(%s)
+                        """,
+                        (trainer_id, client_id, selected_ids),
+                    )
+                    events = cursor.fetchall() or []
+
+                if not events:
+                    flash("No sessions matched your selection.", "warning")
+                else:
+                    if bulk_action == 'delete':
+                        booked_count = sum(1 for ev in events if (ev.get('status') or 'booked').lower() == 'booked')
+                        with conn.cursor() as cursor:
+                            cursor.execute(
+                                "DELETE FROM trainer_schedule WHERE trainer_id = %s AND client_id = %s AND id = ANY(%s)",
+                                (trainer_id, client_id, selected_ids),
+                            )
+                            if booked_count:
+                                _adjust_sessions_booked(cursor, client_id, -booked_count)
+                            conn.commit()
+                        flash(f"Removed {len(events)} session(s).", "success")
+                        action_performed = True
+                    else:
+                        desired_status = {
+                            'set_booked': 'booked',
+                            'set_completed': 'completed',
+                            'set_cancelled': 'cancelled',
+                        }[bulk_action]
+
+                        delta = 0
+                        current_statuses = [(ev['id'], (ev.get('status') or 'booked').lower()) for ev in events]
+                        for _, status in current_statuses:
+                            if status == 'booked' and desired_status != 'booked':
+                                delta -= 1
+                            elif status != 'booked' and desired_status == 'booked':
+                                delta += 1
+
+                        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                            cursor.execute(
+                                "SELECT sessions_remaining, sessions_booked FROM users WHERE id = %s",
+                                (client_id,),
+                            )
+                            counts = cursor.fetchone() or {}
+
+                        sessions_remaining = counts.get('sessions_remaining')
+                        sessions_booked = counts.get('sessions_booked') or 0
+                        if delta > 0 and sessions_remaining is not None and sessions_booked + delta > sessions_remaining:
+                            flash("Not enough sessions remaining to mark those bookings as scheduled.", "danger")
+                        else:
+                            with conn.cursor() as cursor:
+                                cursor.execute(
+                                    """
+                                    UPDATE trainer_schedule
+                                       SET status = %s
+                                     WHERE trainer_id = %s
+                                       AND client_id = %s
+                                       AND id = ANY(%s)
+                                    """,
+                                    (desired_status, trainer_id, client_id, selected_ids),
+                                )
+                                if delta:
+                                    _adjust_sessions_booked(cursor, client_id, delta)
+                                conn.commit()
+                            flash(f"Updated {len(events)} session(s) to {desired_status}.", "success")
+                            action_performed = True
+
+        with get_connection() as conn_read:
+            with conn_read.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                total, sessions = _fetch_client_sessions(cursor, trainer_id, client_id, None, offset)
+
+    agenda_events = []
+    for row in sessions:
+        start_dt = row.get('start_time')
+        end_dt = row.get('end_time')
+        date_display = '—'
+        start_time_display = '—'
+        end_time_display = '—'
+        if start_dt:
+            try:
+                start_local = start_dt.astimezone()
+                date_display = start_local.strftime('%b %d, %Y')
+                start_time_display = start_local.strftime('%I:%M %p')
+            except Exception:
+                start_time_display = fmt_utc(start_dt)
+        if end_dt:
+            try:
+                end_local = end_dt.astimezone()
+                end_time_display = end_local.strftime('%I:%M %p')
+            except Exception:
+                end_time_display = fmt_utc(end_dt)
+        agenda_events.append({
+            'id': row['id'],
+            'status': (row.get('status') or 'booked').lower(),
+            'date': date_display,
+            'start_time': start_time_display,
+            'end_time': end_time_display,
+        })
+
+    return render_template(
+        'client_agenda.html',
+        trainer=trainer,
+        client=client,
+        events=agenda_events,
+        total_sessions=total,
+        page=1,
+        total_pages=1,
+        per_page=total,
+        selected_ids=selected_ids if request.method == 'POST' and not action_performed else [],
+        bulk_action=bulk_action if request.method == 'POST' else '',
+    )
+
+
+@app.route('/trainer/schedule/<int:event_id>/repeat', methods=['POST'])
+@login_required
+def trainer_schedule_repeat(event_id):
+    trainer_id = session['user_id']
+    trainer = _require_trainer(trainer_id)
+    if not trainer:
+        return jsonify({'success': False, 'error': 'Trainer access required'}), 403
+
+    payload = request.get_json(silent=True) or {}
+    weeks_raw = payload.get('weeks') or 1
+    try:
+        weeks_requested = int(weeks_raw)
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'error': 'Repeat weeks must be a whole number.'}), 400
+
+    if weeks_requested <= 0:
+        return jsonify({'success': False, 'error': 'Repeat weeks must be at least one.'}), 400
+
+    weeks_requested = min(weeks_requested, 26)
+
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            cursor.execute(
+                """
+                SELECT id, client_id, start_time, end_time, status
+                  FROM trainer_schedule
                  WHERE id = %s AND trainer_id = %s
                 """,
-                (start_dt, end_dt, event_id, trainer_id),
+                (event_id, trainer_id),
             )
-            if cursor.rowcount == 0:
-                return jsonify({'success': False, 'error': 'Booking not found.'}), 404
-            conn.commit()
+            base_event = cursor.fetchone()
 
-        with get_connection() as conn:
+        if not base_event:
+            return jsonify({'success': False, 'error': 'Booking not found.'}), 404
+
+        client_id = base_event['client_id']
+        base_status = (base_event.get('status') or 'booked').lower()
+        if base_status == 'cancelled':
+            return jsonify({'success': False, 'error': 'Cannot repeat a cancelled booking.'}), 400
+
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            link_row = _ensure_trainer_client_link(cursor, trainer_id, client_id, trainer.get('role'))
+            if not link_row:
+                return jsonify({'success': False, 'error': 'You are not linked with that client.'}), 403
+            sessions_remaining = link_row.get('sessions_remaining') if isinstance(link_row, dict) else link_row[1]
+            sessions_booked = link_row.get('sessions_booked') if isinstance(link_row, dict) else link_row[2]
+            if sessions_booked is None:
+                sessions_booked = 0
+            sessions_booked = int(sessions_booked or 0)
+
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT COUNT(*) 
+                  FROM trainer_schedule
+                 WHERE trainer_id = %s
+                   AND client_id = %s
+                   AND status = 'completed'
+                """,
+                (trainer_id, client_id),
+            )
+            completed_row = cursor.fetchone()
+            sessions_completed = int(completed_row[0] or 0) if completed_row else 0
+
+        quota = None
+        if sessions_remaining is not None:
+            sessions_remaining_val = int(sessions_remaining)
+            consumed = sessions_booked + sessions_completed
+            quota = max(sessions_remaining_val - consumed, 0)
+            if quota == 0:
+                return jsonify({'success': False, 'error': 'This client has no sessions remaining to repeat.'}), 400
+
+        base_start: datetime = base_event['start_time']
+        base_end: datetime = base_event['end_time']
+        created_ids: list[int] = []
+        skipped_conflicts: list[dict[str, str | int]] = []
+
+        for offset in range(1, weeks_requested + 1):
+            if quota is not None and len(created_ids) >= quota:
+                break
+            new_start = base_start + timedelta(weeks=offset)
+            new_end = base_end + timedelta(weeks=offset)
+
+            with conn.cursor() as cursor:
+                conflict, message = _schedule_conflicts(cursor, trainer_id, client_id, new_start, new_end)
+            if conflict:
+                skipped_conflicts.append({'week_offset': offset, 'reason': message or 'Conflict detected.'})
+                continue
+
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO trainer_schedule (trainer_id, client_id, start_time, end_time)
+                    VALUES (%s, %s, %s, %s)
+                    RETURNING id
+                    """,
+                    (trainer_id, client_id, new_start, new_end),
+                )
+                inserted = cursor.fetchone()
+                new_id = inserted['id'] if isinstance(inserted, dict) else inserted[0]
+                created_ids.append(new_id)
+
+            with conn.cursor() as cursor:
+                _adjust_sessions_booked(cursor, client_id, 1)
+
+        if not created_ids:
+            conn.commit()
+            error_message = 'No additional sessions could be booked.'
+            if skipped_conflicts:
+                error_message = 'All requested repeats conflicted with existing bookings.'
+            elif quota is not None and quota <= 0:
+                error_message = 'Client has no remaining sessions to repeat.'
+            return jsonify({'success': False, 'error': error_message, 'conflicts': skipped_conflicts}), 409
+
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            cursor.execute(
+                "SELECT sessions_remaining, sessions_booked, workouts_completed FROM users WHERE id = %s",
+                (client_id,),
+            )
+            counts = cursor.fetchone() or {}
+
+        created_events = []
+        for new_id in created_ids:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
                 cursor.execute(
                     """
@@ -1424,11 +1984,37 @@ def trainer_schedule_modify(event_id):
                       JOIN users c ON c.id = ts.client_id
                      WHERE ts.id = %s
                     """,
-                    (event_id,),
+                    (new_id,),
                 )
-                refreshed = cursor.fetchone()
+                row = cursor.fetchone()
+                if row:
+                    created_events.append(_serialize_schedule_row(row))
 
-    return jsonify({'success': True, 'event': _serialize_schedule_row(refreshed)})
+        conn.commit()
+
+    remaining_quota = None
+    if quota is not None:
+        remaining_quota = max(quota - len(created_ids), 0)
+
+    with conn.cursor() as cursor:
+        cursor.execute(
+            "SELECT COUNT(*) FROM trainer_schedule WHERE trainer_id = %s AND client_id = %s AND status = 'completed'",
+            (trainer_id, client_id),
+        )
+        sessions_completed_count = cursor.fetchone()[0]
+
+    response_payload = {
+        'success': True,
+        'created_count': len(created_events),
+        'created_events': created_events,
+        'conflicts': skipped_conflicts,
+        'remaining_quota': remaining_quota,
+        'sessions_booked': counts.get('sessions_booked'),
+        'sessions_remaining': counts.get('sessions_remaining'),
+        'sessions_completed': sessions_completed_count,
+        'workouts_completed': counts.get('workouts_completed'),
+    }
+    return jsonify(response_payload)
 
 
 @app.route('/client/schedule/data')
@@ -1762,24 +2348,97 @@ def trainer_complete_client_workout(client_id):
                     """,
                     (trainer_id, client_id),
                 )
+            with conn.cursor() as cursor:
                 cursor.execute(
                     """
-                    UPDATE users
-                       SET sessions_remaining = CASE
-                             WHEN sessions_remaining IS NULL THEN NULL
-                             WHEN sessions_remaining > 0 THEN sessions_remaining - 1
-                             ELSE 0
-                         END
-                     WHERE id = %s
+                    SELECT id
+                      FROM trainer_schedule
+                     WHERE client_id = %s
+                       AND trainer_id = %s
+                       AND status = 'booked'
+                     ORDER BY start_time ASC
+                     LIMIT 1
                     """,
-                    (client_id,),
+                    (client_id, trainer_id),
                 )
-                conn.commit()
+                row = cursor.fetchone()
+                if row:
+                    event_to_complete = row[0]
+                    cursor.execute(
+                        "UPDATE trainer_schedule SET status = 'completed' WHERE id = %s",
+                        (event_to_complete,),
+                    )
+                    _adjust_sessions_booked(cursor, client_id, -1)
+            conn.commit()
         flash('Session marked complete for client.', 'success')
     else:
         flash(error or 'Unable to complete the workout for this client.', 'danger')
 
-    return redirect(url_for('client_profile', client_id=client_id))
+    return redirect(url_for('trainer_dashboard', focus=f'client-{client_id}'))
+
+@app.route('/trainer/clients/<int:client_id>/remove', methods=['POST'])
+@login_required
+def trainer_remove_client(client_id):
+    trainer_id = session['user_id']
+    trainer = _require_trainer(trainer_id)
+    if not trainer:
+        flash("Trainer access required.", "danger")
+        return redirect(url_for('home'))
+
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            cursor.execute(
+                "SELECT id, trainer_id, name, last_name FROM users WHERE id = %s",
+                (client_id,),
+            )
+            client = cursor.fetchone()
+
+    if not client:
+        flash("Client not found.", "danger")
+        return redirect(url_for('trainer_dashboard'))
+
+    if client.get('trainer_id') != trainer_id and trainer.get('role') != 'admin':
+        flash("You do not have access to that client.", "danger")
+        return redirect(url_for('trainer_dashboard'))
+
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            cursor.execute(
+                """
+                SELECT status
+                  FROM trainer_schedule
+                 WHERE trainer_id = %s
+                   AND client_id = %s
+                """,
+                (trainer_id, client_id),
+            )
+            events = cursor.fetchall() or []
+
+        booked_events = sum(1 for ev in events if (ev.get('status') or 'booked').lower() == 'booked')
+
+        with conn.cursor() as cursor:
+            cursor.execute(
+                "DELETE FROM trainer_schedule WHERE trainer_id = %s AND client_id = %s",
+                (trainer_id, client_id),
+            )
+            if booked_events:
+                cursor.execute(
+                    """
+                    UPDATE users
+                       SET sessions_booked = GREATEST(COALESCE(sessions_booked, 0) - %s, 0)
+                     WHERE id = %s
+                    """,
+                    (booked_events, client_id),
+                )
+            cursor.execute(
+                "UPDATE users SET trainer_id = NULL WHERE id = %s",
+                (client_id,),
+            )
+            conn.commit()
+
+    client_name = f"{client.get('name') or ''} {client.get('last_name') or ''}".strip() or 'Client'
+    flash(f"{client_name} removed from your client list.", "success")
+    return redirect(url_for('trainer_dashboard'))
 
 
 @app.route('/trainer/clients/<int:client_id>/sessions_remaining', methods=['POST'])
@@ -1819,9 +2478,25 @@ def trainer_update_sessions_remaining(client_id):
                 flash("You do not have access to that client.", "danger")
                 return redirect(url_for('trainer_dashboard'))
 
-            booked = client.get('sessions_booked') or 0
-            if sessions_value is not None and sessions_value < booked:
-                flash(f"This client already has {booked} session(s) booked. Increase or cancel bookings before lowering sessions purchased.", 'danger')
+            booked = int(client.get('sessions_booked') or 0)
+            cursor.execute(
+                """
+                SELECT COUNT(*)::int AS completed_count
+                  FROM trainer_schedule
+                 WHERE trainer_id = %s
+                   AND client_id = %s
+                   AND status = 'completed'
+                """,
+                (trainer_id, client_id),
+            )
+            completed_row = cursor.fetchone() or {}
+            completed = int(completed_row.get('completed_count') or 0)
+            consumed = booked + completed
+            if sessions_value is not None and sessions_value < consumed:
+                flash(
+                    f"This client already has {consumed} session(s) booked or completed. Increase the total or cancel sessions before lowering it.",
+                    'danger'
+                )
                 return redirect(url_for('client_profile', client_id=client_id))
 
             cursor.execute(

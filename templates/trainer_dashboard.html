@@ -106,14 +106,10 @@
                         <tr>
                             <th>First Name</th>
                             <th>Last Name</th>
-                            <th>Username</th>
-                            <th>Email</th>
-                            <th>Fitness Goals</th>
                             <th>Workouts Completed</th>
-                            <th>Sessions Remaining</th>
                             <th>Sessions Booked</th>
-                            <th>Sessions Left to Book</th>
-                            <th>Last Workout Completed</th>
+                            <th>Sessions Completed</th>
+                            <th>Sessions Left</th>
                             <th>Actions</th>
                         </tr>
                     </thead>
@@ -124,22 +120,26 @@
                                     {% set client_profile_url = url_for('client_profile', client_id=client.id) %}
                                     <td><a href="{{ client_profile_url }}" class="text-decoration-none">{{ client.name or '—' }}</a></td>
                                     <td><a href="{{ client_profile_url }}" class="text-decoration-none">{{ client.last_name or '—' }}</a></td>
-                                    <td><a href="{{ client_profile_url }}" class="text-decoration-none">{{ client.username or '—' }}</a></td>
-                                    <td><a href="{{ client_profile_url }}" class="text-decoration-none">{{ client.email or '—' }}</a></td>
-                                    <td>{{ client.fitness_goals or '—' }}</td>
-                                    <td class="text-center">{{ client.workouts_completed or 0 }}</td>
-                                    <td class="text-center sessions-remaining-cell">{{ client.sessions_remaining if client.sessions_remaining is not none else '—' }}</td>
+                                    <td class="text-center workouts-completed-cell">{{ client.workouts_completed or 0 }}</td>
                                     <td class="text-center sessions-booked-cell">{{ client.sessions_booked or 0 }}</td>
-                                    <td class="text-center sessions-left-cell">{% if client.sessions_remaining is not none %}{{ [client.sessions_remaining - (client.sessions_booked or 0), 0]|max }}{% else %}—{% endif %}</td>
-                                    <td>{{ client.last_workout_completed or '—' }}</td>
+                                    <td class="text-center sessions-completed-cell">{{ client.sessions_completed_count }}</td>
+                                    <td class="text-center sessions-left-cell">
+                                        {% if client.sessions_total is not none %}
+                                            {{ client.sessions_left }} / {{ client.sessions_total }}
+                                        {% else %}
+                                            &infin;
+                                        {% endif %}
+                                    </td>
                                     <td class="text-center">
                                         <button type="button"
                                                 class="btn btn-sm btn-outline-primary book-client-btn"
                                                 data-client-id="{{ client.id }}"
                                                 data-client-name="{{ client.name or client.username }}"
                                                 data-client-lastname="{{ client.last_name or '' }}"
-                                                data-sessions="{{ client.sessions_remaining if client.sessions_remaining is not none else '' }}"
-                                                data-sessions-booked="{{ client.sessions_booked or 0 }}">
+                                                data-sessions="{{ client.sessions_total if client.sessions_total is not none else '' }}"
+                                                data-sessions-booked="{{ client.sessions_booked or 0 }}"
+                                                data-sessions-completed="{{ client.sessions_completed_count }}"
+                                                data-workouts-completed="{{ client.workouts_completed or 0 }}">
                                             Book Now
                                         </button>
                                     </td>
@@ -147,7 +147,7 @@
                             {% endfor %}
                         {% else %}
                             <tr>
-                                <td colspan="11" class="text-center text-muted">No clients assigned yet.</td>
+                                <td colspan="8" class="text-center text-muted">No clients assigned yet.</td>
                             </tr>
                         {% endif %}
                     </tbody>
@@ -159,11 +159,20 @@
 
 <div class="trainer-calendar-container container-fluid px-3 px-md-4 px-lg-5">
     <div id="calendar-card" class="card border-0 shadow-lg mt-4 trainer-schedule-card mx-auto" style="border-radius: 20px;">
-        <div class="card-header border-0 d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3"
+        <div class="card-header border-0 d-flex flex-column flex-xl-row justify-content-between align-items-xl-start gap-3"
              style="background: linear-gradient(135deg, #1EA4E6 0%, #33C3F0 100%); border-top-left-radius: 20px; border-top-right-radius: 20px;">
-            <div>
-                <h4 class="mb-1 text-white">Weekly Schedule</h4>
-                <p class="mb-0 text-white-50">Plan sessions, drag to adjust, and stay aligned with your clients.</p>
+            <div class="d-flex flex-column gap-3 text-white">
+                <div>
+                    <h4 class="mb-1 text-white">Weekly Schedule</h4>
+                    <p class="mb-0 text-white-50">Plan sessions, drag to adjust, and stay aligned with your clients.</p>
+                </div>
+                <div class="d-flex flex-column flex-md-row align-items-md-center gap-3">
+                    <div>
+                        <span class="badge bg-white text-primary fw-semibold">Selected Client</span>
+                        <div id="selected-client-display" class="mt-2 fw-bold text-white">Pick a client from the table to start booking.</div>
+                    </div>
+                    <div class="text-white-50 small fw-semibold" id="calendar-week-label"></div>
+                </div>
             </div>
             <div class="calendar-toolbar d-flex flex-wrap gap-2">
                 <div class="btn-group" role="group" aria-label="Calendar navigation">
@@ -177,14 +186,6 @@
             </div>
         </div>
         <div class="card-body">
-            <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-md-between gap-3 mb-3">
-                <div>
-                    <span class="badge bg-primary-subtle text-primary fw-semibold">Selected Client</span>
-                    <div id="selected-client-display" class="mt-2 fw-bold text-primary">Pick a client from the table to start booking.</div>
-                </div>
-                <div class="text-muted small" id="calendar-week-label"></div>
-            </div>
-
             <div class="calendar-wrapper" id="trainer-calendar" data-mode="trainer"
                  data-view-start="{{ schedule_prefs.view_start }}" data-view-end="{{ schedule_prefs.view_end }}">
                 <div class="calendar-scroll" id="calendar-scroll">
@@ -225,11 +226,68 @@
     </div>
 </div>
 
+<div id="eventModal" class="calendar-modal" hidden>
+    <div class="calendar-modal-content event-session-modal">
+        <div class="event-session-modal__header">
+            <div>
+                <span class="event-session-modal__status" id="eventModalStatus">Booked</span>
+                <h4 class="event-session-modal__title" id="eventModalTitle">Session Details</h4>
+                <div class="event-session-modal__time" id="eventModalTime"></div>
+            </div>
+            <button type="button" class="btn-close btn-close-white" id="eventModalClose" aria-label="Close"></button>
+        </div>
+        <div class="event-session-modal__body">
+            <button type="button" class="btn btn-outline-primary w-100" id="eventViewProfile">
+                <i class="bi bi-person-bounding-box me-1"></i>View Client Profile
+            </button>
+
+            <div class="event-session-modal__section">
+                <label for="eventStatusSelect" class="form-label small text-uppercase text-muted">Session Status</label>
+                <form id="eventStatusForm" class="event-session-modal__inline" novalidate>
+                    <select class="form-select" id="eventStatusSelect">
+                        <option value="booked">Booked</option>
+                        <option value="completed">Completed</option>
+                        <option value="cancelled">Cancelled</option>
+                    </select>
+                    <button type="submit" class="btn btn-primary" id="eventStatusUpdate">
+                        <i class="bi bi-check2-circle me-1"></i>Apply
+                    </button>
+                </form>
+                <div class="form-text" id="eventStatusInfo">Status changes update client balances immediately.</div>
+            </div>
+
+            <div class="event-session-modal__section" id="eventRepeatSection">
+                <label for="eventRepeatWeeks" class="form-label small text-uppercase text-muted">Repeat Weekly</label>
+                <form id="eventRepeatForm" class="event-session-modal__inline" novalidate>
+                    <input type="number" class="form-control" id="eventRepeatWeeks" min="1" max="26" value="4">
+                    <button type="submit" class="btn btn-outline-primary" id="eventRepeatSubmit">
+                        <i class="bi bi-arrow-repeat me-1"></i>Repeat
+                    </button>
+                </form>
+                <div class="form-text" id="eventRepeatInfo">Repeats will use available sessions remaining.</div>
+            </div>
+        </div>
+        <div class="event-session-modal__footer">
+            <button type="button" class="btn btn-outline-danger w-100" id="eventCancelSession">
+                <i class="bi bi-x-circle me-1"></i>Cancel Session
+            </button>
+            <button type="button" class="btn btn-danger w-100" id="eventDeleteSession">
+                <i class="bi bi-trash me-1"></i>Delete Session
+            </button>
+        </div>
+    </div>
+</div>
+
 <template id="calendar-event-template">
     <div class="calendar-event" draggable="false">
-        <div class="calendar-event-title"></div>
-        <div class="calendar-event-time"></div>
-        <button type="button" class="calendar-event-delete" title="Delete booking"><i class="bi bi-x"></i></button>
+        <div class="calendar-event-dragzone">
+            <i class="bi bi-grip-horizontal calendar-event-dragicon" aria-hidden="true"></i>
+            <span class="calendar-event-dragtext">Drag to Move</span>
+        </div>
+        <div class="calendar-event-content">
+            <div class="calendar-event-title"></div>
+            <div class="calendar-event-time"></div>
+        </div>
         <div class="calendar-event-handle calendar-event-handle-top"></div>
         <div class="calendar-event-handle calendar-event-handle-bottom"></div>
     </div>
@@ -258,6 +316,28 @@
     const windowEndInput = document.getElementById('windowEnd');
     const eventTemplate = document.getElementById('calendar-event-template');
     const bookButtons = document.querySelectorAll('.book-client-btn');
+    const eventModal = document.getElementById('eventModal');
+    const eventModalClose = document.getElementById('eventModalClose');
+    const eventModalTitle = document.getElementById('eventModalTitle');
+    const eventModalTime = document.getElementById('eventModalTime');
+    const eventModalStatus = document.getElementById('eventModalStatus');
+    const eventViewProfileBtn = document.getElementById('eventViewProfile');
+    const eventRepeatForm = document.getElementById('eventRepeatForm');
+    const eventRepeatWeeksInput = document.getElementById('eventRepeatWeeks');
+    const eventRepeatInfo = document.getElementById('eventRepeatInfo');
+    const eventRepeatSubmit = document.getElementById('eventRepeatSubmit');
+    const eventRepeatSection = document.getElementById('eventRepeatSection');
+    const eventCancelSession = document.getElementById('eventCancelSession');
+    const eventStatusForm = document.getElementById('eventStatusForm');
+    const eventStatusSelect = document.getElementById('eventStatusSelect');
+    const eventStatusUpdate = document.getElementById('eventStatusUpdate');
+    const eventStatusInfo = document.getElementById('eventStatusInfo');
+    const eventDeleteSession = document.getElementById('eventDeleteSession');
+    const clientProfileBase = "{{ url_for('client_profile', client_id=0)[:-1] }}";
+    const eventRepeatSubmitDefault = eventRepeatSubmit ? eventRepeatSubmit.innerHTML : '';
+    const eventCancelDefault = eventCancelSession ? eventCancelSession.innerHTML : '';
+    const eventStatusUpdateDefault = eventStatusUpdate ? eventStatusUpdate.innerHTML : '';
+    const eventDeleteDefault = eventDeleteSession ? eventDeleteSession.innerHTML : '';
     const globalToast = document.getElementById('globalToast');
     const toastMessageEl = document.getElementById('toastMessage');
     const toastVariants = ['toast-success', 'toast-warning', 'toast-danger', 'toast-info'];
@@ -284,10 +364,18 @@
         viewEnd: initialEnd,
         events: [],
         dragging: null,
-        dragPointer: null
+        dragPointer: null,
+        modalEvent: null,
+        justDragged: false
     };
 
     let dayColumns = [];
+
+    const STATUS_LABELS = {
+        booked: 'Booked',
+        completed: 'Completed',
+        cancelled: 'Cancelled'
+    };
 
     function startOfWeek(date) {
         const d = new Date(date);
@@ -316,23 +404,291 @@
         }
     }
 
-    function updateClientRowCounts(clientId, totalSessions, bookedSessions) {
+    function updateClientRowCounts(clientId, totalSessions, bookedSessions, completedSessions = 0, workoutsCompleted = null) {
         const row = document.querySelector(`tr[data-client-id="${clientId}"]`);
         if (!row) return;
+        const workoutsCell = row.querySelector('.workouts-completed-cell');
         const bookedCell = row.querySelector('.sessions-booked-cell');
+        const completedCell = row.querySelector('.sessions-completed-cell');
         const leftCell = row.querySelector('.sessions-left-cell');
+        if (workoutsCell && workoutsCompleted !== null && typeof workoutsCompleted !== 'undefined') {
+            workoutsCell.textContent = workoutsCompleted;
+        }
         if (bookedCell) {
             bookedCell.textContent = bookedSessions;
         }
+        if (completedCell) {
+            completedCell.textContent = completedSessions;
+        }
         if (leftCell) {
             if (totalSessions === null || totalSessions === undefined || totalSessions === '') {
-                leftCell.textContent = '—';
+                leftCell.textContent = '∞';
             } else {
-                const left = Math.max(totalSessions - bookedSessions, 0);
-                leftCell.textContent = left;
+                const consumed = Math.min(totalSessions, Math.max(bookedSessions, 0) + Math.max(completedSessions, 0));
+                const left = Math.max(totalSessions - consumed, 0);
+                leftCell.textContent = `${left} / ${totalSessions}`;
             }
         }
     }
+
+    function upsertEvent(eventData) {
+        if (!eventData) return;
+        const idx = state.events.findIndex(ev => ev.id === eventData.id);
+        if (idx !== -1) {
+            state.events[idx] = eventData;
+        } else {
+            state.events.push(eventData);
+        }
+    }
+
+    function sortEvents() {
+        state.events.sort((a, b) => {
+            const aStart = a?.start_time ? new Date(a.start_time).getTime() : 0;
+            const bStart = b?.start_time ? new Date(b.start_time).getTime() : 0;
+            return aStart - bStart;
+        });
+    }
+
+    function syncClientSessionCounts(clientId, counts = {}) {
+        const {
+            sessions_booked: bookedValue,
+            sessions_remaining: totalValue,
+            sessions_completed: completedValue,
+            workouts_completed: workoutsValue
+        } = counts;
+
+        const button = document.querySelector(`.book-client-btn[data-client-id="${clientId}"]`);
+        let totalSessions = totalValue;
+        let workoutsCompleted = workoutsValue;
+
+        if (button) {
+            if (totalValue !== undefined) {
+                if (totalValue === null || totalValue === '') {
+                    button.dataset.sessions = '';
+                    totalSessions = null;
+                } else {
+                    button.dataset.sessions = String(totalValue);
+                    totalSessions = Number(totalValue);
+                }
+            } else {
+                totalSessions = button.dataset.sessions === '' ? null : Number(button.dataset.sessions || '0');
+            }
+            if (workoutsValue !== undefined && workoutsValue !== null) {
+                button.dataset.workoutsCompleted = String(workoutsValue);
+            }
+
+            if (bookedValue !== undefined && bookedValue !== null) {
+                button.dataset.sessionsBooked = String(bookedValue);
+            }
+            if (completedValue !== undefined && completedValue !== null) {
+                button.dataset.sessionsCompleted = String(completedValue);
+            }
+        } else if (totalSessions === undefined) {
+            totalSessions = null;
+        }
+
+        const datasetWorkouts = button ? Number(button.dataset.workoutsCompleted || '0') : 0;
+        const datasetBooked = button ? Number(button.dataset.sessionsBooked || '0') : 0;
+        const datasetCompleted = button ? Number(button.dataset.sessionsCompleted || '0') : 0;
+        const bookedSessions = bookedValue !== undefined && bookedValue !== null
+            ? Number(bookedValue)
+            : (state.selectedClient && state.selectedClient.id === clientId ? state.selectedClient.sessionsBooked || 0 : datasetBooked);
+        const completedSessions = completedValue !== undefined && completedValue !== null
+            ? Number(completedValue)
+            : (state.selectedClient && state.selectedClient.id === clientId ? state.selectedClient.sessionsCompleted || 0 : datasetCompleted);
+        workoutsCompleted = workoutsValue !== undefined && workoutsValue !== null
+            ? Number(workoutsValue)
+            : (state.selectedClient && state.selectedClient.id === clientId && typeof state.selectedClient.workoutsCompleted !== 'undefined'
+                ? state.selectedClient.workoutsCompleted
+                : datasetWorkouts);
+
+        updateClientRowCounts(clientId, totalSessions, bookedSessions, completedSessions, workoutsCompleted);
+
+        if (state.selectedClient && state.selectedClient.id === clientId) {
+            if (bookedValue !== undefined && bookedValue !== null) {
+                state.selectedClient.sessionsBooked = Number(bookedValue);
+                if (state.selectedClientButton) {
+                    state.selectedClientButton.dataset.sessionsBooked = String(bookedValue);
+                }
+            }
+            if (completedValue !== undefined && completedValue !== null) {
+                state.selectedClient.sessionsCompleted = Number(completedValue);
+                if (state.selectedClientButton) {
+                    state.selectedClientButton.dataset.sessionsCompleted = String(completedValue);
+                }
+            }
+            if (totalValue !== undefined) {
+                state.selectedClient.sessions = totalSessions;
+                if (state.selectedClientButton) {
+                    state.selectedClientButton.dataset.sessions = totalSessions === null ? '' : String(totalSessions);
+                }
+            }
+            if (workoutsCompleted !== undefined && workoutsCompleted !== null) {
+                state.selectedClient.workoutsCompleted = workoutsCompleted;
+                if (state.selectedClientButton) {
+                    state.selectedClientButton.dataset.workoutsCompleted = String(workoutsCompleted);
+                }
+            }
+        }
+    }
+
+    function ensureClientSelection(clientId) {
+        if (!clientId) return;
+        if (state.selectedClient && state.selectedClient.id === clientId) return;
+        const button = document.querySelector(`.book-client-btn[data-client-id="${clientId}"]`);
+        if (!button) return;
+        bookButtons.forEach(btn => btn.classList.remove('active'));
+        button.classList.add('active');
+        const name = button.dataset.clientName || 'Client';
+        const last = button.dataset.clientLastname || '';
+        displaySelected.textContent = `Booking for ${name} ${last}`.trim();
+        const sessionsTotal = button.dataset.sessions === '' ? null : Number(button.dataset.sessions || '0');
+        const sessionsBooked = Number(button.dataset.sessionsBooked || '0');
+        const sessionsCompleted = Number(button.dataset.sessionsCompleted || '0');
+        const workoutsCompleted = Number(button.dataset.workoutsCompleted || '0');
+        state.selectedClient = {
+            id: Number(button.dataset.clientId),
+            name,
+            last,
+            sessions: sessionsTotal,
+            sessionsBooked,
+            sessionsCompleted,
+            workoutsCompleted
+        };
+        state.selectedClientButton = button;
+    }
+
+    function applyStatusBadge(status) {
+        if (!eventModalStatus) return;
+        const normalized = (status || 'booked').toLowerCase();
+        const label = STATUS_LABELS[normalized] || 'Booked';
+        eventModalStatus.textContent = label;
+        eventModalStatus.className = 'event-session-modal__status';
+        if (normalized === 'completed') {
+            eventModalStatus.classList.add('status-pill--completed');
+        } else if (normalized === 'cancelled') {
+            eventModalStatus.classList.add('status-pill--cancelled');
+        } else {
+            eventModalStatus.classList.add('status-pill--booked');
+        }
+    }
+
+    function refreshModalFromState() {
+        if (!state.modalEvent) return;
+        const modalData = state.modalEvent;
+        const status = (modalData.status || 'booked').toLowerCase();
+        const fullName = modalData.client_name ? `${modalData.client_name} ${modalData.client_last_name || ''}`.trim() : modalData.client_username;
+        if (eventModalTitle) {
+            eventModalTitle.textContent = fullName || 'Client Session';
+        }
+        if (eventModalTime) {
+            const start = new Date(modalData.start_time);
+            const end = new Date(modalData.end_time);
+            const dateStr = start.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+            eventModalTime.textContent = `${dateStr} · ${formatTime(start)} – ${formatTime(end)}`;
+        }
+        applyStatusBadge(status);
+        if (eventRepeatForm) {
+            eventRepeatForm.hidden = status === 'cancelled';
+        }
+        if (eventRepeatSection) {
+            eventRepeatSection.hidden = status === 'cancelled';
+        }
+        if (eventRepeatInfo) {
+            if (modalData.repeatInfo) {
+                eventRepeatInfo.textContent = modalData.repeatInfo;
+            } else {
+                eventRepeatInfo.textContent = status === 'cancelled'
+                    ? 'This session has been cancelled.'
+                    : 'Repeats will use available sessions remaining.';
+            }
+        }
+        if (eventStatusSelect) {
+            eventStatusSelect.value = status;
+        }
+        if (eventStatusInfo) {
+            eventStatusInfo.textContent = 'Status changes update client balances immediately.';
+        }
+        if (eventStatusUpdate) {
+            eventStatusUpdate.disabled = false;
+            eventStatusUpdate.innerHTML = eventStatusUpdateDefault;
+        }
+        if (eventCancelSession) {
+            eventCancelSession.disabled = status === 'cancelled';
+            eventCancelSession.classList.toggle('disabled', status === 'cancelled');
+            eventCancelSession.innerHTML = status === 'cancelled'
+                ? '<i class="bi bi-x-circle me-1"></i>Session Cancelled'
+                : eventCancelDefault;
+        }
+        if (eventViewProfileBtn) {
+            eventViewProfileBtn.onclick = () => {
+                const targetId = modalData.client_id;
+                window.location.href = `${clientProfileBase}${targetId}`;
+            };
+        }
+    }
+
+    function openEventModal(eventData) {
+        if (!eventModal || !eventData) return;
+        ensureClientSelection(eventData.client_id);
+        state.modalEvent = {
+            ...eventData,
+            status: (eventData.status || 'booked').toLowerCase()
+        };
+        state.modalEvent.repeatInfo = undefined;
+        if (eventDeleteSession) {
+            eventDeleteSession.disabled = false;
+            eventDeleteSession.innerHTML = eventDeleteDefault;
+        }
+        refreshModalFromState();
+        if (eventRepeatWeeksInput) {
+            eventRepeatWeeksInput.value = '4';
+        }
+        if (eventRepeatSubmit) {
+            eventRepeatSubmit.disabled = false;
+            eventRepeatSubmit.innerHTML = eventRepeatSubmitDefault;
+        }
+        state.justDragged = false;
+        eventModal.hidden = false;
+    }
+
+    function closeEventModal() {
+        if (!eventModal) return;
+        eventModal.hidden = true;
+        if (eventRepeatSubmit) {
+            eventRepeatSubmit.disabled = false;
+            eventRepeatSubmit.innerHTML = eventRepeatSubmitDefault;
+        }
+        if (eventCancelSession) {
+            eventCancelSession.disabled = false;
+            eventCancelSession.classList.remove('disabled');
+            eventCancelSession.innerHTML = eventCancelDefault;
+        }
+        if (eventStatusUpdate) {
+            eventStatusUpdate.disabled = false;
+            eventStatusUpdate.innerHTML = eventStatusUpdateDefault;
+        }
+        if (eventDeleteSession) {
+            eventDeleteSession.disabled = false;
+            eventDeleteSession.innerHTML = eventDeleteDefault;
+        }
+        state.modalEvent = null;
+    }
+
+    function handleEventClick(evt, eventData) {
+        if (evt) {
+            evt.stopPropagation();
+            if (evt.target && evt.target.closest('.calendar-event-handle')) return;
+            if (typeof evt.button === 'number' && evt.button !== 0) return;
+        }
+        if (state.dragging) return;
+        if (state.justDragged) {
+            state.justDragged = false;
+            return;
+        }
+        openEventModal(eventData);
+    }
+
 
     function formatDay(date) {
         return date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
@@ -350,7 +706,17 @@
     function updateWeekLabel() {
         const end = new Date(state.weekStart);
         end.setDate(end.getDate() + 6);
-        weekLabel.textContent = `${state.weekStart.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} – ${end.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
+        const startYear = state.weekStart.getFullYear();
+        const endYear = end.getFullYear();
+        if (startYear === endYear) {
+            const startText = state.weekStart.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+            const endText = end.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+            weekLabel.textContent = `${startText} – ${endText}, ${startYear}`;
+        } else {
+            const startText = state.weekStart.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+            const endText = end.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+            weekLabel.textContent = `${startText} – ${endText}`;
+        }
     }
 
     function renderHeaders() {
@@ -456,6 +822,10 @@
             const eventNode = eventTemplate.content.firstElementChild.cloneNode(true);
             eventNode.dataset.id = event.id;
             eventNode.dataset.clientId = event.client_id;
+            const status = (event.status || 'booked').toLowerCase();
+            eventNode.dataset.status = status;
+            eventNode.classList.toggle('calendar-event-cancelled', status === 'cancelled');
+            eventNode.classList.toggle('calendar-event-completed', status === 'completed');
             eventNode.style.top = `${top}%`;
             eventNode.style.height = `${height}%`;
 
@@ -465,14 +835,26 @@
             const timeEl = eventNode.querySelector('.calendar-event-time');
             timeEl.textContent = `${formatTime(start)} – ${formatTime(end)}`;
 
-            const delBtn = eventNode.querySelector('.calendar-event-delete');
-            delBtn.addEventListener('click', () => deleteEvent(event.id));
-
-            eventNode.addEventListener('pointerdown', (evt) => beginDrag(evt, event, column));
+            const dragZone = eventNode.querySelector('.calendar-event-dragzone');
+            if (dragZone) {
+                dragZone.addEventListener('pointerdown', (evt) => beginDrag(evt, event, column));
+            }
+            const dragText = eventNode.querySelector('.calendar-event-dragtext');
+            if (dragText) {
+                dragText.textContent = STATUS_LABELS[status] || 'Booked';
+            }
+            const contentArea = eventNode.querySelector('.calendar-event-content');
+            if (contentArea) {
+                contentArea.addEventListener('click', (evt) => handleEventClick(evt, event));
+            }
             const topHandle = eventNode.querySelector('.calendar-event-handle-top');
             const bottomHandle = eventNode.querySelector('.calendar-event-handle-bottom');
-            topHandle.addEventListener('pointerdown', (evt) => beginResize(evt, event, column, 'top'));
-            bottomHandle.addEventListener('pointerdown', (evt) => beginResize(evt, event, column, 'bottom'));
+            if (topHandle) {
+                topHandle.addEventListener('pointerdown', (evt) => beginResize(evt, event, column, 'top'));
+            }
+            if (bottomHandle) {
+                bottomHandle.addEventListener('pointerdown', (evt) => beginResize(evt, event, column, 'bottom'));
+            }
 
             column.appendChild(eventNode);
         });
@@ -492,7 +874,22 @@
             .then(data => {
                 if (!data.success) throw new Error(data.error || 'Failed to load schedule.');
                 state.events = data.events || [];
+                sortEvents();
                 renderEvents();
+                if (state.modalEvent) {
+                    const refreshed = state.events.find(ev => ev.id === state.modalEvent.id);
+                    if (refreshed) {
+                        const repeatInfo = state.modalEvent.repeatInfo;
+                        state.modalEvent = {
+                            ...refreshed,
+                            status: (refreshed.status || 'booked').toLowerCase(),
+                            repeatInfo
+                        };
+                        refreshModalFromState();
+                    } else {
+                        closeEventModal();
+                    }
+                }
             })
             .catch(err => {
                 console.error(err);
@@ -510,15 +907,20 @@
         displaySelected.textContent = `Booking for ${name} ${last}`.trim();
         const sessionsTotal = button.dataset.sessions === '' ? null : Number(button.dataset.sessions);
         const sessionsBooked = Number(button.dataset.sessionsBooked || '0');
+        const sessionsCompleted = Number(button.dataset.sessionsCompleted || '0');
+        const workoutsCompleted = Number(button.dataset.workoutsCompleted || '0');
         state.selectedClient = {
             id: Number(button.dataset.clientId),
             name,
             last,
             sessions: sessionsTotal,
-            sessionsBooked
+            sessionsBooked,
+            sessionsCompleted,
+            workoutsCompleted
         };
         state.selectedClientButton = button;
-        if (state.selectedClient.sessions !== null && state.selectedClient.sessionsBooked >= state.selectedClient.sessions) {
+        const consumed = (state.selectedClient.sessionsBooked || 0) + (state.selectedClient.sessionsCompleted || 0);
+        if (state.selectedClient.sessions !== null && consumed >= state.selectedClient.sessions) {
             showDashboardToast(`${name} ${last} has no sessions remaining.`, 'danger');
             state.selectedClient = null;
             state.selectedClientButton = null;
@@ -537,7 +939,8 @@
             showDashboardToast('Select a client before booking a slot.', 'warning');
             return;
         }
-        if (state.selectedClient.sessions !== null && state.selectedClient.sessionsBooked >= state.selectedClient.sessions) {
+        const consumed = (state.selectedClient.sessionsBooked || 0) + (state.selectedClient.sessionsCompleted || 0);
+        if (state.selectedClient.sessions !== null && consumed >= state.selectedClient.sessions) {
             showDashboardToast('That client has no sessions remaining.', 'danger');
             state.selectedClient = null;
             state.selectedClientButton = null;
@@ -576,66 +979,340 @@
                     showDashboardToast(message, 'danger');
                     return;
                 }
-                state.events.push(data.event);
+                upsertEvent(data.event);
+                sortEvents();
                 renderEvents();
-                if (state.selectedClient) {
-                    state.selectedClient.sessionsBooked = (state.selectedClient.sessionsBooked || 0) + 1;
-                    if (state.selectedClientButton) {
-                        state.selectedClientButton.dataset.sessionsBooked = String(state.selectedClient.sessionsBooked);
+                const resultClientId = data.event?.client_id || (state.selectedClient ? state.selectedClient.id : null);
+                if (typeof data.sessions_booked !== 'undefined' || typeof data.sessions_remaining !== 'undefined' || typeof data.sessions_completed !== 'undefined') {
+                    if (resultClientId) {
+                        syncClientSessionCounts(resultClientId, {
+                            sessions_booked: data.sessions_booked,
+                            sessions_remaining: data.sessions_remaining,
+                            sessions_completed: data.sessions_completed,
+                            workouts_completed: data.workouts_completed
+                        });
                     }
-                    updateClientRowCounts(
-                        state.selectedClient.id,
-                        state.selectedClient.sessions,
-                        state.selectedClient.sessionsBooked
-                    );
+                } else if (state.selectedClient) {
+                    const updatedBooked = (state.selectedClient.sessionsBooked || 0) + 1;
+                    syncClientSessionCounts(state.selectedClient.id, {
+                        sessions_booked: updatedBooked,
+                        sessions_remaining: state.selectedClient.sessions,
+                        sessions_completed: state.selectedClient.sessionsCompleted || 0,
+                        workouts_completed: state.selectedClient.workoutsCompleted || 0
+                    });
                 }
                 showDashboardToast('Session booked!', 'success');
             })
             .catch(() => showDashboardToast('Unable to connect to the scheduler.', 'danger'));
     }
 
-    function deleteEvent(eventId) {
-        if (!confirm('Remove this booking?')) return;
+    function deleteEvent(eventId, options = {}) {
+        const { skipConfirm = false } = options;
+        if (!eventId) return Promise.resolve(false);
+        if (!skipConfirm && !confirm('Remove this booking?')) {
+            return Promise.resolve(false);
+        }
         const target = state.events.find(ev => ev.id === eventId);
         const targetClientId = target ? target.client_id : null;
-        fetch(`/trainer/schedule/${eventId}`, { method: 'DELETE' })
+        const wasBooked = (target?.status || 'booked').toLowerCase() === 'booked';
+
+        return fetch(`/trainer/schedule/${eventId}`, { method: 'DELETE' })
             .then(res => res.json())
             .then(data => {
                 if (!data.success) {
                     showDashboardToast(data.error || 'Unable to remove booking.', 'danger');
-                    return;
+                    return false;
                 }
                 state.events = state.events.filter(ev => ev.id !== eventId);
                 renderEvents();
-                if (targetClientId) {
+                if (targetClientId && wasBooked) {
+                    let newBooked = null;
+                    let totalSessions = null;
+                    let completedSessions = 0;
+                    let workoutsCompleted = 0;
+                    let buttonRef = null;
                     if (state.selectedClient && state.selectedClient.id === targetClientId) {
-                        state.selectedClient.sessionsBooked = Math.max((state.selectedClient.sessionsBooked || 1) - 1, 0);
-                        if (state.selectedClientButton) {
-                            state.selectedClientButton.dataset.sessionsBooked = String(state.selectedClient.sessionsBooked);
+                        newBooked = Math.max((state.selectedClient.sessionsBooked || 1) - 1, 0);
+                        totalSessions = state.selectedClient.sessions;
+                        completedSessions = state.selectedClient.sessionsCompleted || 0;
+                        workoutsCompleted = state.selectedClient.workoutsCompleted || 0;
+                    } else {
+                        buttonRef = document.querySelector(`.book-client-btn[data-client-id="${targetClientId}"]`);
+                        if (buttonRef) {
+                            newBooked = Math.max(Number(buttonRef.dataset.sessionsBooked || '0') - 1, 0);
+                            totalSessions = buttonRef.dataset.sessions === '' ? null : Number(buttonRef.dataset.sessions || '0');
+                            completedSessions = Number(buttonRef.dataset.sessionsCompleted || '0');
+                            workoutsCompleted = Number(buttonRef.dataset.workoutsCompleted || '0');
                         }
                     }
-                    const totalSessions = state.selectedClient && state.selectedClient.id === targetClientId ? state.selectedClient.sessions : null;
-                    const booked = state.selectedClient && state.selectedClient.id === targetClientId ? state.selectedClient.sessionsBooked : null;
-                    if (booked !== null) {
-                        updateClientRowCounts(targetClientId, totalSessions, booked);
-                    } else {
-                        const btn = document.querySelector(`.book-client-btn[data-client-id="${targetClientId}"]`);
-                        if (btn) {
-                            const total = btn.dataset.sessions === '' ? null : Number(btn.dataset.sessions);
-                            const currentBooked = Number(btn.dataset.sessionsBooked || '0');
-                            const newBooked = Math.max(currentBooked - 1, 0);
-                            btn.dataset.sessionsBooked = String(newBooked);
-                            updateClientRowCounts(targetClientId, total, newBooked);
-                        }
+                    if (newBooked !== null) {
+                        syncClientSessionCounts(targetClientId, {
+                            sessions_booked: newBooked,
+                            sessions_remaining: totalSessions,
+                            sessions_completed: completedSessions,
+                            workouts_completed: workoutsCompleted
+                        });
                     }
                 }
                 showDashboardToast('Booking removed.', 'success');
+                return true;
             })
-            .catch(() => showDashboardToast('Network issue deleting booking.', 'danger'));
+            .catch(() => {
+                showDashboardToast('Network issue deleting booking.', 'danger');
+                return false;
+            });
+    }
+
+    function handleRepeatSubmit(event) {
+        if (event) event.preventDefault();
+        if (!state.modalEvent || !eventRepeatWeeksInput || !eventRepeatSubmit) return;
+        const weeksValue = Number(eventRepeatWeeksInput.value || '0');
+        if (!Number.isFinite(weeksValue) || weeksValue <= 0) {
+            showDashboardToast('Enter how many weeks you would like to repeat.', 'warning');
+            return;
+        }
+        eventRepeatSubmit.disabled = true;
+        eventRepeatSubmit.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Repeating...';
+
+        fetch(`/trainer/schedule/${state.modalEvent.id}/repeat`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ weeks: weeksValue })
+        })
+            .then(res => res.json())
+            .then(data => {
+                if (!data.success) {
+                    showDashboardToast(data.error || 'Unable to repeat that booking.', 'danger');
+                    if (eventRepeatInfo && Array.isArray(data.conflicts) && data.conflicts.length > 0) {
+                        eventRepeatInfo.textContent = `Skipped ${data.conflicts.length} week(s) due to conflicts.`;
+                    }
+                    return;
+                }
+                if (Array.isArray(data.created_events)) {
+                    data.created_events.forEach(ev => upsertEvent(ev));
+                    sortEvents();
+                    renderEvents();
+                }
+                if (eventRepeatInfo) {
+                    if (Array.isArray(data.conflicts) && data.conflicts.length > 0) {
+                        eventRepeatInfo.textContent = `Added ${data.created_count} session(s); ${data.conflicts.length} week(s) skipped because of conflicts.`;
+                    } else if (data.remaining_quota === 0 && data.sessions_remaining !== null) {
+                        eventRepeatInfo.textContent = 'All available sessions are now booked.';
+                    } else {
+                        eventRepeatInfo.textContent = `Added ${data.created_count} weekly session${data.created_count === 1 ? '' : 's'}.`;
+                    }
+                    if (state.modalEvent) {
+                        state.modalEvent.repeatInfo = eventRepeatInfo.textContent;
+                    }
+                }
+                if (data.sessions_booked !== undefined || data.sessions_remaining !== undefined || data.sessions_completed !== undefined) {
+                    syncClientSessionCounts(state.modalEvent.client_id, {
+                        sessions_booked: data.sessions_booked,
+                        sessions_remaining: data.sessions_remaining,
+                        sessions_completed: data.sessions_completed,
+                        workouts_completed: data.workouts_completed
+                    });
+                }
+                showDashboardToast(`Added ${data.created_count} weekly session${data.created_count === 1 ? '' : 's'}.`, 'success');
+                state.justDragged = false;
+            })
+            .catch(() => showDashboardToast('Unable to repeat that booking right now.', 'danger'))
+            .finally(() => {
+                if (eventRepeatSubmit) {
+                    eventRepeatSubmit.disabled = false;
+                    eventRepeatSubmit.innerHTML = eventRepeatSubmitDefault;
+                }
+                fetchEvents();
+            });
+    }
+
+    function handleStatusUpdate(event) {
+        if (event) event.preventDefault();
+        if (!state.modalEvent || !eventStatusSelect || !eventStatusUpdate) return;
+        const desired = (eventStatusSelect.value || '').trim().toLowerCase();
+        if (!desired) {
+            showDashboardToast('Select a status to apply.', 'warning');
+            return;
+        }
+        const currentStatus = (state.modalEvent.status || 'booked').toLowerCase();
+        if (desired === currentStatus) {
+            showDashboardToast('Session already has that status.', 'info');
+            return;
+        }
+        eventStatusUpdate.disabled = true;
+        eventStatusUpdate.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Applying...';
+        fetch(`/trainer/schedule/${state.modalEvent.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: desired })
+        })
+            .then(res => res.json())
+            .then(data => {
+                if (!data.success) {
+                    showDashboardToast(data.error || 'Unable to update session status.', 'danger');
+                    if (eventStatusUpdate) {
+                        eventStatusUpdate.disabled = false;
+                        eventStatusUpdate.innerHTML = eventStatusUpdateDefault;
+                    }
+                    return;
+                }
+                const updatedEvent = data.event;
+                const newStatus = (updatedEvent.status || desired).toLowerCase();
+                const clientId = updatedEvent.client_id;
+
+                upsertEvent(updatedEvent);
+                sortEvents();
+                renderEvents();
+
+                const priorRepeatInfo = state.modalEvent ? state.modalEvent.repeatInfo : undefined;
+                state.modalEvent = {
+                    ...updatedEvent,
+                    status: newStatus,
+                    repeatInfo: priorRepeatInfo
+                };
+                refreshModalFromState();
+
+                if (typeof data.sessions_booked !== 'undefined' || typeof data.sessions_remaining !== 'undefined' || typeof data.sessions_completed !== 'undefined') {
+                    syncClientSessionCounts(clientId, {
+                        sessions_booked: data.sessions_booked,
+                        sessions_remaining: data.sessions_remaining,
+                        sessions_completed: data.sessions_completed,
+                        workouts_completed: data.workouts_completed
+                    });
+                } else {
+                    let delta = 0;
+                    if (currentStatus === 'booked' && newStatus !== 'booked') delta = -1;
+                    if (currentStatus !== 'booked' && newStatus === 'booked') delta = 1;
+                    if (delta !== 0) {
+                        if (state.selectedClient && state.selectedClient.id === clientId) {
+                            const updated = Math.max((state.selectedClient.sessionsBooked || 0) + delta, 0);
+                            syncClientSessionCounts(clientId, {
+                                sessions_booked: updated,
+                                sessions_remaining: state.selectedClient.sessions,
+                                sessions_completed: state.selectedClient.sessionsCompleted || 0,
+                                workouts_completed: state.selectedClient.workoutsCompleted || 0
+                            });
+                        } else {
+                            const btn = document.querySelector(`.book-client-btn[data-client-id="${clientId}"]`);
+                            if (btn) {
+                                const currentBooked = Math.max(Number(btn.dataset.sessionsBooked || '0') + delta, 0);
+                                const totalSessions = btn.dataset.sessions === '' ? null : Number(btn.dataset.sessions || '0');
+                                const completedSessions = Number(btn.dataset.sessionsCompleted || '0');
+                                syncClientSessionCounts(clientId, {
+                                    sessions_booked: currentBooked,
+                                    sessions_remaining: totalSessions,
+                                    sessions_completed: completedSessions,
+                                    workouts_completed: Number(btn.dataset.workoutsCompleted || '0')
+                                });
+                            }
+                        }
+                    }
+                }
+                showDashboardToast(`Status updated to ${STATUS_LABELS[newStatus] || newStatus}.`, 'success');
+                closeEventModal();
+            })
+            .catch(() => {
+                showDashboardToast('Unable to update session status right now.', 'danger');
+            })
+            .finally(() => {
+                if (eventStatusUpdate) {
+                    eventStatusUpdate.disabled = false;
+                    eventStatusUpdate.innerHTML = eventStatusUpdateDefault;
+                }
+                fetchEvents();
+            });
+    }
+
+    function handleCancelSession() {
+        if (!state.modalEvent || !eventCancelSession || eventCancelSession.disabled) return;
+        if (!confirm('Cancel this session?')) return;
+        eventCancelSession.disabled = true;
+        eventCancelSession.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Cancelling...';
+
+        fetch(`/trainer/schedule/${state.modalEvent.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: 'cancelled' })
+        })
+            .then(res => res.json())
+            .then(data => {
+                if (!data.success) {
+                    showDashboardToast(data.error || 'Unable to cancel that session.', 'danger');
+                    eventCancelSession.disabled = false;
+                    eventCancelSession.innerHTML = eventCancelDefault;
+                    return;
+                }
+                const updatedEvent = data.event;
+                if (updatedEvent) {
+                    upsertEvent(updatedEvent);
+                    sortEvents();
+                    renderEvents();
+                    state.modalEvent = {
+                        ...updatedEvent,
+                        status: (updatedEvent.status || 'booked').toLowerCase(),
+                        repeatInfo: 'This session has been cancelled.'
+                    };
+                    refreshModalFromState();
+
+                    const btn = document.querySelector(`.book-client-btn[data-client-id="${updatedEvent.client_id}"]`);
+                    let newBooked = null;
+                    let totalSessions = null;
+                    let completedSessions = 0;
+                    let workoutsCompleted = 0;
+                    if (btn) {
+                        const current = Number(btn.dataset.sessionsBooked || '0');
+                        newBooked = Math.max(current - 1, 0);
+                        totalSessions = btn.dataset.sessions === '' ? null : Number(btn.dataset.sessions || '0');
+                        completedSessions = Number(btn.dataset.sessionsCompleted || '0');
+                        workoutsCompleted = Number(btn.dataset.workoutsCompleted || '0');
+                    } else if (state.selectedClient && state.selectedClient.id === updatedEvent.client_id) {
+                        newBooked = Math.max((state.selectedClient.sessionsBooked || 1) - 1, 0);
+                        totalSessions = state.selectedClient.sessions;
+                        completedSessions = state.selectedClient.sessionsCompleted || 0;
+                        workoutsCompleted = state.selectedClient.workoutsCompleted || 0;
+                    }
+                    if (newBooked !== null) {
+                        syncClientSessionCounts(updatedEvent.client_id, {
+                            sessions_booked: newBooked,
+                            sessions_remaining: totalSessions,
+                            sessions_completed: completedSessions,
+                            workouts_completed: workoutsCompleted
+                        });
+                    }
+                }
+                showDashboardToast('Session cancelled.', 'success');
+                fetchEvents();
+            })
+            .catch(() => {
+                showDashboardToast('Unable to cancel that session right now.', 'danger');
+                eventCancelSession.disabled = false;
+                eventCancelSession.innerHTML = eventCancelDefault;
+            })
+            .finally(() => {
+                state.justDragged = false;
+            });
+    }
+
+    function handleDeleteSession() {
+        if (!state.modalEvent || !eventDeleteSession || eventDeleteSession.disabled) return;
+        if (!confirm('Delete this session permanently?')) return;
+        eventDeleteSession.disabled = true;
+        eventDeleteSession.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Deleting...';
+        const targetId = state.modalEvent.id;
+        deleteEvent(targetId, { skipConfirm: true })
+            .then(success => {
+                if (success) {
+                    fetchEvents();
+                    closeEventModal();
+                } else if (eventDeleteSession) {
+                    eventDeleteSession.disabled = false;
+                    eventDeleteSession.innerHTML = eventDeleteDefault;
+                }
+            });
     }
 
     function beginDrag(evt, eventData, column) {
-        if (evt.target.closest('.calendar-event-handle') || evt.target.closest('.calendar-event-delete')) return;
+        if (evt.target.closest('.calendar-event-handle')) return;
         evt.preventDefault();
         const rect = column.getBoundingClientRect();
         const columnIndex = dayColumns.indexOf(column);
@@ -759,11 +1436,17 @@
         state.dragPointer = null;
         if (!state.dragging) return;
         const { previewStart, previewEnd, id } = state.dragging;
+        const hadPreview = Boolean(previewStart && previewEnd);
         state.dragging = null;
-        if (!previewStart || !previewEnd) {
+        if (!hadPreview) {
+            state.justDragged = false;
             renderEvents();
             return;
         }
+        state.justDragged = true;
+        setTimeout(() => {
+            state.justDragged = false;
+        }, 150);
         fetch(`/trainer/schedule/${id}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
@@ -779,8 +1462,8 @@
                     fetchEvents();
                     return;
                 }
-                const idx = state.events.findIndex(ev => ev.id === id);
-                if (idx !== -1) state.events[idx] = data.event;
+                upsertEvent(data.event);
+                sortEvents();
                 renderEvents();
                 showDashboardToast('Booking updated.', 'success');
             })
@@ -845,6 +1528,32 @@
         if (scrollWrap) scrollWrap.scrollLeft = 0;
     }
 
+    function applyInitialFocus() {
+        if (typeof window === 'undefined') return;
+        const params = new URLSearchParams(window.location.search);
+        const focusParam = params.get('focus');
+        if (!focusParam || !focusParam.startsWith('client-')) return;
+        const numeric = Number(focusParam.replace('client-', ''));
+        if (!Number.isFinite(numeric) || numeric <= 0) return;
+        const targetBtn = document.querySelector(`.book-client-btn[data-client-id="${numeric}"]`);
+        if (!targetBtn) return;
+        selectClient(targetBtn);
+        const action = (params.get('action') || '').toLowerCase();
+        if (action === 'book') {
+            showDashboardToast('Select a time slot to add this client to the schedule.', 'info');
+            setTimeout(() => {
+                if (calendarRoot) {
+                    calendarRoot.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            }, 250);
+        }
+        params.delete('focus');
+        params.delete('action');
+        const query = params.toString();
+        const newUrl = query ? `${window.location.pathname}?${query}${window.location.hash}` : `${window.location.pathname}${window.location.hash}`;
+        history.replaceState({}, document.title, newUrl);
+    }
+
     function init() {
         rebuildGrid();
         updateWeekLabel();
@@ -878,10 +1587,41 @@
         windowCancel.addEventListener('click', closeWindowModal);
         windowForm.addEventListener('submit', applyWindow);
 
+        if (eventModalClose) {
+            eventModalClose.addEventListener('click', closeEventModal);
+        }
+        if (eventModal) {
+            eventModal.addEventListener('click', (evt) => {
+                if (evt.target === eventModal) {
+                    closeEventModal();
+                }
+            });
+        }
+        if (eventRepeatForm) {
+            eventRepeatForm.addEventListener('submit', handleRepeatSubmit);
+        }
+        if (eventCancelSession) {
+            eventCancelSession.addEventListener('click', handleCancelSession);
+        }
+        if (eventStatusForm) {
+            eventStatusForm.addEventListener('submit', handleStatusUpdate);
+        }
+        if (eventDeleteSession) {
+            eventDeleteSession.addEventListener('click', handleDeleteSession);
+        }
+        if (typeof document !== 'undefined') {
+            document.addEventListener('keydown', (evt) => {
+                if (evt.key === 'Escape' && state.modalEvent && eventModal && !eventModal.hidden) {
+                    closeEventModal();
+                }
+            });
+        }
+
         columnsEl.addEventListener('click', handleSlotClick);
     }
 
     init();
+    applyInitialFocus();
 })();
 </script>
 {% endblock %}

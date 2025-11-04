@@ -91,8 +91,14 @@
 
 <template id="client-calendar-event">
     <div class="calendar-event" draggable="false">
-        <div class="calendar-event-title"></div>
-        <div class="calendar-event-time"></div>
+        <div class="calendar-event-dragzone">
+            <i class="bi bi-grip-horizontal calendar-event-dragicon" aria-hidden="true"></i>
+            <span class="calendar-event-dragtext">Scheduled</span>
+        </div>
+        <div class="calendar-event-content">
+            <div class="calendar-event-title"></div>
+            <div class="calendar-event-time"></div>
+        </div>
     </div>
 </template>
 
@@ -143,6 +149,11 @@
     };
 
     let dayColumns = [];
+    const STATUS_LABELS = {
+        booked: 'Booked',
+        completed: 'Completed',
+        cancelled: 'Cancelled'
+    };
 
     function startOfWeek(date) {
         const d = new Date(date);
@@ -169,10 +180,32 @@
         return Math.min(23, Math.max(0, value));
     }
 
+    function sortEvents() {
+        state.events.sort((a, b) => {
+            const aStart = a?.start_time ? new Date(a.start_time).getTime() : 0;
+            const bStart = b?.start_time ? new Date(b.start_time).getTime() : 0;
+            return aStart - bStart;
+        });
+    }
+
+    function statusLabel(status) {
+        return STATUS_LABELS[(status || 'booked').toLowerCase()] || 'Booked';
+    }
+
     function updateWeekLabel() {
         const end = new Date(state.weekStart);
         end.setDate(end.getDate() + 6);
-        weekLabel.textContent = `${state.weekStart.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} – ${end.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
+        const startYear = state.weekStart.getFullYear();
+        const endYear = end.getFullYear();
+        if (startYear === endYear) {
+            const startText = state.weekStart.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+            const endText = end.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+            weekLabel.textContent = `${startText} – ${endText}, ${startYear}`;
+        } else {
+            const startText = state.weekStart.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+            const endText = end.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+            weekLabel.textContent = `${startText} – ${endText}`;
+        }
     }
 
    function renderHeaders() {
@@ -268,13 +301,29 @@
             const height = Math.max((relativeEnd - relativeStart) / totalMinutes * 100, 2);
             eventNode.style.top = `${top}%`;
             eventNode.style.height = `${height}%`;
+            const status = (event.status || 'booked').toLowerCase();
+            eventNode.dataset.status = status;
+            eventNode.classList.toggle('calendar-event-completed', status === 'completed');
+            eventNode.classList.toggle('calendar-event-cancelled', status === 'cancelled');
 
             const title = eventNode.querySelector('.calendar-event-title');
             const trainerName = event.trainer_name || event.trainer_username;
             title.textContent = trainerName ? `With ${trainerName} ${event.trainer_last_name || ''}`.trim() : 'Training Session';
 
-            eventNode.querySelector('.calendar-event-time').textContent = `${formatTime(start)} – ${formatTime(end)}`;
-            eventNode.addEventListener('click', () => showDetails(event));
+            const timeEl = eventNode.querySelector('.calendar-event-time');
+            if (timeEl) {
+                timeEl.textContent = `${formatTime(start)} – ${formatTime(end)}`;
+            }
+            const dragText = eventNode.querySelector('.calendar-event-dragtext');
+            if (dragText) {
+                dragText.textContent = statusLabel(status);
+            }
+            const contentArea = eventNode.querySelector('.calendar-event-content');
+            if (contentArea) {
+                contentArea.addEventListener('click', () => showDetails(event));
+            } else {
+                eventNode.addEventListener('click', () => showDetails(event));
+            }
             column.appendChild(eventNode);
         });
     }
@@ -285,7 +334,9 @@
         const end = new Date(event.end_time);
         const trainerName = event.trainer_name || event.trainer_username;
         const dateStr = start.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
-        eventDetails.textContent = `${dateStr}: ${formatTime(start)} – ${formatTime(end)} with ${trainerName}${event.trainer_last_name ? ' ' + event.trainer_last_name : ''}`;
+        const label = statusLabel(event.status);
+        const statusNote = label && label !== 'Booked' ? ` (${label})` : '';
+        eventDetails.textContent = `${dateStr}: ${formatTime(start)} – ${formatTime(end)} with ${trainerName}${event.trainer_last_name ? ' ' + event.trainer_last_name : ''}${statusNote}`;
     }
 
     function fetchEvents() {
@@ -298,6 +349,7 @@
             .then(data => {
                 if (!data.success) throw new Error(data.error || 'Failed to load schedule');
                 state.events = data.events || [];
+                sortEvents();
                 renderEvents();
             })
             .catch(err => {

@@ -1,0 +1,99 @@
+{% extends "layout.html" %}
+
+{% block title %}
+    Session Agenda
+{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="agenda-hero card border-0 shadow-lg mb-4">
+        <div class="agenda-hero__header text-white">
+            <div>
+                <h2 class="mb-1">Session Agenda</h2>
+                <p class="mb-0 text-white-75">Manage every booking for {{ client.name or client.username }} in one view.</p>
+            </div>
+            <div class="d-flex flex-wrap gap-2">
+                <a href="{{ url_for('client_profile', client_id=client.id) }}" class="btn btn-outline-light btn-sm">
+                    <i class="bi bi-arrow-left me-1"></i>Back to Profile
+                </a>
+            </div>
+        </div>
+    <div class="agenda-hero__stats">
+            <div class="agenda-stat">
+                <span class="agenda-stat__label">Client</span>
+                <span class="agenda-stat__value">{{ client.name or 'Client' }} {{ client.last_name or '' }}</span>
+            </div>
+            <div class="agenda-stat">
+                <span class="agenda-stat__label">Total Sessions</span>
+                <span class="agenda-stat__value">{{ total_sessions }}</span>
+            </div>
+        </div>
+    </div>
+
+    <form method="POST" class="card border-0 shadow agenda-card">
+        <div class="card-body">
+            <div class="agenda-actions mb-4">
+                <div class="agenda-actions__primary">
+                    <label for="bulkActionSelect" class="form-label small text-uppercase fw-semibold mb-2">Bulk Action</label>
+                    <div class="d-flex flex-column flex-sm-row gap-2">
+                        <select class="form-select form-select-sm" id="bulkActionSelect" name="bulk_action" required>
+                            <option value="" disabled {% if not bulk_action %}selected{% endif %}>Select an action...</option>
+                            <option value="set_booked" {% if bulk_action == 'set_booked' %}selected{% endif %}>Mark as Booked</option>
+                            <option value="set_completed" {% if bulk_action == 'set_completed' %}selected{% endif %}>Mark as Completed</option>
+                            <option value="set_cancelled" {% if bulk_action == 'set_cancelled' %}selected{% endif %}>Mark as Cancelled</option>
+                            <option value="delete" {% if bulk_action == 'delete' %}selected{% endif %}>Delete Sessions</option>
+                        </select>
+                        <button type="submit" class="btn btn-primary btn-sm">Apply</button>
+                    </div>
+                </div>
+                <div class="agenda-actions__note small text-muted">
+                    Select sessions below and apply changes in one go. Deleting sessions removes booked slots and restores balances automatically.
+                </div>
+            </div>
+
+            <div class="table-responsive">
+                <table class="table table-hover align-middle text-center agenda-table">
+                    <thead>
+                        <tr>
+                            <th style="width:1%;"></th>
+                            <th>Status</th>
+                            <th>Date</th>
+                            <th>Start Time</th>
+                            <th>End Time</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% if events %}
+                            {% for event in events %}
+                                <tr>
+                                    <td>
+                                        <input type="checkbox"
+                                               class="form-check-input session-checkbox"
+                                               name="session_id"
+                                               value="{{ event.id }}"
+                                               {% if event.id in selected_ids %}checked{% endif %}>
+                                    </td>
+                                    <td>
+                                        <span class="agenda-status agenda-status--{{ event.status }}">{{ event.status }}</span>
+                                    </td>
+                                    <td>{{ event.date }}</td>
+                                    <td>{{ event.start_time }}</td>
+                                    <td>{{ event.end_time }}</td>
+                                </tr>
+                            {% endfor %}
+                        {% else %}
+                            <tr>
+                                <td colspan="4" class="text-muted py-4">No sessions recorded yet.</td>
+                            </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div class="card-footer bg-white d-flex flex-wrap align-items-center justify-content-between gap-2">
+            <div class="small text-muted">Showing {{ events|length }} session{{ events|length == 1 and '' or 's' }}.</div>
+        </div>
+    </form>
+</div>
+{% endblock %}
+

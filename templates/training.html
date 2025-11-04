@@ -1103,7 +1103,9 @@
                 `;
             }
 
-            function buildWorkoutHtml(selectedCategory, workoutData) {
+            function buildWorkoutHtml(selectedCategory, workoutData, displayLabel) {
+                const heading = displayLabel || selectedCategory;
+                const safeHeading = escapeHtml(heading);
                 const sections = workoutData.map(subcategory => `
                     <div class="card workout-subcategory-card shadow-sm">
                         <h6 class="workout-subcategory-title">${subcategory.subcategory}</h6>
@@ -1118,7 +1120,7 @@
                 return `
                     <div class="card w-100 mb-0 shadow-sm workout-card" style="padding: 18px; background: rgba(255, 255, 255, 0.68); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);">
                         <div class="workout-category-header">
-                            <h5 class="workout-category-title text-white">${selectedCategory}</h5>
+                            <h5 class="workout-category-title text-white">${safeHeading}</h5>
                         </div>
                         <div class="card-body px-0 px-sm-2 px-md-3">
                             <div class="workout-subcategory-stack">
@@ -1139,20 +1141,25 @@
                 const categoryDiv = document.getElementById(safeId);
                 if (!categoryDiv) return;
 
-                categoryDiv.innerHTML = buildWorkoutHtml(selectedCategory, workoutData);
+                const customSelection = Array.isArray(options.customCategories) ? options.customCategories : [];
+                const displayLabel = (selectedCategory === customToken && customSelection.length)
+                    ? customSelection
+                        .map((token) => formatCategoryLabel(token))
+                        .filter((value, index, array) => array.indexOf(value) === index)
+                        .join(', ')
+                    : selectedCategory;
+
+                categoryDiv.innerHTML = buildWorkoutHtml(selectedCategory, workoutData, displayLabel);
                 categoryDiv.classList.remove('d-none');
 
                 if (arrowIndicator) arrowIndicator.style.display = 'block';
                 if (completeWorkoutCard) completeWorkoutCard.style.display = 'block';
                 if (completeWorkoutBtn) {
                     completeWorkoutBtn.dataset.category = selectedCategory;
-                    const customSelection = Array.isArray(options.customCategories) ? options.customCategories : [];
                     if (selectedCategory === customToken && customSelection.length) {
                         const pretty = customSelection
-                            .map((token) => String(token || '')
-                                .toLowerCase()
-                                .replace(/_/g, ' ')
-                                .replace(/\b\w/g, (ch) => ch.toUpperCase()))
+                            .map((token) => formatCategoryLabel(token))
+                            .filter((value, index, array) => array.indexOf(value) === index)
                             .join(', ');
                         completeWorkoutBtn.textContent = `Complete ${pretty} Workout`;
                     } else {
