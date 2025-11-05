@@ -182,6 +182,12 @@
                     <button class="btn btn-outline-secondary btn-sm w-100 calendar-controls__window" id="calendar-edit-window">
                         <i class="bi bi-sliders me-1"></i>Edit Available Window
                     </button>
+                    <div class="calendar-view-toggle btn-group btn-group-sm w-100" role="group" aria-label="Calendar view mode">
+                        <input type="radio" class="btn-check" name="calendar-view-mode" id="calendar-view-focused" autocomplete="off" checked>
+                        <label class="btn btn-outline-primary" for="calendar-view-focused">Focused View</label>
+                        <input type="radio" class="btn-check" name="calendar-view-mode" id="calendar-view-full" autocomplete="off">
+                        <label class="btn btn-outline-primary" for="calendar-view-full">Full Week View</label>
+                    </div>
                     <div class="calendar-controls__nav btn-group w-100" role="group" aria-label="Calendar navigation">
                         <button class="btn btn-outline-primary btn-sm flex-fill calendar-controls__button" id="calendar-prev-week" aria-label="Previous week">
                             <i class="bi bi-chevron-left"></i>
@@ -311,6 +317,8 @@
     const nextWeekBtn = document.getElementById('calendar-next-week');
     const todayBtn = document.getElementById('calendar-today');
     const editWindowBtn = document.getElementById('calendar-edit-window');
+    const viewToggleFocused = document.getElementById('calendar-view-focused');
+    const viewToggleFull = document.getElementById('calendar-view-full');
     const windowModal = document.getElementById('windowModal');
     const windowModalClose = document.getElementById('windowModalClose');
     const windowCancel = document.getElementById('windowCancel');
@@ -352,6 +360,7 @@
         initialStart = 5;
         initialEnd = 21;
     }
+    const initialMode = 'focused';
 
     const FIFTEEN_MINUTES = 15;
     const DEFAULT_DURATION = 60;
@@ -363,12 +372,16 @@
         weekStart: startOfWeek(new Date()),
         viewStart: initialStart,
         viewEnd: initialEnd,
+        viewMode: initialMode,
         events: [],
         dragging: null,
         dragPointer: null,
         modalEvent: null,
         justDragged: false
     };
+
+    updateViewToggleUI(initialMode);
+    calendarRoot.classList.toggle('calendar-mode-full', initialMode === 'full');
 
     let dayColumns = [];
 
@@ -679,8 +692,12 @@
     }
 
 
-    function formatDay(date) {
-        return date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+    function formatDayParts(date) {
+        return {
+            weekday: date.toLocaleDateString(undefined, { weekday: 'short' }),
+            month: date.toLocaleDateString(undefined, { month: 'short' }),
+            day: date.toLocaleDateString(undefined, { day: 'numeric' })
+        };
     }
 
     function toISODate(date) {
@@ -689,7 +706,29 @@
     }
 
     function clampHour(value) {
-        return Math.min(23, Math.max(0, value));
+        return Math.min(24, Math.max(0, value));
+    }
+
+    function updateViewToggleUI(mode = state.viewMode) {
+        if (viewToggleFocused) {
+            viewToggleFocused.checked = mode === 'focused';
+        }
+        if (viewToggleFull) {
+            viewToggleFull.checked = mode === 'full';
+        }
+    }
+
+    function applyViewMode(mode, options = {}) {
+        const { force = false } = options;
+        if (!force && state.viewMode === mode) {
+            updateViewToggleUI(mode);
+            return;
+        }
+        state.viewMode = mode;
+        calendarRoot.classList.toggle('calendar-mode-full', mode === 'full');
+        updateViewToggleUI(mode);
+        rebuildGrid();
+        renderEvents();
     }
 
     function updateWeekLabel() {
@@ -724,7 +763,8 @@
             const header = document.createElement('div');
             header.className = 'calendar-day-header';
             header.dataset.date = dayDate.toISOString();
-            header.textContent = formatDay(dayDate);
+            const { weekday, month, day } = formatDayParts(dayDate);
+            header.innerHTML = `<span class="calendar-day-label">${weekday}</span><span class="calendar-date-label">${month}, ${day}</span>`;
             dayHeaderEl.appendChild(header);
 
             const col = document.createElement('div');
@@ -1515,6 +1555,21 @@
             updateWeekLabel();
             fetchEvents();
         });
+
+        if (viewToggleFocused) {
+            viewToggleFocused.addEventListener('change', () => {
+                if (viewToggleFocused.checked) {
+                    applyViewMode('focused');
+                }
+            });
+        }
+        if (viewToggleFull) {
+            viewToggleFull.addEventListener('change', () => {
+                if (viewToggleFull.checked) {
+                    applyViewMode('full');
+                }
+            });
+        }
 
         editWindowBtn.addEventListener('click', openWindowModal);
         windowModalClose.addEventListener('click', closeWindowModal);
