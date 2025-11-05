@@ -174,20 +174,26 @@
                     <div class="text-white-50 small fw-semibold" id="calendar-week-label"></div>
                 </div>
             </div>
-            <div class="calendar-toolbar d-flex flex-wrap gap-2">
-                <div class="btn-group" role="group" aria-label="Calendar navigation">
-                    <button class="btn btn-light btn-sm" id="calendar-prev-week"><i class="bi bi-chevron-left"></i></button>
-                    <button class="btn btn-light btn-sm" id="calendar-today">Today</button>
-                    <button class="btn btn-light btn-sm" id="calendar-next-week"><i class="bi bi-chevron-right"></i></button>
-                </div>
-                <button class="btn btn-outline-light btn-sm" id="calendar-edit-window">
-                    <i class="bi bi-sliders"></i> Edit Available Window
-                </button>
-            </div>
         </div>
         <div class="card-body">
             <div class="calendar-wrapper" id="trainer-calendar" data-mode="trainer"
                  data-view-start="{{ schedule_prefs.view_start }}" data-view-end="{{ schedule_prefs.view_end }}">
+                <div class="calendar-controls">
+                    <button class="btn btn-outline-secondary btn-sm w-100 calendar-controls__window" id="calendar-edit-window">
+                        <i class="bi bi-sliders me-1"></i>Edit Available Window
+                    </button>
+                    <div class="calendar-controls__nav btn-group w-100" role="group" aria-label="Calendar navigation">
+                        <button class="btn btn-outline-primary btn-sm flex-fill calendar-controls__button" id="calendar-prev-week" aria-label="Previous week">
+                            <i class="bi bi-chevron-left"></i>
+                        </button>
+                        <button class="btn btn-primary btn-sm flex-fill calendar-controls__button calendar-controls__button--today" id="calendar-today">
+                            Today
+                        </button>
+                        <button class="btn btn-outline-primary btn-sm flex-fill calendar-controls__button" id="calendar-next-week" aria-label="Next week">
+                            <i class="bi bi-chevron-right"></i>
+                        </button>
+                    </div>
+                </div>
                 <div class="calendar-scroll" id="calendar-scroll">
                     <div class="calendar-header" id="calendar-days-header"></div>
                     <div class="calendar-grid">
@@ -259,7 +265,7 @@
             <div class="event-session-modal__section" id="eventRepeatSection">
                 <label for="eventRepeatWeeks" class="form-label small text-uppercase text-muted">Repeat Weekly</label>
                 <form id="eventRepeatForm" class="event-session-modal__inline" novalidate>
-                    <input type="number" class="form-control" id="eventRepeatWeeks" min="1" max="26" value="4">
+                    <input type="number" class="form-control" id="eventRepeatWeeks" min="1" max="52" placeholder="Enter weeks to repeat">
                     <button type="submit" class="btn btn-outline-primary" id="eventRepeatSubmit">
                         <i class="bi bi-arrow-repeat me-1"></i>Repeat
                     </button>
@@ -268,9 +274,6 @@
             </div>
         </div>
         <div class="event-session-modal__footer">
-            <button type="button" class="btn btn-outline-danger w-100" id="eventCancelSession">
-                <i class="bi bi-x-circle me-1"></i>Cancel Session
-            </button>
             <button type="button" class="btn btn-danger w-100" id="eventDeleteSession">
                 <i class="bi bi-trash me-1"></i>Delete Session
             </button>
@@ -327,7 +330,6 @@
     const eventRepeatInfo = document.getElementById('eventRepeatInfo');
     const eventRepeatSubmit = document.getElementById('eventRepeatSubmit');
     const eventRepeatSection = document.getElementById('eventRepeatSection');
-    const eventCancelSession = document.getElementById('eventCancelSession');
     const eventStatusForm = document.getElementById('eventStatusForm');
     const eventStatusSelect = document.getElementById('eventStatusSelect');
     const eventStatusUpdate = document.getElementById('eventStatusUpdate');
@@ -335,7 +337,6 @@
     const eventDeleteSession = document.getElementById('eventDeleteSession');
     const clientProfileBase = "{{ url_for('client_profile', client_id=0)[:-1] }}";
     const eventRepeatSubmitDefault = eventRepeatSubmit ? eventRepeatSubmit.innerHTML : '';
-    const eventCancelDefault = eventCancelSession ? eventCancelSession.innerHTML : '';
     const eventStatusUpdateDefault = eventStatusUpdate ? eventStatusUpdate.innerHTML : '';
     const eventDeleteDefault = eventDeleteSession ? eventDeleteSession.innerHTML : '';
     const globalToast = document.getElementById('globalToast');
@@ -613,13 +614,6 @@
             eventStatusUpdate.disabled = false;
             eventStatusUpdate.innerHTML = eventStatusUpdateDefault;
         }
-        if (eventCancelSession) {
-            eventCancelSession.disabled = status === 'cancelled';
-            eventCancelSession.classList.toggle('disabled', status === 'cancelled');
-            eventCancelSession.innerHTML = status === 'cancelled'
-                ? '<i class="bi bi-x-circle me-1"></i>Session Cancelled'
-                : eventCancelDefault;
-        }
         if (eventViewProfileBtn) {
             eventViewProfileBtn.onclick = () => {
                 const targetId = modalData.client_id;
@@ -642,7 +636,7 @@
         }
         refreshModalFromState();
         if (eventRepeatWeeksInput) {
-            eventRepeatWeeksInput.value = '4';
+            eventRepeatWeeksInput.value = '';
         }
         if (eventRepeatSubmit) {
             eventRepeatSubmit.disabled = false;
@@ -658,11 +652,6 @@
         if (eventRepeatSubmit) {
             eventRepeatSubmit.disabled = false;
             eventRepeatSubmit.innerHTML = eventRepeatSubmitDefault;
-        }
-        if (eventCancelSession) {
-            eventCancelSession.disabled = false;
-            eventCancelSession.classList.remove('disabled');
-            eventCancelSession.innerHTML = eventCancelDefault;
         }
         if (eventStatusUpdate) {
             eventStatusUpdate.disabled = false;
@@ -1067,8 +1056,16 @@
         if (event) event.preventDefault();
         if (!state.modalEvent || !eventRepeatWeeksInput || !eventRepeatSubmit) return;
         const weeksValue = Number(eventRepeatWeeksInput.value || '0');
-        if (!Number.isFinite(weeksValue) || weeksValue <= 0) {
+        if (!Number.isInteger(weeksValue) || weeksValue <= 0) {
             showDashboardToast('Enter how many weeks you would like to repeat.', 'warning');
+            return;
+        }
+        if (weeksValue > 52) {
+            showDashboardToast('You can repeat up to 52 weeks at a time.', 'warning');
+            return;
+        }
+        const confirmation = window.confirm(`Repeat this session for ${weeksValue} week${weeksValue === 1 ? '' : 's'}?`);
+        if (!confirmation) {
             return;
         }
         eventRepeatSubmit.disabled = true;
@@ -1105,6 +1102,9 @@
                         state.modalEvent.repeatInfo = eventRepeatInfo.textContent;
                     }
                 }
+                if (eventRepeatWeeksInput) {
+                    eventRepeatWeeksInput.value = '';
+                }
                 if (data.sessions_booked !== undefined || data.sessions_remaining !== undefined || data.sessions_completed !== undefined) {
                     syncClientSessionCounts(state.modalEvent.client_id, {
                         sessions_booked: data.sessions_booked,
@@ -1115,6 +1115,10 @@
                 }
                 showDashboardToast(`Added ${data.created_count} weekly session${data.created_count === 1 ? '' : 's'}.`, 'success');
                 state.justDragged = false;
+                closeEventModal();
+                if (calendarRoot) {
+                    calendarRoot.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
             })
             .catch(() => showDashboardToast('Unable to repeat that booking right now.', 'danger'))
             .finally(() => {
@@ -1220,76 +1224,6 @@
                     eventStatusUpdate.innerHTML = eventStatusUpdateDefault;
                 }
                 fetchEvents();
-            });
-    }
-
-    function handleCancelSession() {
-        if (!state.modalEvent || !eventCancelSession || eventCancelSession.disabled) return;
-        if (!confirm('Cancel this session?')) return;
-        eventCancelSession.disabled = true;
-        eventCancelSession.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Cancelling...';
-
-        fetch(`/trainer/schedule/${state.modalEvent.id}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ status: 'cancelled' })
-        })
-            .then(res => res.json())
-            .then(data => {
-                if (!data.success) {
-                    showDashboardToast(data.error || 'Unable to cancel that session.', 'danger');
-                    eventCancelSession.disabled = false;
-                    eventCancelSession.innerHTML = eventCancelDefault;
-                    return;
-                }
-                const updatedEvent = data.event;
-                if (updatedEvent) {
-                    upsertEvent(updatedEvent);
-                    sortEvents();
-                    renderEvents();
-                    state.modalEvent = {
-                        ...updatedEvent,
-                        status: (updatedEvent.status || 'booked').toLowerCase(),
-                        repeatInfo: 'This session has been cancelled.'
-                    };
-                    refreshModalFromState();
-
-                    const btn = document.querySelector(`.book-client-btn[data-client-id="${updatedEvent.client_id}"]`);
-                    let newBooked = null;
-                    let totalSessions = null;
-                    let completedSessions = 0;
-                    let workoutsCompleted = 0;
-                    if (btn) {
-                        const current = Number(btn.dataset.sessionsBooked || '0');
-                        newBooked = Math.max(current - 1, 0);
-                        totalSessions = btn.dataset.sessions === '' ? null : Number(btn.dataset.sessions || '0');
-                        completedSessions = Number(btn.dataset.sessionsCompleted || '0');
-                        workoutsCompleted = Number(btn.dataset.workoutsCompleted || '0');
-                    } else if (state.selectedClient && state.selectedClient.id === updatedEvent.client_id) {
-                        newBooked = Math.max((state.selectedClient.sessionsBooked || 1) - 1, 0);
-                        totalSessions = state.selectedClient.sessions;
-                        completedSessions = state.selectedClient.sessionsCompleted || 0;
-                        workoutsCompleted = state.selectedClient.workoutsCompleted || 0;
-                    }
-                    if (newBooked !== null) {
-                        syncClientSessionCounts(updatedEvent.client_id, {
-                            sessions_booked: newBooked,
-                            sessions_remaining: totalSessions,
-                            sessions_completed: completedSessions,
-                            workouts_completed: workoutsCompleted
-                        });
-                    }
-                }
-                showDashboardToast('Session cancelled.', 'success');
-                fetchEvents();
-            })
-            .catch(() => {
-                showDashboardToast('Unable to cancel that session right now.', 'danger');
-                eventCancelSession.disabled = false;
-                eventCancelSession.innerHTML = eventCancelDefault;
-            })
-            .finally(() => {
-                state.justDragged = false;
             });
     }
 
@@ -1599,9 +1533,6 @@
         }
         if (eventRepeatForm) {
             eventRepeatForm.addEventListener('submit', handleRepeatSubmit);
-        }
-        if (eventCancelSession) {
-            eventCancelSession.addEventListener('click', handleCancelSession);
         }
         if (eventStatusForm) {
             eventStatusForm.addEventListener('submit', handleStatusUpdate);

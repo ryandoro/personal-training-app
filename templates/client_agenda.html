@@ -16,6 +16,9 @@
                 <a href="{{ url_for('client_profile', client_id=client.id) }}" class="btn btn-outline-light btn-sm">
                     <i class="bi bi-arrow-left me-1"></i>Back to Profile
                 </a>
+                <a href="{{ url_for('trainer_dashboard') }}" class="btn btn-light btn-sm text-primary fw-semibold">
+                    <i class="bi bi-grid me-1"></i>Back to Dashboard
+                </a>
             </div>
         </div>
     <div class="agenda-hero__stats">
@@ -96,4 +99,3 @@
     </form>
 </div>
 {% endblock %}
-

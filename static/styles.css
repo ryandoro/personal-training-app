@@ -1392,7 +1392,8 @@ iframe.fullscreen-sim {
 
 .calendar-day-column {
   position: relative;
-  border-right: 1px solid rgba(30, 164, 230, 0.12);
+  border-right: 1px solid rgba(30, 164, 230, 0.35);
+  box-shadow: inset -1px 0 0 rgba(30, 164, 230, 0.15);
   background: rgba(255, 255, 255, 0.6);
   overflow: hidden;
   min-width: var(--calendar-day-width);
@@ -1408,6 +1409,7 @@ iframe.fullscreen-sim {
 
 .calendar-day-column:last-child {
   border-right: none;
+  box-shadow: none;
 }
 
 .calendar-slot {
@@ -1634,14 +1636,96 @@ iframe.fullscreen-sim {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.45);
   border-radius: 18px;
   color: #6c757d;
   font-weight: 600;
   pointer-events: none;
 }
 
-.calendar-toolbar .btn.active,
+.calendar-controls {
+  padding: 0.75rem 1rem 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.calendar-controls__window {
+  border-radius: 12px;
+  font-weight: 600;
+  padding: 0.55rem 0.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  background: rgba(30, 164, 230, 0.08);
+  border: 1px solid rgba(30, 164, 230, 0.25);
+  color: #0f4c75;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+.calendar-controls__window:hover,
+.calendar-controls__window:focus {
+  background: rgba(30, 164, 230, 0.16);
+  color: #0f4c75;
+}
+
+.calendar-controls__nav {
+  display: flex;
+  width: 100%;
+  border: 1px solid rgba(30, 164, 230, 0.35);
+  border-bottom: none;
+  border-radius: 16px 16px 0 0;
+  overflow: hidden;
+  background: #ffffff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+.calendar-controls__nav .btn {
+  border-radius: 0;
+  border: none;
+  margin: 0;
+  font-weight: 600;
+  padding: 0.55rem 0.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.calendar-controls__nav .btn + .btn {
+  border-left: 1px solid rgba(30, 164, 230, 0.3);
+}
+
+.calendar-controls__nav .btn-outline-primary {
+  background: rgba(30, 164, 230, 0.12);
+  color: #0f4c75;
+}
+
+.calendar-controls__nav .btn-outline-primary:hover,
+.calendar-controls__nav .btn-outline-primary:focus {
+  background: rgba(30, 164, 230, 0.22);
+  color: #0f4c75;
+}
+
+.calendar-controls__button--today {
+  background: linear-gradient(135deg, #1EA4E6 0%, #33C3F0 100%);
+  border: none;
+  color: #ffffff;
+}
+
+.calendar-controls__button--today:hover,
+.calendar-controls__button--today:focus {
+  background: linear-gradient(135deg, #1C96D3 0%, #2CABEB 100%);
+  color: #ffffff;
+}
+
+.calendar-controls__nav .btn:focus {
+  box-shadow: none;
+}
+
+.calendar-controls__nav .btn.active,
 .book-client-btn.active {
   background: #1EA4E6;
   color: #ffffff;
@@ -1649,24 +1733,18 @@ iframe.fullscreen-sim {
 }
 
 @media (max-width: 768px) {
-  .calendar-toolbar {
-    width: 100%;
-    flex-direction: column;
-    align-items: stretch;
+  .calendar-controls {
+    padding: 0.65rem 0.65rem 0;
+    gap: 0.6rem;
   }
 
-  .calendar-toolbar .btn-group {
-    width: 100%;
+  .calendar-controls__nav {
+    border-radius: 12px 12px 0 0;
   }
 
-  .calendar-toolbar .btn-group .btn {
-    flex: 1;
-  }
-
-  .calendar-toolbar .btn-outline-light,
-  .calendar-toolbar .btn-outline-secondary,
-  .calendar-toolbar .btn-group .btn {
-    width: 100%;
+  .calendar-controls__nav .btn {
+    font-size: 0.85rem;
+    padding: 0.5rem 0.6rem;
   }
 }
 

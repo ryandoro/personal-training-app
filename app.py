@@ -1870,7 +1870,7 @@ def trainer_schedule_repeat(event_id):
     if weeks_requested <= 0:
         return jsonify({'success': False, 'error': 'Repeat weeks must be at least one.'}), 400
 
-    weeks_requested = min(weeks_requested, 26)
+    weeks_requested = min(weeks_requested, 52)
 
     with get_connection() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
