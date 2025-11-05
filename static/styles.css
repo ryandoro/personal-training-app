@@ -1629,6 +1629,36 @@ iframe.fullscreen-sim {
   color: #842029;
 }
 
+.calendar-event-timeoff,
+.calendar-event[data-status="time_off"] {
+  border-color: rgba(255, 174, 84, 0.6);
+  box-shadow: 0 12px 24px rgba(255, 164, 60, 0.28);
+}
+
+.calendar-event-timeoff .calendar-event-dragzone,
+.calendar-event[data-status="time_off"] .calendar-event-dragzone {
+  background: linear-gradient(135deg, rgba(255, 193, 7, 0.9), rgba(255, 145, 0, 0.9));
+  color: #5f3b00;
+}
+
+.calendar-event-timeoff .calendar-event-content,
+.calendar-event[data-status="time_off"] .calendar-event-content {
+  background: linear-gradient(135deg, rgba(255, 238, 205, 0.98), rgba(255, 221, 170, 0.94));
+  color: #5f3b00;
+}
+
+.calendar-wrapper.calendar-mode-full .calendar-event-timeoff .calendar-event-dragtext,
+.calendar-wrapper.calendar-mode-full .calendar-event[data-status="time_off"] .calendar-event-dragtext {
+  display: none;
+}
+
+.calendar-event-typeicon {
+  font-size: 0.9rem;
+  margin-right: 0.35rem;
+  display: inline-flex;
+  align-items: center;
+}
+
 
 .calendar-event-handle {
   position: absolute;
@@ -2097,6 +2127,19 @@ iframe.fullscreen-sim {
 .event-session-modal__status.status-pill--booked {
   background: rgba(255, 255, 255, 0.25);
   color: #ffffff;
+}
+
+.event-session-modal__status.status-pill--timeoff {
+  background: rgba(255, 193, 7, 0.25);
+  color: #5f3b00;
+}
+
+.bg-warning-subtle {
+  background-color: rgba(255, 193, 7, 0.18) !important;
+}
+
+.text-warning-emphasis {
+  color: #7a4a00 !important;
 }
 
 .event-session-modal__status.status-pill--completed {

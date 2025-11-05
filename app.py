@@ -1161,6 +1161,27 @@ def _ensure_trainer_client_link(cursor, trainer_id: int, client_id: int, trainer
     return None
 
 
+def _trainer_time_off_conflict(cursor, trainer_id: int, start_dt: datetime, end_dt: datetime, exclude_id: int | None = None) -> bool:
+    params = [trainer_id, end_dt, start_dt]
+    exclude_clause = ""
+    if exclude_id is not None:
+        exclude_clause = " AND id <> %s"
+        params.append(exclude_id)
+    cursor.execute(
+        f"""
+        SELECT 1
+          FROM trainer_time_off
+         WHERE trainer_id = %s
+           AND end_time > %s
+           AND start_time < %s
+           {exclude_clause}
+         LIMIT 1
+        """,
+        params,
+    )
+    return cursor.fetchone() is not None
+
+
 def _schedule_conflicts(cursor, trainer_id: int, client_id: int, start_dt: datetime, end_dt: datetime, exclude_id: int | None = None) -> tuple[bool, str | None]:
     params = [trainer_id, end_dt, start_dt]
     exclude_clause = ""
@@ -1182,6 +1203,9 @@ def _schedule_conflicts(cursor, trainer_id: int, client_id: int, start_dt: datet
     if cursor.fetchone():
         return True, 'Trainer already has a booking in that window.'
 
+    if _trainer_time_off_conflict(cursor, trainer_id, start_dt, end_dt):
+        return True, 'Trainer has personal time blocked during that window.'
+
     params = [client_id, end_dt, start_dt]
     if exclude_id is not None:
         params.append(exclude_id)
@@ -1199,6 +1223,25 @@ def _schedule_conflicts(cursor, trainer_id: int, client_id: int, start_dt: datet
     )
     if cursor.fetchone():
         return True, 'Client is already booked for that time.'
+    return False, None
+
+
+def _time_off_conflicts(cursor, trainer_id: int, start_dt: datetime, end_dt: datetime, exclude_id: int | None = None) -> tuple[bool, str | None]:
+    if _trainer_time_off_conflict(cursor, trainer_id, start_dt, end_dt, exclude_id=exclude_id):
+        return True, 'This personal time block overlaps an existing one.'
+    cursor.execute(
+        """
+        SELECT 1
+          FROM trainer_schedule
+         WHERE trainer_id = %s
+           AND end_time > %s
+           AND start_time < %s
+        LIMIT 1
+        """,
+        (trainer_id, end_dt, start_dt),
+    )
+    if cursor.fetchone():
+        return True, 'A client session is already booked during that time.'
     return False, None
 
 
@@ -1229,6 +1272,23 @@ def _serialize_schedule_row(row):
         'start_time': row['start_time'].isoformat() if row.get('start_time') else None,
         'end_time': row['end_time'].isoformat() if row.get('end_time') else None,
         'status': row.get('status') or 'booked',
+        'type': 'session',
+    }
+
+
+def _serialize_time_off_row(row):
+    return {
+        'id': row['id'],
+        'trainer_id': row['trainer_id'],
+        'client_id': None,
+        'client_name': None,
+        'client_last_name': None,
+        'client_username': None,
+        'start_time': row['start_time'].isoformat() if row.get('start_time') else None,
+        'end_time': row['end_time'].isoformat() if row.get('end_time') else None,
+        'status': 'time_off',
+        'title': row.get('title') or 'Personal Time',
+        'type': 'time_off',
     }
 
 
@@ -1264,9 +1324,30 @@ def trainer_schedule_data():
                 """,
                 (trainer_id, end_dt, start_dt),
             )
-            rows = cursor.fetchall() or []
+            session_rows = cursor.fetchall() or []
+            cursor.execute(
+                """
+                SELECT id, trainer_id, start_time, end_time, title
+                  FROM trainer_time_off
+                 WHERE trainer_id = %s
+                   AND start_time < %s
+                   AND end_time > %s
+                 ORDER BY start_time ASC
+                """,
+                (trainer_id, end_dt, start_dt),
+            )
+            time_off_rows = cursor.fetchall() or []
 
-    return jsonify({'success': True, 'events': [_serialize_schedule_row(row) for row in rows]})
+    session_events = [_serialize_schedule_row(row) for row in session_rows]
+    time_off_events = [_serialize_time_off_row(row) for row in time_off_rows]
+    combined = sorted(session_events + time_off_events, key=lambda ev: ev['start_time'] or '')
+
+    return jsonify({
+        'success': True,
+        'events': combined,
+        'sessions': session_events,
+        'time_off': time_off_events,
+    })
 
 
 @app.route('/trainer/schedule/preferences', methods=['GET', 'POST'])
@@ -1645,6 +1726,233 @@ def trainer_schedule_modify(event_id):
         'workouts_completed': counts_response.get('workouts_completed'),
     }
     return jsonify(payload)
+
+
+@app.route('/trainer/time-off', methods=['POST'])
+@login_required
+def trainer_time_off_create():
+    trainer_id = session['user_id']
+    trainer = _require_trainer(trainer_id)
+    if not trainer:
+        return jsonify({'success': False, 'error': 'Trainer access required'}), 403
+
+    payload = request.get_json(silent=True) or {}
+    start_raw = payload.get('start_time')
+    end_raw = payload.get('end_time')
+    title_raw = payload.get('title') or ''
+    title = str(title_raw).strip() or 'Personal Time'
+    if len(title) > 120:
+        title = title[:120]
+
+    try:
+        start_dt = _parse_iso_datetime(start_raw, 'start time')
+        end_dt = _parse_iso_datetime(end_raw, 'end time')
+        _validate_time_window(start_dt, end_dt)
+    except ValueError as exc:
+        return jsonify({'success': False, 'error': str(exc)}), 400
+
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+            conflict, message = _time_off_conflicts(cursor, trainer_id, start_dt, end_dt)
+            if conflict:
+                return jsonify({'success': False, 'error': message}), 409
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            cursor.execute(
+                """
+                INSERT INTO trainer_time_off (trainer_id, start_time, end_time, title)
+                VALUES (%s, %s, %s, %s)
+                RETURNING id, trainer_id, start_time, end_time, title
+                """,
+                (trainer_id, start_dt, end_dt, title),
+            )
+            row = cursor.fetchone()
+            conn.commit()
+
+    block = _serialize_time_off_row(row) if row else None
+    return jsonify({'success': True, 'block': block})
+
+
+@app.route('/trainer/time-off/<int:block_id>', methods=['PATCH', 'DELETE'])
+@login_required
+def trainer_time_off_modify(block_id):
+    trainer_id = session['user_id']
+    trainer = _require_trainer(trainer_id)
+    if not trainer:
+        return jsonify({'success': False, 'error': 'Trainer access required'}), 403
+
+    if request.method == 'DELETE':
+        with get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(
+                    "DELETE FROM trainer_time_off WHERE id = %s AND trainer_id = %s RETURNING id",
+                    (block_id, trainer_id),
+                )
+                row = cursor.fetchone()
+                if not row:
+                    return jsonify({'success': False, 'error': 'Personal time block not found.'}), 404
+                conn.commit()
+        return jsonify({'success': True})
+
+    payload = request.get_json(silent=True) or {}
+    start_raw = payload.get('start_time')
+    end_raw = payload.get('end_time')
+    title_raw = payload.get('title')
+
+    if (start_raw is None) ^ (end_raw is None):
+        return jsonify({'success': False, 'error': 'Both start and end times are required.'}), 400
+
+    start_dt = end_dt = None
+    if start_raw is not None and end_raw is not None:
+        try:
+            start_dt = _parse_iso_datetime(start_raw, 'start time')
+            end_dt = _parse_iso_datetime(end_raw, 'end time')
+            _validate_time_window(start_dt, end_dt)
+        except ValueError as exc:
+            return jsonify({'success': False, 'error': str(exc)}), 400
+
+    title = None
+    if title_raw is not None:
+        title = str(title_raw).strip() or 'Personal Time'
+        if len(title) > 120:
+            title = title[:120]
+
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            cursor.execute(
+                """
+                SELECT id, trainer_id, start_time, end_time, title
+                  FROM trainer_time_off
+                 WHERE id = %s AND trainer_id = %s
+                """,
+                (block_id, trainer_id),
+            )
+            existing = cursor.fetchone()
+            if not existing:
+                return jsonify({'success': False, 'error': 'Personal time block not found.'}), 404
+
+        if start_dt and end_dt:
+            with conn.cursor() as cursor:
+                conflict, message = _time_off_conflicts(cursor, trainer_id, start_dt, end_dt, exclude_id=block_id)
+                if conflict:
+                    return jsonify({'success': False, 'error': message}), 409
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE trainer_time_off
+                       SET start_time = %s,
+                           end_time = %s
+                     WHERE id = %s AND trainer_id = %s
+                    """,
+                    (start_dt, end_dt, block_id, trainer_id),
+                )
+                if cursor.rowcount == 0:
+                    return jsonify({'success': False, 'error': 'Personal time block not found.'}), 404
+
+        if title is not None:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE trainer_time_off
+                       SET title = %s
+                     WHERE id = %s AND trainer_id = %s
+                    """,
+                    (title, block_id, trainer_id),
+                )
+
+        conn.commit()
+
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            cursor.execute(
+                """
+                SELECT id, trainer_id, start_time, end_time, title
+                  FROM trainer_time_off
+                 WHERE id = %s
+                """,
+                (block_id,),
+            )
+            refreshed = cursor.fetchone()
+
+    block = _serialize_time_off_row(refreshed) if refreshed else None
+    return jsonify({'success': True, 'block': block})
+
+
+@app.route('/trainer/time-off/<int:block_id>/repeat', methods=['POST'])
+@login_required
+def trainer_time_off_repeat(block_id):
+    trainer_id = session['user_id']
+    trainer = _require_trainer(trainer_id)
+    if not trainer:
+        return jsonify({'success': False, 'error': 'Trainer access required'}), 403
+
+    payload = request.get_json(silent=True) or {}
+    weeks_raw = payload.get('weeks') or 1
+    try:
+        weeks_requested = int(weeks_raw)
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'error': 'Repeat weeks must be a whole number.'}), 400
+
+    if weeks_requested <= 0:
+        return jsonify({'success': False, 'error': 'Repeat weeks must be at least one.'}), 400
+
+    weeks_requested = min(weeks_requested, 52)
+
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            cursor.execute(
+                """
+                SELECT id, trainer_id, start_time, end_time, title
+                  FROM trainer_time_off
+                 WHERE id = %s AND trainer_id = %s
+                """,
+                (block_id, trainer_id),
+            )
+            base_block = cursor.fetchone()
+
+        if not base_block:
+            return jsonify({'success': False, 'error': 'Personal time block not found.'}), 404
+
+        base_start: datetime = base_block['start_time']
+        base_end: datetime = base_block['end_time']
+        block_title = base_block.get('title') or 'Personal Time'
+        created_rows: list[dict[str, object]] = []
+        skipped_conflicts: list[dict[str, object]] = []
+
+        for offset in range(1, weeks_requested + 1):
+            new_start = base_start + timedelta(weeks=offset)
+            new_end = base_end + timedelta(weeks=offset)
+            with conn.cursor() as cursor:
+                conflict, message = _time_off_conflicts(cursor, trainer_id, new_start, new_end)
+            if conflict:
+                skipped_conflicts.append({'week_offset': offset, 'reason': message or 'Conflict detected.'})
+                continue
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO trainer_time_off (trainer_id, start_time, end_time, title)
+                    VALUES (%s, %s, %s, %s)
+                    RETURNING id, trainer_id, start_time, end_time, title
+                    """,
+                    (trainer_id, new_start, new_end, block_title),
+                )
+                row = cursor.fetchone()
+                if row:
+                    created_rows.append(row)
+
+        conn.commit()
+
+    if not created_rows:
+        error_message = 'No additional personal time blocks could be added.'
+        if skipped_conflicts:
+            error_message = 'All requested repeats conflicted with existing bookings or personal time.'
+        return jsonify({'success': False, 'error': error_message, 'conflicts': skipped_conflicts}), 409
+
+    created_blocks = [_serialize_time_off_row(row) for row in created_rows]
+    return jsonify({
+        'success': True,
+        'created_count': len(created_blocks),
+        'created_blocks': created_blocks,
+        'conflicts': skipped_conflicts,
+    })
 
 
 def _fetch_client_sessions(cursor, trainer_id: int, client_id: int, limit: int | None, offset: int):

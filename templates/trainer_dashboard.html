@@ -215,6 +215,38 @@
     </div>
 </div>
 
+<div class="trainer-timeoff-container container-fluid px-3 px-md-4 px-lg-5">
+    <div class="card border-0 shadow-sm mt-4 mb-5 timeoff-card mx-auto" style="border-radius: 18px;">
+        <div class="card-body p-4">
+            <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center mb-3 gap-3">
+                <div>
+                    <h5 class="mb-1 text-primary fw-semibold">Personal Time Blocks</h5>
+                    <p class="mb-0 text-muted small">Add time you are unavailable inside your availability window. Blocks appear on the calendar and sessions cannot overlap them.</p>
+                </div>
+                <div class="badge bg-warning-subtle text-warning-emphasis d-flex align-items-center gap-2 fw-semibold px-3 py-2">
+                    <i class="bi bi-umbrella-fill"></i>
+                    Personal Time
+                </div>
+            </div>
+            <form id="timeOffForm" class="row g-3 align-items-end" novalidate>
+                <div class="col-12 col-md-6 col-lg-4">
+                    <label for="timeOffStart" class="form-label small text-uppercase text-muted">Start</label>
+                    <input type="datetime-local" class="form-control" id="timeOffStart" step="900" required>
+                </div>
+                <div class="col-12 col-md-6 col-lg-4">
+                    <label for="timeOffEnd" class="form-label small text-uppercase text-muted">End</label>
+                    <input type="datetime-local" class="form-control" id="timeOffEnd" step="900" required>
+                </div>
+                <div class="col-12 col-lg-4 d-flex align-items-end">
+                    <button type="submit" class="btn btn-warning w-100 fw-semibold" id="timeOffSubmit">
+                        <i class="bi bi-calendar-plus me-1"></i>Block Personal Time
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 <div id="windowModal" class="calendar-modal" hidden>
     <div class="calendar-modal-content">
         <div class="d-flex justify-content-between align-items-center mb-3">
@@ -271,7 +303,7 @@
             <div class="event-session-modal__section" id="eventRepeatSection">
                 <label for="eventRepeatWeeks" class="form-label small text-uppercase text-muted">Repeat Weekly</label>
                 <form id="eventRepeatForm" class="event-session-modal__inline" novalidate>
-                    <input type="number" class="form-control" id="eventRepeatWeeks" min="1" max="52" placeholder="Enter weeks to repeat">
+                    <input type="number" class="form-control" id="eventRepeatWeeks" min="1" max="52" step="1" inputmode="numeric" placeholder="Enter weeks to repeat">
                     <button type="submit" class="btn btn-outline-primary" id="eventRepeatSubmit">
                         <i class="bi bi-arrow-repeat me-1"></i>Repeat
                     </button>
@@ -343,6 +375,11 @@
     const eventStatusUpdate = document.getElementById('eventStatusUpdate');
     const eventStatusInfo = document.getElementById('eventStatusInfo');
     const eventDeleteSession = document.getElementById('eventDeleteSession');
+    const eventStatusSection = eventStatusForm ? eventStatusForm.closest('.event-session-modal__section') : null;
+    const timeOffForm = document.getElementById('timeOffForm');
+    const timeOffStartInput = document.getElementById('timeOffStart');
+    const timeOffEndInput = document.getElementById('timeOffEnd');
+    const timeOffSubmit = document.getElementById('timeOffSubmit');
     const clientProfileBase = "{{ url_for('client_profile', client_id=0)[:-1] }}";
     const eventRepeatSubmitDefault = eventRepeatSubmit ? eventRepeatSubmit.innerHTML : '';
     const eventStatusUpdateDefault = eventStatusUpdate ? eventStatusUpdate.innerHTML : '';
@@ -352,6 +389,64 @@
     const toastVariants = ['toast-success', 'toast-warning', 'toast-danger', 'toast-info'];
     let toastTimeout = null;
 
+    if (eventRepeatWeeksInput) {
+        const sanitizeRepeatWeeks = () => {
+            const raw = (eventRepeatWeeksInput.value || '').trim();
+            if (!raw) {
+                eventRepeatWeeksInput.value = '';
+                return;
+            }
+            let numeric = raw.replace(/[^0-9]/g, '');
+            if (numeric !== raw) {
+                eventRepeatWeeksInput.value = numeric;
+            }
+            if (!numeric) return;
+            let value = Number(numeric);
+            if (!Number.isFinite(value)) {
+                eventRepeatWeeksInput.value = '';
+                return;
+            }
+            value = Math.floor(value);
+            if (value < 1) value = 1;
+            if (value > 52) value = 52;
+            eventRepeatWeeksInput.value = String(value);
+        };
+        eventRepeatWeeksInput.addEventListener('input', () => {
+            const raw = eventRepeatWeeksInput.value || '';
+            const digits = raw.replace(/[^0-9]/g, '');
+            if (raw !== digits) {
+                eventRepeatWeeksInput.value = digits;
+            }
+        });
+        eventRepeatWeeksInput.addEventListener('change', sanitizeRepeatWeeks);
+        eventRepeatWeeksInput.addEventListener('blur', sanitizeRepeatWeeks);
+        eventRepeatWeeksInput.addEventListener('keydown', (evt) => {
+            if (['e', 'E', '+', '-', '.', ','].includes(evt.key)) {
+                evt.preventDefault();
+            }
+        });
+    }
+
+    const VIEW_MODE_STORAGE_KEY = 'trainerCalendarViewMode';
+
+    function loadStoredViewMode() {
+        try {
+            if (typeof window === 'undefined' || !window.localStorage) return null;
+            const stored = window.localStorage.getItem(VIEW_MODE_STORAGE_KEY);
+            if (stored === 'full' || stored === 'focused') {
+                return stored;
+            }
+        } catch (_) {}
+        return null;
+    }
+
+    function persistViewMode(mode) {
+        try {
+            if (typeof window === 'undefined' || !window.localStorage) return;
+            window.localStorage.setItem(VIEW_MODE_STORAGE_KEY, mode);
+        } catch (_) {}
+    }
+
     const datasetStart = Number(calendarRoot.dataset.viewStart);
     const datasetEnd = Number(calendarRoot.dataset.viewEnd);
     let initialStart = Number.isFinite(datasetStart) ? datasetStart : 5;
@@ -360,7 +455,8 @@
         initialStart = 5;
         initialEnd = 21;
     }
-    const initialMode = 'focused';
+    const storedMode = loadStoredViewMode();
+    const initialMode = storedMode || 'focused';
 
     const FIFTEEN_MINUTES = 15;
     const DEFAULT_DURATION = 60;
@@ -382,14 +478,22 @@
 
     updateViewToggleUI(initialMode);
     calendarRoot.classList.toggle('calendar-mode-full', initialMode === 'full');
+    persistViewMode(initialMode);
 
     let dayColumns = [];
 
     const STATUS_LABELS = {
         booked: 'Booked',
         completed: 'Completed',
-        cancelled: 'Cancelled'
+        cancelled: 'Cancelled',
+        time_off: 'Personal Time'
     };
+
+    function eventKey(eventData) {
+        if (!eventData || typeof eventData.id === 'undefined') return null;
+        const group = eventData.type || (eventData.status === 'time_off' ? 'time_off' : 'session');
+        return `${group}:${eventData.id}`;
+    }
 
     function startOfWeek(date) {
         const d = new Date(date);
@@ -447,9 +551,20 @@
 
     function upsertEvent(eventData) {
         if (!eventData) return;
-        const idx = state.events.findIndex(ev => ev.id === eventData.id);
+        if (!eventData.type) {
+            eventData.type = eventData.status === 'time_off' ? 'time_off' : 'session';
+        }
+        if (eventData.type === 'time_off') {
+            eventData.status = 'time_off';
+            eventData.title = eventData.title || 'Personal Time';
+        } else {
+            eventData.status = String(eventData.status || 'booked').toLowerCase();
+        }
+        const key = eventKey(eventData);
+        if (!key) return;
+        const idx = state.events.findIndex(ev => eventKey(ev) === key);
         if (idx !== -1) {
-            state.events[idx] = eventData;
+            state.events[idx] = { ...state.events[idx], ...eventData };
         } else {
             state.events.push(eventData);
         }
@@ -578,7 +693,9 @@
         const label = STATUS_LABELS[normalized] || 'Booked';
         eventModalStatus.textContent = label;
         eventModalStatus.className = 'event-session-modal__status';
-        if (normalized === 'completed') {
+        if (normalized === 'time_off') {
+            eventModalStatus.classList.add('status-pill--timeoff');
+        } else if (normalized === 'completed') {
             eventModalStatus.classList.add('status-pill--completed');
         } else if (normalized === 'cancelled') {
             eventModalStatus.classList.add('status-pill--cancelled');
@@ -590,57 +707,98 @@
     function refreshModalFromState() {
         if (!state.modalEvent) return;
         const modalData = state.modalEvent;
+        const eventType = modalData.type || 'session';
         const status = (modalData.status || 'booked').toLowerCase();
-        const fullName = modalData.client_name ? `${modalData.client_name} ${modalData.client_last_name || ''}`.trim() : modalData.client_username;
+        const start = new Date(modalData.start_time);
+        const end = new Date(modalData.end_time);
         if (eventModalTitle) {
-            eventModalTitle.textContent = fullName || 'Client Session';
+            if (eventType === 'time_off') {
+                eventModalTitle.textContent = modalData.title || 'Personal Time';
+            } else {
+                const fullName = modalData.client_name ? `${modalData.client_name} ${modalData.client_last_name || ''}`.trim() : modalData.client_username;
+                eventModalTitle.textContent = fullName || 'Client Session';
+            }
         }
         if (eventModalTime) {
-            const start = new Date(modalData.start_time);
-            const end = new Date(modalData.end_time);
             const dateStr = start.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
             eventModalTime.textContent = `${dateStr} · ${formatTime(start)} – ${formatTime(end)}`;
         }
-        applyStatusBadge(status);
+        const badgeStatus = eventType === 'time_off' ? 'time_off' : status;
+        applyStatusBadge(badgeStatus);
+
+        const repeatHidden = status === 'cancelled';
         if (eventRepeatForm) {
-            eventRepeatForm.hidden = status === 'cancelled';
+            eventRepeatForm.hidden = repeatHidden;
         }
         if (eventRepeatSection) {
-            eventRepeatSection.hidden = status === 'cancelled';
+            eventRepeatSection.hidden = repeatHidden;
         }
         if (eventRepeatInfo) {
-            if (modalData.repeatInfo) {
+            if (status === 'cancelled') {
+                eventRepeatInfo.textContent = 'This session has been cancelled.';
+            } else if (modalData.repeatInfo) {
                 eventRepeatInfo.textContent = modalData.repeatInfo;
+            } else if (eventType === 'time_off') {
+                eventRepeatInfo.textContent = 'Repeats will create additional personal time blocks on future weeks.';
             } else {
-                eventRepeatInfo.textContent = status === 'cancelled'
-                    ? 'This session has been cancelled.'
-                    : 'Repeats will use available sessions remaining.';
+                eventRepeatInfo.textContent = 'Repeats will use available sessions remaining.';
             }
         }
+
+        if (eventRepeatSubmit) {
+            eventRepeatSubmit.disabled = false;
+            eventRepeatSubmit.innerHTML = eventRepeatSubmitDefault;
+        }
+
         if (eventStatusSelect) {
-            eventStatusSelect.value = status;
+            eventStatusSelect.value = eventType === 'time_off' ? 'booked' : status;
         }
         if (eventStatusInfo) {
-            eventStatusInfo.textContent = 'Status changes update client balances immediately.';
+            eventStatusInfo.textContent = eventType === 'time_off'
+                ? 'Personal time blocks prevent new sessions during this window.'
+                : 'Status changes update client balances immediately.';
         }
         if (eventStatusUpdate) {
             eventStatusUpdate.disabled = false;
             eventStatusUpdate.innerHTML = eventStatusUpdateDefault;
         }
+        if (eventStatusSection) {
+            eventStatusSection.hidden = eventType === 'time_off';
+        }
         if (eventViewProfileBtn) {
-            eventViewProfileBtn.onclick = () => {
-                const targetId = modalData.client_id;
-                window.location.href = `${clientProfileBase}${targetId}`;
-            };
+            if (eventType === 'time_off') {
+                eventViewProfileBtn.hidden = true;
+                eventViewProfileBtn.onclick = null;
+            } else {
+                eventViewProfileBtn.hidden = false;
+                eventViewProfileBtn.onclick = () => {
+                    const targetId = modalData.client_id;
+                    window.location.href = `${clientProfileBase}${targetId}`;
+                };
+            }
+        }
+        if (eventDeleteSession) {
+            if (eventType === 'time_off') {
+                eventDeleteSession.innerHTML = '<i class="bi bi-trash me-1"></i>Delete Time Off';
+            } else {
+                eventDeleteSession.innerHTML = eventDeleteDefault;
+            }
+            eventDeleteSession.disabled = false;
         }
     }
 
     function openEventModal(eventData) {
         if (!eventModal || !eventData) return;
-        ensureClientSelection(eventData.client_id);
+        const eventType = eventData.type || (eventData.status === 'time_off' ? 'time_off' : 'session');
+        if (eventType !== 'time_off') {
+            ensureClientSelection(eventData.client_id);
+        }
         state.modalEvent = {
             ...eventData,
-            status: (eventData.status || 'booked').toLowerCase()
+            type: eventType,
+            status: eventType === 'time_off'
+                ? 'time_off'
+                : (eventData.status || 'booked').toLowerCase()
         };
         state.modalEvent.repeatInfo = undefined;
         if (eventDeleteSession) {
@@ -727,6 +885,7 @@
         state.viewMode = mode;
         calendarRoot.classList.toggle('calendar-mode-full', mode === 'full');
         updateViewToggleUI(mode);
+        persistViewMode(mode);
         rebuildGrid();
         renderEvents();
     }
@@ -850,16 +1009,24 @@
 
             const eventNode = eventTemplate.content.firstElementChild.cloneNode(true);
             eventNode.dataset.id = event.id;
-            eventNode.dataset.clientId = event.client_id;
-            const status = (event.status || 'booked').toLowerCase();
+            const eventType = event.type || (event.status === 'time_off' ? 'time_off' : 'session');
+            eventNode.dataset.type = eventType;
+            const isTimeOff = eventType === 'time_off';
+            eventNode.dataset.clientId = isTimeOff ? '' : (event.client_id ?? '');
+            const status = isTimeOff ? 'time_off' : (event.status || 'booked').toLowerCase();
             eventNode.dataset.status = status;
-            eventNode.classList.toggle('calendar-event-cancelled', status === 'cancelled');
-            eventNode.classList.toggle('calendar-event-completed', status === 'completed');
+            eventNode.classList.toggle('calendar-event-cancelled', !isTimeOff && status === 'cancelled');
+            eventNode.classList.toggle('calendar-event-completed', !isTimeOff && status === 'completed');
+            eventNode.classList.toggle('calendar-event-timeoff', isTimeOff);
             eventNode.style.top = `${top}%`;
             eventNode.style.height = `${height}%`;
 
             const title = eventNode.querySelector('.calendar-event-title');
-            title.textContent = event.client_name ? `${event.client_name} ${event.client_last_name || ''}`.trim() : event.client_username;
+            if (isTimeOff) {
+                title.textContent = (event.title || 'Personal Time');
+            } else {
+                title.textContent = event.client_name ? `${event.client_name} ${event.client_last_name || ''}`.trim() : event.client_username;
+            }
 
             const timeEl = eventNode.querySelector('.calendar-event-time');
             timeEl.textContent = `${formatTime(start)} – ${formatTime(end)}`;
@@ -867,10 +1034,18 @@
             const dragZone = eventNode.querySelector('.calendar-event-dragzone');
             if (dragZone) {
                 dragZone.addEventListener('pointerdown', (evt) => beginDrag(evt, event, column));
+                if (isTimeOff) {
+                    const existingTypeIcon = dragZone.querySelector('.calendar-event-typeicon');
+                    if (!existingTypeIcon) {
+                        const indicator = document.createElement('i');
+                        indicator.className = 'bi bi-umbrella-fill calendar-event-typeicon';
+                        dragZone.insertBefore(indicator, dragZone.querySelector('.calendar-event-dragtext'));
+                    }
+                }
             }
             const dragText = eventNode.querySelector('.calendar-event-dragtext');
             if (dragText) {
-                dragText.textContent = STATUS_LABELS[status] || 'Booked';
+                dragText.textContent = STATUS_LABELS[status] || (isTimeOff ? 'Personal Time' : 'Booked');
             }
             const contentArea = eventNode.querySelector('.calendar-event-content');
             if (contentArea) {
@@ -893,6 +1068,10 @@
         return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
     }
 
+    function rangesOverlap(startA, endA, startB, endB) {
+        return startA < endB && endA > startB;
+    }
+
     function fetchEvents() {
         const startIso = toISODate(state.weekStart);
         const end = new Date(state.weekStart);
@@ -902,16 +1081,32 @@
             .then(res => res.json())
             .then(data => {
                 if (!data.success) throw new Error(data.error || 'Failed to load schedule.');
-                state.events = data.events || [];
+                const incoming = Array.isArray(data.events) ? data.events.map(ev => {
+                    const normalized = { ...ev };
+                    normalized.type = ev.type || (ev.status === 'time_off' ? 'time_off' : 'session');
+                    if (normalized.type === 'time_off') {
+                        normalized.status = 'time_off';
+                        normalized.title = normalized.title || 'Personal Time';
+                    } else {
+                        normalized.status = (normalized.status || 'booked').toLowerCase();
+                    }
+                    return normalized;
+                }) : [];
+                state.events = incoming;
                 sortEvents();
                 renderEvents();
                 if (state.modalEvent) {
-                    const refreshed = state.events.find(ev => ev.id === state.modalEvent.id);
+                    const refreshed = state.events.find(ev =>
+                        ev.id === state.modalEvent.id &&
+                        (ev.type || 'session') === (state.modalEvent.type || 'session')
+                    );
                     if (refreshed) {
                         const repeatInfo = state.modalEvent.repeatInfo;
                         state.modalEvent = {
                             ...refreshed,
-                            status: (refreshed.status || 'booked').toLowerCase(),
+                            status: refreshed.type === 'time_off'
+                                ? 'time_off'
+                                : (refreshed.status || 'booked').toLowerCase(),
                             repeatInfo
                         };
                         refreshModalFromState();
@@ -983,7 +1178,113 @@
         }
         const start = new Date(slot.dataset.start);
         const end = new Date(start.getTime() + DEFAULT_DURATION * MILLI_IN_MINUTE);
+        const hasConflict = state.events.some(existing => {
+            if (!existing || !existing.start_time || !existing.end_time) return false;
+            const existingStart = new Date(existing.start_time);
+            const existingEnd = new Date(existing.end_time);
+            const existingType = existing.type || (existing.status === 'time_off' ? 'time_off' : 'session');
+            if (existingType === 'time_off') {
+                return rangesOverlap(start, end, existingStart, existingEnd);
+            }
+            const existingStatus = (existing.status || 'booked').toLowerCase();
+            if (existingStatus === 'cancelled') return false;
+            return rangesOverlap(start, end, existingStart, existingEnd);
+        });
+        if (hasConflict) {
+            showDashboardToast('That time overlaps an existing session or personal time block.', 'danger');
+            return;
+        }
         createBooking(start, end);
+    }
+
+    function handleTimeOffSubmit(event) {
+        if (event) event.preventDefault();
+        if (!timeOffStartInput || !timeOffEndInput || !timeOffSubmit) return;
+        const startValue = timeOffStartInput.value;
+        const endValue = timeOffEndInput.value;
+        if (!startValue || !endValue) {
+            showDashboardToast('Select both a start and end time for personal time.', 'warning');
+            return;
+        }
+        const startDate = new Date(startValue);
+        const endDate = new Date(endValue);
+        if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+            showDashboardToast('Enter valid start and end times.', 'warning');
+            return;
+        }
+        if (startDate >= endDate) {
+            showDashboardToast('End time must be after the start time.', 'warning');
+            return;
+        }
+        if (startDate.toDateString() !== endDate.toDateString()) {
+            showDashboardToast('Personal time blocks must start and end on the same day.', 'warning');
+            return;
+        }
+        if ((startDate.getMinutes() % 15) !== 0 || (endDate.getMinutes() % 15) !== 0) {
+            showDashboardToast('Times must be aligned to 15-minute increments.', 'warning');
+            return;
+        }
+        const windowStartMinutes = state.viewStart * 60;
+        const windowEndMinutes = state.viewEnd * 60;
+        const blockStartMinutes = startDate.getHours() * 60 + startDate.getMinutes();
+        const blockEndMinutes = endDate.getHours() * 60 + endDate.getMinutes();
+        if (blockStartMinutes < windowStartMinutes || blockEndMinutes > windowEndMinutes) {
+            showDashboardToast('Personal time must stay within your visible availability window.', 'warning');
+            return;
+        }
+
+        const overlapsExisting = state.events.some(existing => {
+            if (!existing || !existing.start_time || !existing.end_time) return false;
+            const existingStart = new Date(existing.start_time);
+            const existingEnd = new Date(existing.end_time);
+            const existingType = existing.type || (existing.status === 'time_off' ? 'time_off' : 'session');
+            if (existingType === 'time_off') {
+                return rangesOverlap(startDate, endDate, existingStart, existingEnd);
+            }
+            const existingStatus = (existing.status || 'booked').toLowerCase();
+            if (existingStatus === 'cancelled') return false;
+            return rangesOverlap(startDate, endDate, existingStart, existingEnd);
+        });
+        if (overlapsExisting) {
+            showDashboardToast('That window overlaps an existing session or personal time block.', 'danger');
+            return;
+        }
+
+        timeOffSubmit.disabled = true;
+        timeOffSubmit.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Saving...';
+
+        fetch('/trainer/time-off', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                start_time: startDate.toISOString(),
+                end_time: endDate.toISOString()
+            })
+        })
+            .then(res => res.json())
+            .then(data => {
+                if (!data.success) {
+                    showDashboardToast(data.error || 'Unable to add personal time.', 'danger');
+                    return;
+                }
+                if (data.block) {
+                    upsertEvent(data.block);
+                    sortEvents();
+                    renderEvents();
+                }
+                timeOffForm?.reset();
+                showDashboardToast('Personal time blocked.', 'success');
+                fetchEvents();
+            })
+            .catch(() => {
+                showDashboardToast('Network error adding personal time.', 'danger');
+            })
+            .finally(() => {
+                if (timeOffSubmit) {
+                    timeOffSubmit.disabled = false;
+                    timeOffSubmit.innerHTML = '<i class="bi bi-calendar-plus me-1"></i>Block Personal Time';
+                }
+            });
     }
 
     function createBooking(startDate, endDate) {
@@ -1035,13 +1336,37 @@
             .catch(() => showDashboardToast('Unable to connect to the scheduler.', 'danger'));
     }
 
-    function deleteEvent(eventId, options = {}) {
+    function deleteEvent(eventId, eventType = 'session', options = {}) {
         const { skipConfirm = false } = options;
         if (!eventId) return Promise.resolve(false);
-        if (!skipConfirm && !confirm('Remove this booking?')) {
+        const type = eventType || 'session';
+        const isTimeOff = type === 'time_off';
+        const promptMessage = isTimeOff ? 'Remove this personal time block?' : 'Remove this booking?';
+        if (!skipConfirm && !confirm(promptMessage)) {
             return Promise.resolve(false);
         }
-        const target = state.events.find(ev => ev.id === eventId);
+        const key = `${type}:${eventId}`;
+        const target = state.events.find(ev => eventKey(ev) === key);
+
+        if (isTimeOff) {
+            return fetch(`/trainer/time-off/${eventId}`, { method: 'DELETE' })
+                .then(res => res.json())
+                .then(data => {
+                    if (!data.success) {
+                        showDashboardToast(data.error || 'Unable to remove that personal time block.', 'danger');
+                        return false;
+                    }
+                    state.events = state.events.filter(ev => eventKey(ev) !== key);
+                    renderEvents();
+                    showDashboardToast('Personal time block removed.', 'success');
+                    return true;
+                })
+                .catch(() => {
+                    showDashboardToast('Network issue deleting personal time block.', 'danger');
+                    return false;
+                });
+        }
+
         const targetClientId = target ? target.client_id : null;
         const wasBooked = (target?.status || 'booked').toLowerCase() === 'booked';
 
@@ -1052,7 +1377,7 @@
                     showDashboardToast(data.error || 'Unable to remove booking.', 'danger');
                     return false;
                 }
-                state.events = state.events.filter(ev => ev.id !== eventId);
+                state.events = state.events.filter(ev => eventKey(ev) !== key);
                 renderEvents();
                 if (targetClientId && wasBooked) {
                     let newBooked = null;
@@ -1095,6 +1420,8 @@
     function handleRepeatSubmit(event) {
         if (event) event.preventDefault();
         if (!state.modalEvent || !eventRepeatWeeksInput || !eventRepeatSubmit) return;
+        const eventType = state.modalEvent.type || 'session';
+        const isTimeOff = eventType === 'time_off';
         const weeksValue = Number(eventRepeatWeeksInput.value || '0');
         if (!Number.isInteger(weeksValue) || weeksValue <= 0) {
             showDashboardToast('Enter how many weeks you would like to repeat.', 'warning');
@@ -1104,14 +1431,19 @@
             showDashboardToast('You can repeat up to 52 weeks at a time.', 'warning');
             return;
         }
-        const confirmation = window.confirm(`Repeat this session for ${weeksValue} week${weeksValue === 1 ? '' : 's'}?`);
+        const entityLabel = isTimeOff ? 'personal time block' : 'session';
+        const confirmation = window.confirm(`Repeat this ${entityLabel} for ${weeksValue} week${weeksValue === 1 ? '' : 's'}?`);
         if (!confirmation) {
             return;
         }
         eventRepeatSubmit.disabled = true;
         eventRepeatSubmit.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Repeating...';
 
-        fetch(`/trainer/schedule/${state.modalEvent.id}/repeat`, {
+        const endpoint = isTimeOff
+            ? `/trainer/time-off/${state.modalEvent.id}/repeat`
+            : `/trainer/schedule/${state.modalEvent.id}/repeat`;
+
+        fetch(endpoint, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ weeks: weeksValue })
@@ -1119,33 +1451,41 @@
             .then(res => res.json())
             .then(data => {
                 if (!data.success) {
-                    showDashboardToast(data.error || 'Unable to repeat that booking.', 'danger');
+                    const errorMessage = data.error || (isTimeOff ? 'Unable to repeat that personal time block.' : 'Unable to repeat that booking.');
+                    showDashboardToast(errorMessage, 'danger');
                     if (eventRepeatInfo && Array.isArray(data.conflicts) && data.conflicts.length > 0) {
-                        eventRepeatInfo.textContent = `Skipped ${data.conflicts.length} week(s) due to conflicts.`;
+                        const skippedMessage = `Skipped ${data.conflicts.length} week(s) due to conflicts.`;
+                        eventRepeatInfo.textContent = skippedMessage;
+                        if (state.modalEvent) {
+                            state.modalEvent.repeatInfo = skippedMessage;
+                        }
                     }
                     return;
                 }
-                if (Array.isArray(data.created_events)) {
-                    data.created_events.forEach(ev => upsertEvent(ev));
+                const createdItems = isTimeOff ? data.created_blocks : data.created_events;
+                if (Array.isArray(createdItems)) {
+                    createdItems.forEach(ev => upsertEvent(ev));
                     sortEvents();
                     renderEvents();
                 }
                 if (eventRepeatInfo) {
+                    let infoMessage = '';
                     if (Array.isArray(data.conflicts) && data.conflicts.length > 0) {
-                        eventRepeatInfo.textContent = `Added ${data.created_count} session(s); ${data.conflicts.length} week(s) skipped because of conflicts.`;
-                    } else if (data.remaining_quota === 0 && data.sessions_remaining !== null) {
-                        eventRepeatInfo.textContent = 'All available sessions are now booked.';
+                        infoMessage = `Added ${data.created_count} ${isTimeOff ? 'personal time block' : 'session'}${data.created_count === 1 ? '' : 's'}; ${data.conflicts.length} week(s) skipped because of conflicts.`;
+                    } else if (!isTimeOff && data.remaining_quota === 0 && data.sessions_remaining !== null) {
+                        infoMessage = 'All available sessions are now booked.';
                     } else {
-                        eventRepeatInfo.textContent = `Added ${data.created_count} weekly session${data.created_count === 1 ? '' : 's'}.`;
+                        infoMessage = `Added ${data.created_count} weekly ${isTimeOff ? 'personal time block' : 'session'}${data.created_count === 1 ? '' : 's'}.`;
                     }
+                    eventRepeatInfo.textContent = infoMessage;
                     if (state.modalEvent) {
-                        state.modalEvent.repeatInfo = eventRepeatInfo.textContent;
+                        state.modalEvent.repeatInfo = infoMessage;
                     }
                 }
                 if (eventRepeatWeeksInput) {
                     eventRepeatWeeksInput.value = '';
                 }
-                if (data.sessions_booked !== undefined || data.sessions_remaining !== undefined || data.sessions_completed !== undefined) {
+                if (!isTimeOff && (data.sessions_booked !== undefined || data.sessions_remaining !== undefined || data.sessions_completed !== undefined)) {
                     syncClientSessionCounts(state.modalEvent.client_id, {
                         sessions_booked: data.sessions_booked,
                         sessions_remaining: data.sessions_remaining,
@@ -1153,7 +1493,10 @@
                         workouts_completed: data.workouts_completed
                     });
                 }
-                showDashboardToast(`Added ${data.created_count} weekly session${data.created_count === 1 ? '' : 's'}.`, 'success');
+                showDashboardToast(
+                    `Added ${data.created_count} weekly ${isTimeOff ? 'personal time block' : 'session'}${data.created_count === 1 ? '' : 's'}.`,
+                    'success'
+                );
                 state.justDragged = false;
                 closeEventModal();
                 if (calendarRoot) {
@@ -1173,6 +1516,10 @@
     function handleStatusUpdate(event) {
         if (event) event.preventDefault();
         if (!state.modalEvent || !eventStatusSelect || !eventStatusUpdate) return;
+        if ((state.modalEvent.type || 'session') === 'time_off') {
+            showDashboardToast('Personal time blocks do not have statuses.', 'info');
+            return;
+        }
         const desired = (eventStatusSelect.value || '').trim().toLowerCase();
         if (!desired) {
             showDashboardToast('Select a status to apply.', 'warning');
@@ -1267,13 +1614,16 @@
             });
     }
 
-    function handleDeleteSession() {
+    function handleDeleteEntry() {
         if (!state.modalEvent || !eventDeleteSession || eventDeleteSession.disabled) return;
-        if (!confirm('Delete this session permanently?')) return;
+        const eventType = state.modalEvent.type || 'session';
+        const isTimeOff = eventType === 'time_off';
+        const confirmMessage = isTimeOff ? 'Delete this personal time block?' : 'Delete this session permanently?';
+        if (!confirm(confirmMessage)) return;
         eventDeleteSession.disabled = true;
         eventDeleteSession.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Deleting...';
         const targetId = state.modalEvent.id;
-        deleteEvent(targetId, { skipConfirm: true })
+        deleteEvent(targetId, eventType, { skipConfirm: true })
             .then(success => {
                 if (success) {
                     fetchEvents();
@@ -1293,6 +1643,7 @@
         state.dragging = {
             type: 'move',
             id: eventData.id,
+            entryType: eventData.type || (eventData.status === 'time_off' ? 'time_off' : 'session'),
             column,
             columnIndex,
             currentColumnIndex: columnIndex,
@@ -1313,6 +1664,7 @@
         state.dragging = {
             type: direction === 'top' ? 'resize-start' : 'resize-end',
             id: eventData.id,
+            entryType: eventData.type || (eventData.status === 'time_off' ? 'time_off' : 'session'),
             column,
             columnIndex,
             currentColumnIndex: columnIndex,
@@ -1339,18 +1691,18 @@
 
     function handlePointerMove(evt) {
         if (!state.dragging) return;
-        const { type, originalStart, originalEnd, columnIndex, initialWidth } = state.dragging;
+        const { type: action, originalStart, originalEnd, columnIndex, initialWidth, entryType } = state.dragging;
         let currentColumnIndex = state.dragging.currentColumnIndex;
         const deltaY = evt.clientY - state.dragging.startY;
         const totalMinutes = (state.viewEnd - state.viewStart) * 60;
 
-        if (type === 'move' && initialWidth) {
+        if (action === 'move' && initialWidth) {
             const deltaX = evt.clientX - state.dragging.startX;
             const rawDayDelta = Math.round(deltaX / initialWidth);
             let targetIndex = columnIndex + rawDayDelta;
             targetIndex = Math.max(0, Math.min(dayColumns.length - 1, targetIndex));
             if (targetIndex !== currentColumnIndex) {
-                const eventElement = columnsEl.querySelector(`.calendar-event[data-id="${state.dragging.id}"]`);
+                const eventElement = columnsEl.querySelector(`.calendar-event[data-id="${state.dragging.id}"][data-type="${entryType}"]`);
                 if (eventElement && dayColumns[targetIndex]) {
                     dayColumns[targetIndex].appendChild(eventElement);
                     state.dragging.currentColumnIndex = targetIndex;
@@ -1376,7 +1728,7 @@
         const minMinutes = FIFTEEN_MINUTES;
         if ((newEnd - newStart) / MILLI_IN_MINUTE < minMinutes) return;
 
-        const eventElement = columnsEl.querySelector(`.calendar-event[data-id="${state.dragging.id}"]`);
+        const eventElement = columnsEl.querySelector(`.calendar-event[data-id="${state.dragging.id}"][data-type="${entryType}"]`);
         if (!eventElement) return;
 
         const durationMinutes = (newEnd - newStart) / MILLI_IN_MINUTE;
@@ -1409,7 +1761,7 @@
         }
         state.dragPointer = null;
         if (!state.dragging) return;
-        const { previewStart, previewEnd, id } = state.dragging;
+        const { previewStart, previewEnd, id, entryType } = state.dragging;
         const hadPreview = Boolean(previewStart && previewEnd);
         state.dragging = null;
         if (!hadPreview) {
@@ -1421,7 +1773,8 @@
         setTimeout(() => {
             state.justDragged = false;
         }, 150);
-        fetch(`/trainer/schedule/${id}`, {
+        const endpoint = entryType === 'time_off' ? `/trainer/time-off/${id}` : `/trainer/schedule/${id}`;
+        fetch(endpoint, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -1432,17 +1785,29 @@
             .then(res => res.json())
             .then(data => {
                 if (!data.success) {
-                    showDashboardToast(data.error || 'Unable to update booking.', 'danger');
+                    const errorMessage = data.error || (entryType === 'time_off'
+                        ? 'Unable to update personal time block.'
+                        : 'Unable to update booking.');
+                    showDashboardToast(errorMessage, 'danger');
                     fetchEvents();
                     return;
                 }
-                upsertEvent(data.event);
+                const payload = entryType === 'time_off' ? data.block : data.event;
+                if (!payload) {
+                    fetchEvents();
+                    return;
+                }
+                upsertEvent(payload);
                 sortEvents();
                 renderEvents();
-                showDashboardToast('Booking updated.', 'success');
+                const successMessage = entryType === 'time_off' ? 'Personal time updated.' : 'Booking updated.';
+                showDashboardToast(successMessage, 'success');
             })
             .catch(() => {
-                showDashboardToast('Network error updating booking.', 'danger');
+                const networkMessage = entryType === 'time_off'
+                    ? 'Network error updating personal time block.'
+                    : 'Network error updating booking.';
+                showDashboardToast(networkMessage, 'danger');
                 fetchEvents();
             });
     }
@@ -1593,7 +1958,10 @@
             eventStatusForm.addEventListener('submit', handleStatusUpdate);
         }
         if (eventDeleteSession) {
-            eventDeleteSession.addEventListener('click', handleDeleteSession);
+            eventDeleteSession.addEventListener('click', handleDeleteEntry);
+        }
+        if (timeOffForm) {
+            timeOffForm.addEventListener('submit', handleTimeOffSubmit);
         }
         if (typeof document !== 'undefined') {
             document.addEventListener('keydown', (evt) => {
