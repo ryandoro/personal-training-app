@@ -1482,6 +1482,13 @@ iframe.fullscreen-sim {
   margin: 0;
 }
 
+.calendar-event--dragging {
+  z-index: 15;
+  transform: translate3d(0, 0, 0) scale(1.02);
+  box-shadow: 0 20px 36px rgba(15, 63, 117, 0.28);
+  transition: transform 0.1s ease, box-shadow 0.1s ease;
+}
+
 .calendar-event::before {
   content: '';
   position: absolute;
@@ -1510,6 +1517,8 @@ iframe.fullscreen-sim {
   letter-spacing: 0.04em;
   text-transform: uppercase;
   user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
   touch-action: none;
   cursor: grab;
 }
@@ -1668,7 +1677,7 @@ iframe.fullscreen-sim {
   border-radius: 999px;
   background: transparent;
   cursor: ns-resize;
-  touch-action: none;
+  touch-action: pan-y;
 }
 
 .calendar-event-handle-top {
@@ -1699,10 +1708,15 @@ iframe.fullscreen-sim {
   gap: 0.75rem;
 }
 
-.calendar-controls__window {
+.calendar-controls__group {
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+
+.calendar-controls__group .calendar-controls__window {
   border-radius: 12px;
   font-weight: 600;
-  padding: 0.55rem 0.75rem;
+  padding: 0.6rem 1.25rem;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1713,18 +1727,20 @@ iframe.fullscreen-sim {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
 }
 
-.calendar-controls__window:hover,
-.calendar-controls__window:focus {
+.calendar-controls__group .calendar-controls__window:hover,
+.calendar-controls__group .calendar-controls__window:focus {
   background: rgba(30, 164, 230, 0.16);
   color: #0f4c75;
 }
 
-.calendar-controls__nav {
+.calendar-controls__group .calendar-controls__nav {
   display: flex;
   width: 100%;
   border: 1px solid rgba(30, 164, 230, 0.35);
   border-bottom: none;
   border-radius: 16px 16px 0 0;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
   overflow: hidden;
   background: #ffffff;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
@@ -1767,20 +1783,32 @@ iframe.fullscreen-sim {
   margin-top: 0.35rem;
 }
 
+.calendar-view-toggle {
+  border: 1px solid rgba(30, 164, 230, 0.35);
+  border-radius: 16px;
+  overflow: hidden;
+  background: #ffffff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  margin-top: 0.35rem;
+  padding: 0.25rem;
+}
+
 .calendar-view-toggle .btn {
   border: none;
   font-weight: 600;
-  padding: 0.55rem 0.75rem;
+  padding: 0.6rem 1.1rem;
   color: #0f4c75;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 0.35rem;
   transition: background-color 0.2s ease, color 0.2s ease;
+  border-radius: 12px;
 }
 
 .calendar-view-toggle .btn + .btn {
-  border-left: 1px solid rgba(30, 164, 230, 0.3);
+  margin-left: 0.35rem;
+  border-left: none;
 }
 
 .calendar-view-toggle .btn:hover,
@@ -1793,6 +1821,57 @@ iframe.fullscreen-sim {
   background: linear-gradient(135deg, #1EA4E6 0%, #33C3F0 100%);
   color: #ffffff;
   box-shadow: none;
+}
+
+.calendar-week-label {
+  border: 1px solid rgba(30, 164, 230, 0.35);
+  border-radius: 14px;
+  background: #ffffff;
+  padding: 0.55rem 0.75rem;
+  text-align: center;
+  color: #0f4c75;
+  font-size: 0.92rem;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+.selected-client-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  padding: 0.65rem 1.35rem;
+  border-radius: 999px;
+  background: #ffffff;
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  box-shadow: 0 12px 24px rgba(13, 72, 107, 0.18);
+}
+
+.selected-client-pill__label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-weight: 700;
+  color: #1EA4E6;
+}
+
+.selected-client-pill__name {
+  font-weight: 700;
+  font-size: 1.05rem;
+  color: #0f4c75;
+  text-align: center;
+}
+
+.selected-client-pill--empty {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.55);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25);
+}
+
+.selected-client-pill--empty .selected-client-pill__label,
+.selected-client-pill--empty .selected-client-pill__name {
+  color: #ffffff;
+  opacity: 0.9;
 }
 
 .calendar-wrapper.calendar-mode-full .calendar-scroll {
@@ -1883,6 +1962,11 @@ iframe.fullscreen-sim {
   content: '📋';
   font-size: 1.05rem;
   line-height: 1;
+}
+
+.calendar-wrapper.calendar-mode-full .calendar-event-timeoff .calendar-event-dragzone::before,
+.calendar-wrapper.calendar-mode-full .calendar-event[data-status="time_off"] .calendar-event-dragzone::before {
+  content: none;
 }
 
 .calendar-wrapper.calendar-mode-full .calendar-event[data-status="completed"] .calendar-event-dragzone::before {
@@ -2003,6 +2087,21 @@ iframe.fullscreen-sim {
     font-size: 0.85rem;
     padding: 0.5rem 0.6rem;
   }
+
+  .calendar-week-label {
+    font-size: 0.85rem;
+    padding: 0.5rem 0.6rem;
+  }
+
+  .selected-client-pill {
+    flex-direction: column;
+    gap: 0.4rem;
+    padding: 0.6rem 1rem;
+  }
+
+  .selected-client-pill__name {
+    font-size: 0.95rem;
+  }
 }
 
 .schedule-card {
@@ -2035,8 +2134,65 @@ iframe.fullscreen-sim {
     padding: 1rem 0.75rem 1.25rem;
   }
 
-.schedule-card .card-header {
-  padding: 0.9rem;
+  .schedule-card .card-header {
+    padding: 0.9rem;
+  }
+
+  .trainer-dashboard-container,
+  .trainer-calendar-container,
+  .trainer-timeoff-container {
+    padding-left: 0;
+    padding-right: 0;
+  }
+
+  .trainer-dashboard-card,
+  .trainer-schedule-card,
+  .trainer-timeoff-container .card {
+    border-radius: 18px;
+    margin-left: 0;
+    margin-right: 0;
+  }
+
+  .trainer-dashboard-card .card-body,
+  .trainer-schedule-card .card-body,
+  .timeoff-card .card-body {
+    padding-left: 0.65rem;
+    padding-right: 0.65rem;
+  }
+
+  .trainer-schedule-card .card-header {
+    border-radius: 18px 18px 0 0 !important;
+    padding-left: 0.85rem;
+    padding-right: 0.85rem;
+  }
+
+  .calendar-wrapper {
+    border-radius: 18px;
+  }
+
+  .calendar-scroll,
+  .calendar-header {
+    border-radius: 0;
+  }
+
+  .calendar-controls {
+    padding-left: 0;
+    padding-right: 0;
+  }
+
+  .calendar-controls__nav {
+    border-radius: 16px 16px 0 0;
+    margin-left: 0;
+    margin-right: 0;
+  }
+
+  .calendar-week-label {
+    border-radius: 12px;
+  }
+
+  .calendar-view-toggle {
+    border-radius: 14px;
+  }
 }
 
 .trainer-schedule-card,
@@ -2045,8 +2201,11 @@ iframe.fullscreen-sim {
   width: 100%;
 }
 
+.trainer-dashboard-card,
 .trainer-schedule-card {
-  max-width: none;
+  max-width: 1100px;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 .trainer-schedule-card .card-header {
@@ -2066,7 +2225,6 @@ iframe.fullscreen-sim {
   .trainer-schedule-card .card-header {
     padding: 1.1rem 1.4rem;
   }
-}
 }
 
 .calendar-modal {

@@ -5,8 +5,8 @@
 {% endblock %}
 
 {% block content %}
-<div class="container">
-    <div class="card w-100 shadow-sm p-0 border border-2 rounded-3 mb-4" style="border-color: #ced4da;">
+<div class="trainer-dashboard-container container-fluid px-0 px-sm-3 px-lg-5">
+    <div class="card w-100 shadow-sm p-0 border border-2 rounded-3 mb-4 trainer-dashboard-card" style="border-color: #ced4da;">
         <div class="card-body">
             <h2 class="card-header text-center text-white mb-4 p-3" style="background-color: #1EA4E6;">
                 TRAINER DASHBOARD
@@ -15,7 +15,7 @@
             {% set add_client_url = url_for('add_client') %}
             {% set show_trainer_column = trainer.role == 'admin' %}
 
-            <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between mb-4">
+            <div class="d-flex flex-column align-items-center text-center gap-2 mb-4">
                 <div>
                     <h3 class="mb-1">
                         {% set first_name = trainer.name or '' %}
@@ -157,21 +157,20 @@
     </div>
 </div>
 
-<div class="trainer-calendar-container container-fluid px-3 px-md-4 px-lg-5">
+<div class="trainer-calendar-container container-fluid px-0 px-sm-3 px-lg-5">
     <div id="calendar-card" class="card border-0 shadow-lg mt-4 trainer-schedule-card mx-auto" style="border-radius: 20px;">
-        <div class="card-header border-0 d-flex flex-column flex-xl-row justify-content-between align-items-xl-start gap-3"
+        <div class="card-header border-0 d-flex flex-column align-items-center text-center gap-3"
              style="background: linear-gradient(135deg, #1EA4E6 0%, #33C3F0 100%); border-top-left-radius: 20px; border-top-right-radius: 20px;">
             <div class="d-flex flex-column gap-3 text-white">
                 <div>
                     <h4 class="mb-1 text-white">Weekly Schedule</h4>
                     <p class="mb-0 text-white-50">Plan sessions, drag to adjust, and stay aligned with your clients.</p>
                 </div>
-                <div class="d-flex flex-column flex-md-row align-items-md-center gap-3">
-                    <div>
-                        <span class="badge bg-white text-primary fw-semibold">Selected Client</span>
-                        <div id="selected-client-display" class="mt-2 fw-bold text-white">Pick a client from the table to start booking.</div>
+                <div class="d-flex flex-column align-items-center">
+                    <div id="selected-client-pill" class="selected-client-pill selected-client-pill--empty mb-2" role="status" aria-live="polite">
+                        <span class="selected-client-pill__label">Selected Client</span>
+                        <span id="selected-client-display" class="selected-client-pill__name">No client selected</span>
                     </div>
-                    <div class="text-white-50 small fw-semibold" id="calendar-week-label"></div>
                 </div>
             </div>
         </div>
@@ -179,25 +178,34 @@
             <div class="calendar-wrapper" id="trainer-calendar" data-mode="trainer"
                  data-view-start="{{ schedule_prefs.view_start }}" data-view-end="{{ schedule_prefs.view_end }}">
                 <div class="calendar-controls">
-                    <button class="btn btn-outline-secondary btn-sm w-100 calendar-controls__window" id="calendar-edit-window">
-                        <i class="bi bi-sliders me-1"></i>Edit Available Window
-                    </button>
-                    <div class="calendar-view-toggle btn-group btn-group-sm w-100" role="group" aria-label="Calendar view mode">
-                        <input type="radio" class="btn-check" name="calendar-view-mode" id="calendar-view-focused" autocomplete="off" checked>
-                        <label class="btn btn-outline-primary" for="calendar-view-focused">Focused View</label>
-                        <input type="radio" class="btn-check" name="calendar-view-mode" id="calendar-view-full" autocomplete="off">
-                        <label class="btn btn-outline-primary" for="calendar-view-full">Full Week View</label>
+                    <div class="calendar-controls__group">
+                        <button class="btn btn-outline-secondary btn-sm w-100 calendar-controls__window" id="calendar-edit-window">
+                            <i class="bi bi-sliders me-1"></i>Edit Available Window
+                        </button>
                     </div>
-                    <div class="calendar-controls__nav btn-group w-100" role="group" aria-label="Calendar navigation">
-                        <button class="btn btn-outline-primary btn-sm flex-fill calendar-controls__button" id="calendar-prev-week" aria-label="Previous week">
-                            <i class="bi bi-chevron-left"></i>
-                        </button>
-                        <button class="btn btn-primary btn-sm flex-fill calendar-controls__button calendar-controls__button--today" id="calendar-today">
-                            Today
-                        </button>
-                        <button class="btn btn-outline-primary btn-sm flex-fill calendar-controls__button" id="calendar-next-week" aria-label="Next week">
-                            <i class="bi bi-chevron-right"></i>
-                        </button>
+                    <div class="calendar-controls__group">
+                        <div class="calendar-view-toggle btn-group btn-group-sm w-100" role="group" aria-label="Calendar view mode">
+                            <input type="radio" class="btn-check" name="calendar-view-mode" id="calendar-view-focused" autocomplete="off" checked>
+                            <label class="btn btn-outline-primary" for="calendar-view-focused">Focused View</label>
+                            <input type="radio" class="btn-check" name="calendar-view-mode" id="calendar-view-full" autocomplete="off">
+                            <label class="btn btn-outline-primary" for="calendar-view-full">Full Week View</label>
+                        </div>
+                    </div>
+                    <div class="calendar-controls__group">
+                        <div class="calendar-week-label fw-semibold" id="calendar-week-label"></div>
+                    </div>
+                    <div class="calendar-controls__group">
+                        <div class="calendar-controls__nav btn-group w-100" role="group" aria-label="Calendar navigation">
+                            <button class="btn btn-outline-primary btn-sm flex-fill calendar-controls__button" id="calendar-prev-week" aria-label="Previous week">
+                                <i class="bi bi-chevron-left"></i>
+                            </button>
+                            <button class="btn btn-primary btn-sm flex-fill calendar-controls__button calendar-controls__button--today" id="calendar-today">
+                                Today
+                            </button>
+                            <button class="btn btn-outline-primary btn-sm flex-fill calendar-controls__button" id="calendar-next-week" aria-label="Next week">
+                                <i class="bi bi-chevron-right"></i>
+                            </button>
+                        </div>
                     </div>
                 </div>
                 <div class="calendar-scroll" id="calendar-scroll">
@@ -215,7 +223,7 @@
     </div>
 </div>
 
-<div class="trainer-timeoff-container container-fluid px-3 px-md-4 px-lg-5">
+<div class="trainer-timeoff-container container-fluid px-0 px-sm-3 px-lg-5">
     <div class="card border-0 shadow-sm mt-4 mb-5 timeoff-card mx-auto" style="border-radius: 18px;">
         <div class="card-body p-4">
             <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center mb-3 gap-3">
@@ -345,6 +353,7 @@
     const emptyState = document.getElementById('calendar-empty-state');
     const weekLabel = document.getElementById('calendar-week-label');
     const displaySelected = document.getElementById('selected-client-display');
+    const selectedClientPill = document.getElementById('selected-client-pill');
     const prevWeekBtn = document.getElementById('calendar-prev-week');
     const nextWeekBtn = document.getElementById('calendar-next-week');
     const todayBtn = document.getElementById('calendar-today');
@@ -427,6 +436,15 @@
         });
     }
 
+    function setSelectedClientDisplay(message, isEmpty = false) {
+        if (displaySelected) {
+            displaySelected.textContent = message;
+        }
+        if (selectedClientPill) {
+            selectedClientPill.classList.toggle('selected-client-pill--empty', Boolean(isEmpty));
+        }
+    }
+
     const VIEW_MODE_STORAGE_KEY = 'trainerCalendarViewMode';
 
     function loadStoredViewMode() {
@@ -461,6 +479,8 @@
     const FIFTEEN_MINUTES = 15;
     const DEFAULT_DURATION = 60;
     const MILLI_IN_MINUTE = 60000;
+    const HOLD_TO_DRAG_DELAY = 350;
+    const HOLD_MOVE_TOLERANCE = 6;
 
     const state = {
         selectedClient: null,
@@ -473,7 +493,9 @@
         dragging: null,
         dragPointer: null,
         modalEvent: null,
-        justDragged: false
+        justDragged: false,
+        dragHoldInfo: null,
+        dragHoldTimer: null
     };
 
     updateViewToggleUI(initialMode);
@@ -493,6 +515,109 @@
         if (!eventData || typeof eventData.id === 'undefined') return null;
         const group = eventData.type || (eventData.status === 'time_off' ? 'time_off' : 'session');
         return `${group}:${eventData.id}`;
+    }
+
+    function getEntryType(entry) {
+        if (!entry) return 'session';
+        return entry.type || (entry.status === 'time_off' ? 'time_off' : 'session');
+    }
+
+    function hasBlockingConflict(start, end, entryType, excludeKey = null) {
+        if (!start || !end) return false;
+        return state.events.some(existing => {
+            if (!existing || !existing.start_time || !existing.end_time) return false;
+            const key = eventKey(existing);
+            if (excludeKey && key === excludeKey) return false;
+            const existingStart = new Date(existing.start_time);
+            const existingEnd = new Date(existing.end_time);
+            if (!rangesOverlap(start, end, existingStart, existingEnd)) return false;
+            const existingType = getEntryType(existing);
+            if (entryType === 'time_off' || existingType === 'time_off') {
+                return true;
+            }
+            return true;
+        });
+    }
+
+    function handleDragPointerDown(evt, eventData, column) {
+        cancelHoldToDrag();
+        if (!evt || !eventData || !column) return;
+        const pointerType = evt.pointerType || 'mouse';
+        if (pointerType === 'mouse') {
+            if (typeof evt.button !== 'undefined' && evt.button !== 0) return;
+            beginDrag(evt, eventData, column);
+            return;
+        }
+        startHoldToDrag(evt, eventData, column);
+    }
+
+    function startHoldToDrag(evt, eventData, column) {
+        const dragZone = evt.currentTarget || evt.target;
+        if (!dragZone) return;
+        state.dragHoldInfo = {
+            pointerId: evt.pointerId,
+            startX: evt.clientX,
+            startY: evt.clientY,
+            eventData,
+            column,
+            dragZone,
+            lastEvent: evt,
+            triggerEvent: evt
+        };
+        state.dragHoldTimer = setTimeout(triggerHoldDrag, HOLD_TO_DRAG_DELAY);
+        document.addEventListener('pointermove', handleHoldPointerMove, { passive: true });
+        document.addEventListener('pointerup', cancelHoldToDrag);
+        document.addEventListener('pointercancel', cancelHoldToDrag);
+    }
+
+    function handleHoldPointerMove(evt) {
+        const info = state.dragHoldInfo;
+        if (!info || evt.pointerId !== info.pointerId) return;
+        info.lastEvent = evt;
+        if (!state.dragHoldTimer) return;
+        const dx = Math.abs(evt.clientX - info.startX);
+        const dy = Math.abs(evt.clientY - info.startY);
+        if (dx > HOLD_MOVE_TOLERANCE || dy > HOLD_MOVE_TOLERANCE) {
+            cancelHoldToDrag();
+        }
+    }
+
+    function cancelHoldToDrag(evt) {
+        const info = state.dragHoldInfo;
+        if (evt && info && typeof evt.pointerId !== 'undefined' && evt.pointerId !== info.pointerId) {
+            return;
+        }
+        if (state.dragHoldTimer) {
+            clearTimeout(state.dragHoldTimer);
+            state.dragHoldTimer = null;
+        }
+        document.removeEventListener('pointermove', handleHoldPointerMove);
+        document.removeEventListener('pointerup', cancelHoldToDrag);
+        document.removeEventListener('pointercancel', cancelHoldToDrag);
+        state.dragHoldInfo = null;
+    }
+
+    function triggerHoldDrag() {
+        const info = state.dragHoldInfo;
+        state.dragHoldTimer = null;
+        document.removeEventListener('pointermove', handleHoldPointerMove);
+        document.removeEventListener('pointerup', cancelHoldToDrag);
+        document.removeEventListener('pointercancel', cancelHoldToDrag);
+        if (!info) return;
+        const syntheticEvent = {
+            clientX: info.lastEvent?.clientX ?? info.startX,
+            clientY: info.lastEvent?.clientY ?? info.startY,
+            pointerId: info.pointerId,
+            target: info.dragZone,
+            currentTarget: info.dragZone,
+            preventDefault: () => {
+                if (info.triggerEvent && typeof info.triggerEvent.preventDefault === 'function') {
+                    info.triggerEvent.preventDefault();
+                }
+            }
+        };
+        beginDrag(syntheticEvent, info.eventData, info.column);
+        state.dragHoldInfo = null;
     }
 
     function startOfWeek(date) {
@@ -670,7 +795,8 @@
         button.classList.add('active');
         const name = button.dataset.clientName || 'Client';
         const last = button.dataset.clientLastname || '';
-        displaySelected.textContent = `Booking for ${name} ${last}`.trim();
+        const fullName = `${name} ${last}`.trim();
+        setSelectedClientDisplay(`Booking for ${fullName}`, false);
         const sessionsTotal = button.dataset.sessions === '' ? null : Number(button.dataset.sessions || '0');
         const sessionsBooked = Number(button.dataset.sessionsBooked || '0');
         const sessionsCompleted = Number(button.dataset.sessionsCompleted || '0');
@@ -1033,7 +1159,7 @@
 
             const dragZone = eventNode.querySelector('.calendar-event-dragzone');
             if (dragZone) {
-                dragZone.addEventListener('pointerdown', (evt) => beginDrag(evt, event, column));
+                dragZone.addEventListener('pointerdown', (evt) => handleDragPointerDown(evt, event, column));
                 if (isTimeOff) {
                     const existingTypeIcon = dragZone.querySelector('.calendar-event-typeicon');
                     if (!existingTypeIcon) {
@@ -1128,7 +1254,8 @@
         button.classList.add('active');
         const name = button.dataset.clientName || 'Client';
         const last = button.dataset.clientLastname || '';
-        displaySelected.textContent = `Booking for ${name} ${last}`.trim();
+        const fullName = `${name} ${last}`.trim();
+        setSelectedClientDisplay(`Booking for ${fullName}`, false);
         const sessionsTotal = button.dataset.sessions === '' ? null : Number(button.dataset.sessions);
         const sessionsBooked = Number(button.dataset.sessionsBooked || '0');
         const sessionsCompleted = Number(button.dataset.sessionsCompleted || '0');
@@ -1148,7 +1275,7 @@
             showDashboardToast(`${name} ${last} has no sessions remaining.`, 'danger');
             state.selectedClient = null;
             state.selectedClientButton = null;
-            displaySelected.textContent = 'Pick a client from the table to start booking.';
+            setSelectedClientDisplay('No client selected', true);
             bookButtons.forEach(btn => btn.classList.remove('active'));
             return;
         }
@@ -1168,7 +1295,7 @@
             showDashboardToast('That client has no sessions remaining.', 'danger');
             state.selectedClient = null;
             state.selectedClientButton = null;
-            displaySelected.textContent = 'Pick a client from the table to start booking.';
+            setSelectedClientDisplay('No client selected', true);
             bookButtons.forEach(btn => btn.classList.remove('active'));
             return;
         }
@@ -1178,19 +1305,7 @@
         }
         const start = new Date(slot.dataset.start);
         const end = new Date(start.getTime() + DEFAULT_DURATION * MILLI_IN_MINUTE);
-        const hasConflict = state.events.some(existing => {
-            if (!existing || !existing.start_time || !existing.end_time) return false;
-            const existingStart = new Date(existing.start_time);
-            const existingEnd = new Date(existing.end_time);
-            const existingType = existing.type || (existing.status === 'time_off' ? 'time_off' : 'session');
-            if (existingType === 'time_off') {
-                return rangesOverlap(start, end, existingStart, existingEnd);
-            }
-            const existingStatus = (existing.status || 'booked').toLowerCase();
-            if (existingStatus === 'cancelled') return false;
-            return rangesOverlap(start, end, existingStart, existingEnd);
-        });
-        if (hasConflict) {
+        if (hasBlockingConflict(start, end, 'session')) {
             showDashboardToast('That time overlaps an existing session or personal time block.', 'danger');
             return;
         }
@@ -1233,19 +1348,7 @@
             return;
         }
 
-        const overlapsExisting = state.events.some(existing => {
-            if (!existing || !existing.start_time || !existing.end_time) return false;
-            const existingStart = new Date(existing.start_time);
-            const existingEnd = new Date(existing.end_time);
-            const existingType = existing.type || (existing.status === 'time_off' ? 'time_off' : 'session');
-            if (existingType === 'time_off') {
-                return rangesOverlap(startDate, endDate, existingStart, existingEnd);
-            }
-            const existingStatus = (existing.status || 'booked').toLowerCase();
-            if (existingStatus === 'cancelled') return false;
-            return rangesOverlap(startDate, endDate, existingStart, existingEnd);
-        });
-        if (overlapsExisting) {
+        if (hasBlockingConflict(startDate, endDate, 'time_off')) {
             showDashboardToast('That window overlaps an existing session or personal time block.', 'danger');
             return;
         }
@@ -1640,10 +1743,15 @@
         evt.preventDefault();
         const rect = column.getBoundingClientRect();
         const columnIndex = dayColumns.indexOf(column);
+        const eventElement = columnsEl.querySelector(`.calendar-event[data-id="${eventData.id}"][data-type="${getEntryType(eventData)}"]`);
+        if (eventElement) {
+            eventElement.classList.add('calendar-event--dragging');
+        }
         state.dragging = {
             type: 'move',
             id: eventData.id,
             entryType: eventData.type || (eventData.status === 'time_off' ? 'time_off' : 'session'),
+            entryKey: eventKey(eventData),
             column,
             columnIndex,
             currentColumnIndex: columnIndex,
@@ -1652,12 +1760,17 @@
             rect,
             initialWidth: rect.width || 1,
             originalStart: new Date(eventData.start_time),
-            originalEnd: new Date(eventData.end_time)
+            originalEnd: new Date(eventData.end_time),
+            element: eventElement
         };
         setPointerCapture(evt, evt.currentTarget || evt.target);
     }
 
     function beginResize(evt, eventData, column, direction) {
+        const pointerType = evt.pointerType || (evt.type && evt.type.startsWith('mouse') ? 'mouse' : 'touch');
+        if (pointerType !== 'mouse') {
+            return;
+        }
         evt.preventDefault();
         const rect = column.getBoundingClientRect();
         const columnIndex = dayColumns.indexOf(column);
@@ -1665,6 +1778,7 @@
             type: direction === 'top' ? 'resize-start' : 'resize-end',
             id: eventData.id,
             entryType: eventData.type || (eventData.status === 'time_off' ? 'time_off' : 'session'),
+            entryKey: eventKey(eventData),
             column,
             columnIndex,
             currentColumnIndex: columnIndex,
@@ -1673,7 +1787,8 @@
             rect,
             initialWidth: rect.width || 1,
             originalStart: new Date(eventData.start_time),
-            originalEnd: new Date(eventData.end_time)
+            originalEnd: new Date(eventData.end_time),
+            element: null
         };
         setPointerCapture(evt, evt.currentTarget || evt.target);
     }
@@ -1761,12 +1876,24 @@
         }
         state.dragPointer = null;
         if (!state.dragging) return;
-        const { previewStart, previewEnd, id, entryType } = state.dragging;
+        const dragMeta = state.dragging;
+        const { previewStart, previewEnd, id, entryType, entryKey, element } = dragMeta;
+        if (element) {
+            element.classList.remove('calendar-event--dragging');
+        }
         const hadPreview = Boolean(previewStart && previewEnd);
         state.dragging = null;
         if (!hadPreview) {
             state.justDragged = false;
             renderEvents();
+            return;
+        }
+        if (hasBlockingConflict(previewStart, previewEnd, entryType, entryKey)) {
+            renderEvents();
+            const overlapMessage = entryType === 'time_off'
+                ? 'Personal time cannot overlap sessions or other personal time blocks.'
+                : 'Sessions cannot overlap other sessions or personal time blocks.';
+            showDashboardToast(overlapMessage, 'danger');
             return;
         }
         state.justDragged = true;
