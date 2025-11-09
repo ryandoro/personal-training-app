@@ -328,18 +328,19 @@
                                 <select id="category" name="category" class="form-select text-center shadow-sm bitcoin-workout" required form="generate-client-workout">
                                     <option value="" disabled selected>Select a Workout Category</option>
                                     {% for category in category_options %}
-                                        {% if category == custom_workout_token and not client_has_premium_access %}
-                                            {# Skip Custom Workout if the client does not have access #}
-                                        {% else %}
+                                        {% if category != custom_workout_token and category != home_workout_token %}
                                             <option value="{{ category }}">{{ category }}</option>
                                         {% endif %}
                                     {% endfor %}
+                                    {% if client_has_premium_access %}
+                                        <option value="{{ custom_workout_token }}">{{ custom_workout_token }}</option>
+                                        <option value="{{ home_workout_token }}">{{ home_workout_token }}</option>
+                                    {% endif %}
                                 </select>
                                 <div id="trainer-custom-controls" class="mt-3 text-center" hidden>
                                     <button type="button" id="trainer-custom-button" class="btn btn-outline-primary btn-sm fw-semibold px-3">
                                         Choose Categories
                                     </button>
-                                    <div id="trainer-custom-feedback" class="small text-muted mt-2"></div>
                                     <div id="trainer-custom-summary" class="small fw-semibold text-primary mt-1 d-none"></div>
                                 </div>
                                 <input type="hidden"
@@ -347,8 +348,22 @@
                                        name="custom_categories"
                                        form="generate-client-workout"
                                        data-custom-token="{{ custom_workout_token }}"
+                                       data-home-token="{{ home_workout_token }}"
                                        data-custom-limits='{{ custom_workout_limits | tojson }}'
                                        value='{{ active_workout.custom_categories | tojson if active_workout and active_workout.custom_categories else "[]" }}'>
+                                <div id="trainer-home-equipment-controls" class="mt-3 text-center" hidden>
+                                    <button type="button" id="trainer-home-equipment-button" class="btn btn-outline-primary btn-sm fw-semibold px-3">
+                                        Choose Equipment
+                                    </button>
+                                    <div id="trainer-home-equipment-feedback" class="small text-muted mt-2 d-none"></div>
+                                    <div id="trainer-home-equipment-summary" class="small fw-semibold text-primary mt-1 d-none"></div>
+                                </div>
+                                <input type="hidden"
+                                       id="trainer-home-equipment-input"
+                                       name="home_equipment"
+                                       form="generate-client-workout"
+                                       data-options='{{ home_equipment_options | tojson }}'
+                                       value='{{ active_workout.home_equipment | tojson if active_workout and active_workout.home_equipment else "[]" }}'>
                             </div>
                         </div>
                     </div>
@@ -386,7 +401,8 @@
                 <div class="card-body bg-white p-4">
                     {% if active_workout and active_workout.plan %}
                         <div class="d-flex flex-wrap gap-2 mb-3">
-                            {% if active_workout.category == custom_workout_token and active_workout.custom_categories %}
+                            {% set is_custom_variant = active_workout.category in [custom_workout_token, home_workout_token] %}
+                            {% if is_custom_variant and active_workout.custom_categories %}
                                 {# Render the selected custom categories in a single badge #}
                                 {% set pretty_custom = [] %}
                                 {% for token in active_workout.custom_categories %}
@@ -576,17 +592,15 @@
     <div id="toastSuccess" class="toast-floating fw-bold" style="display:none; background:#d1e7dd; color:#0f5132;"></div>
 
     <div id="trainerCustomModal" class="modal-overlay" style="display: none;">
-        <div class="modal-card custom-workout-modal">
+        <div class="modal-card custom-workout-modal selection-modal">
             <button type="button" id="trainerCustomModalClose" class="btn-close"></button>
-            <h5 class="mb-2">Build Custom Workout</h5>
+            <h5 class="mb-2">Build Custom Gym Workout</h5>
             <p class="small text-muted mb-3" id="trainer-custom-limit-text">Select categories to get started.</p>
-            <div class="row g-2">
+            <div class="selection-grid">
                 {% for category in custom_workout_categories %}
-                    <div class="col-6">
-                        <div class="form-check custom-workout-check p-2 bg-light rounded-3 h-100">
-                            <input class="form-check-input trainer-custom-checkbox" type="checkbox" value="{{ category }}" id="trainer-custom-cat-{{ loop.index }}">
-                            <label class="form-check-label fw-semibold" for="trainer-custom-cat-{{ loop.index }}">{{ category.title() }}</label>
-                        </div>
+                    <div class="form-check custom-workout-check selection-tile">
+                        <input class="form-check-input trainer-custom-checkbox" type="checkbox" value="{{ category }}" id="trainer-custom-cat-{{ loop.index }}">
+                        <label class="form-check-label fw-semibold" for="trainer-custom-cat-{{ loop.index }}">{{ category.title() }}</label>
                     </div>
                 {% endfor %}
             </div>
@@ -595,6 +609,29 @@
                 <div class="d-flex gap-2">
                     <button type="button" class="btn btn-outline-secondary" id="trainerCustomCancel">Cancel</button>
                     <button type="button" class="btn btn-brand" id="trainerCustomApply">Apply</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="trainerHomeEquipmentModal" class="modal-overlay" style="display: none;">
+        <div class="modal-card custom-workout-modal selection-modal">
+            <button type="button" id="trainerHomeEquipmentModalClose" class="btn-close"></button>
+            <h5 class="mb-2">Choose Home Equipment</h5>
+            <p class="small text-muted mb-3">Select the equipment your client has access to.</p>
+            <div class="selection-grid">
+                {% for option in home_equipment_options %}
+                    <div class="form-check custom-workout-check selection-tile">
+                        <input class="form-check-input trainer-home-equipment-checkbox" type="checkbox" value="{{ option.token }}" id="trainer-home-equip-{{ loop.index }}">
+                        <label class="form-check-label fw-semibold" for="trainer-home-equip-{{ loop.index }}">{{ option.label }}</label>
+                    </div>
+                {% endfor %}
+            </div>
+            <div class="d-flex justify-content-between align-items-center mt-3">
+                <button type="button" class="btn btn-link text-decoration-none px-0" id="trainerHomeEquipmentClear">Clear All</button>
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-outline-secondary" id="trainerHomeEquipmentCancel">Cancel</button>
+                    <button type="button" class="btn btn-brand" id="trainerHomeEquipmentApply">Apply</button>
                 </div>
             </div>
         </div>
@@ -709,6 +746,21 @@
     const trainerCustomLimitText = document.getElementById('trainer-custom-limit-text');
     const trainerCustomCheckboxes = trainerCustomModal ? Array.from(trainerCustomModal.querySelectorAll('.trainer-custom-checkbox')) : [];
     const trainerCustomToken = trainerCustomInput ? trainerCustomInput.dataset.customToken : '';
+    const trainerHomeWorkoutToken = trainerCustomInput ? trainerCustomInput.dataset.homeToken : '';
+    const trainerCustomCategoryTokens = new Set(
+        [trainerCustomToken, trainerHomeWorkoutToken].filter(Boolean)
+    );
+    const trainerHomeEquipmentControls = document.getElementById('trainer-home-equipment-controls');
+    const trainerHomeEquipmentButton = document.getElementById('trainer-home-equipment-button');
+    const trainerHomeEquipmentFeedback = document.getElementById('trainer-home-equipment-feedback');
+    const trainerHomeEquipmentSummary = document.getElementById('trainer-home-equipment-summary');
+    const trainerHomeEquipmentInput = document.getElementById('trainer-home-equipment-input');
+    const trainerHomeEquipmentModal = document.getElementById('trainerHomeEquipmentModal');
+    const trainerHomeEquipmentModalClose = document.getElementById('trainerHomeEquipmentModalClose');
+    const trainerHomeEquipmentApply = document.getElementById('trainerHomeEquipmentApply');
+    const trainerHomeEquipmentCancel = document.getElementById('trainerHomeEquipmentCancel');
+    const trainerHomeEquipmentClear = document.getElementById('trainerHomeEquipmentClear');
+    const trainerHomeEquipmentCheckboxes = trainerHomeEquipmentModal ? Array.from(trainerHomeEquipmentModal.querySelectorAll('.trainer-home-equipment-checkbox')) : [];
     let trainerCustomLimits = {};
     try {
         trainerCustomLimits = trainerCustomInput ? JSON.parse(trainerCustomInput.dataset.customLimits || '{}') : {};
@@ -716,7 +768,21 @@
         console.warn('Failed to parse trainer custom workout limits.', err);
         trainerCustomLimits = {};
     }
+    let trainerHomeEquipmentOptions = [];
+    try {
+        trainerHomeEquipmentOptions = trainerHomeEquipmentInput ? JSON.parse(trainerHomeEquipmentInput.dataset.options || '[]') : [];
+    } catch (err) {
+        console.warn('Failed to parse trainer home equipment options.', err);
+        trainerHomeEquipmentOptions = [];
+    }
+    const trainerHomeEquipmentLabelMap = new Map();
+    trainerHomeEquipmentOptions.forEach((option) => {
+        const token = String(option?.token || '').toUpperCase();
+        if (!token || trainerHomeEquipmentLabelMap.has(token)) return;
+        trainerHomeEquipmentLabelMap.set(token, option?.label || option?.token || token);
+    });
     let trainerDraftSelection = new Set();
+    let trainerDraftHomeEquipmentSelection = new Set();
     let trainerActiveDuration = parseInt((durationDisplay?.textContent || '').replace(/[^0-9]/g, ''), 10) || 60;
 
     function normalizeTrainerSelection(values) {
@@ -750,12 +816,58 @@
         syncGenerateButtonState();
     }
 
+    function normalizeTrainerEquipmentSelection(values) {
+        const seen = new Set();
+        const normalized = [];
+        (values || []).forEach((raw) => {
+            const token = String(raw || '').trim().toUpperCase();
+            if (!token || seen.has(token)) return;
+            seen.add(token);
+            normalized.push(token);
+        });
+        return normalized;
+    }
+
+    function getTrainerHomeEquipmentSelection() {
+        if (!trainerHomeEquipmentInput) return [];
+        try {
+            const parsed = JSON.parse(trainerHomeEquipmentInput.value || '[]');
+            return normalizeTrainerEquipmentSelection(Array.isArray(parsed) ? parsed : [parsed]);
+        } catch {
+            return [];
+        }
+    }
+
+    function setTrainerHomeEquipmentSelection(values) {
+        if (!trainerHomeEquipmentInput) return;
+        const normalized = normalizeTrainerEquipmentSelection(values);
+        trainerHomeEquipmentInput.value = JSON.stringify(normalized);
+        syncTrainerHomeEquipmentFeedback(normalized);
+        syncGenerateButtonState();
+    }
+
     function isTrainerCustomSelected() {
-        return !!(categorySelect && trainerCustomToken && categorySelect.value === trainerCustomToken);
+        const value = categorySelect?.value || '';
+        return !!value && trainerCustomCategoryTokens.has(value);
+    }
+
+    function isTrainerHomeSelected() {
+        const homeToken = trainerHomeWorkoutToken || '';
+        return !!homeToken && (categorySelect?.value || '') === homeToken;
     }
 
     function getTrainerDuration() {
         return trainerActiveDuration;
+    }
+
+    function getTrainerCustomLabel() {
+        if (!categorySelect || !categorySelect.value) {
+            return trainerCustomToken || 'Custom Gym Workout';
+        }
+        if (isTrainerHomeSelected()) {
+            return trainerHomeWorkoutToken || 'Custom Home Workout';
+        }
+        return trainerCustomToken || 'Custom Gym Workout';
     }
 
     function trainerSelectionBounds(minutes) {
@@ -795,7 +907,7 @@
             const rangeText = minRequired === maxAllowed
                 ? `Select exactly ${minRequired}`
                 : `Select ${minRequired}–${maxAllowed}`;
-            trainerCustomFeedback.textContent = `${rangeText} categories for a ${getTrainerDuration()}-minute Custom Workout.`;
+            trainerCustomFeedback.textContent = `${rangeText} categories for a ${getTrainerDuration()}-minute ${getTrainerCustomLabel()}.`;
             trainerCustomFeedback.classList.toggle('text-danger', !withinBounds);
         }
 
@@ -817,6 +929,60 @@
             .toLowerCase()
             .replace(/_/g, ' ')
             .replace(/\b\w/g, (char) => char.toUpperCase());
+    }
+
+    function formatTrainerEquipmentLabel(token) {
+        return trainerHomeEquipmentLabelMap.get(token) || normalizeTrainerLabel(token);
+    }
+
+    function syncTrainerHomeEquipmentFeedback(selection) {
+        if (!trainerHomeEquipmentFeedback) return;
+        const tokens = Array.isArray(selection) ? selection : getTrainerHomeEquipmentSelection();
+        if (!isTrainerHomeSelected()) {
+            trainerHomeEquipmentFeedback.classList.add('d-none');
+            trainerHomeEquipmentFeedback.classList.remove('text-danger');
+            trainerHomeEquipmentFeedback.textContent = '';
+            if (trainerHomeEquipmentSummary) {
+                trainerHomeEquipmentSummary.classList.add('d-none');
+                trainerHomeEquipmentSummary.textContent = '';
+            }
+            return;
+        }
+        if (!tokens.length) {
+            trainerHomeEquipmentFeedback.classList.add('text-danger');
+            trainerHomeEquipmentFeedback.innerHTML = '<span class="fw-semibold">No equipment selected yet.</span>';
+            trainerHomeEquipmentFeedback.classList.remove('d-none');
+            if (trainerHomeEquipmentSummary) {
+                trainerHomeEquipmentSummary.classList.add('d-none');
+                trainerHomeEquipmentSummary.textContent = '';
+            }
+            return;
+        }
+        trainerHomeEquipmentFeedback.classList.remove('text-danger');
+        trainerHomeEquipmentFeedback.classList.add('d-none');
+        trainerHomeEquipmentFeedback.textContent = '';
+        if (trainerHomeEquipmentSummary) {
+            const pretty = tokens.map((token) => formatTrainerEquipmentLabel(token)).join(', ');
+            trainerHomeEquipmentSummary.textContent = `Selected: ${pretty}`;
+            trainerHomeEquipmentSummary.classList.remove('d-none');
+        }
+    }
+
+    function updateTrainerHomeEquipmentControls() {
+        if (!trainerHomeEquipmentControls) return;
+        const isHome = isTrainerHomeSelected();
+        trainerHomeEquipmentControls.hidden = !isHome;
+        trainerHomeEquipmentControls.style.display = isHome ? 'block' : 'none';
+        trainerHomeEquipmentControls.style.pointerEvents = isHome ? 'auto' : 'none';
+        if (trainerHomeEquipmentButton) {
+            trainerHomeEquipmentButton.disabled = !isHome;
+            trainerHomeEquipmentButton.setAttribute('aria-disabled', isHome ? 'false' : 'true');
+        }
+        if (!isHome && trainerHomeEquipmentSummary) {
+            trainerHomeEquipmentSummary.classList.add('d-none');
+            trainerHomeEquipmentSummary.textContent = '';
+        }
+        syncTrainerHomeEquipmentFeedback();
     }
 
     function syncTrainerModalCheckboxes() {
@@ -861,6 +1027,28 @@
         trainerDraftSelection = new Set(getTrainerSelection());
         syncTrainerModalCheckboxes();
         updateTrainerModalStatus();
+    }
+
+    function syncTrainerHomeEquipmentCheckboxes() {
+        if (!trainerHomeEquipmentCheckboxes.length) return;
+        trainerHomeEquipmentCheckboxes.forEach((checkbox) => {
+            const token = (checkbox.value || '').toUpperCase();
+            checkbox.checked = trainerDraftHomeEquipmentSelection.has(token);
+        });
+    }
+
+    function openTrainerHomeEquipmentModal() {
+        if (!trainerHomeEquipmentModal) return;
+        trainerDraftHomeEquipmentSelection = new Set(getTrainerHomeEquipmentSelection());
+        syncTrainerHomeEquipmentCheckboxes();
+        trainerHomeEquipmentModal.style.display = 'flex';
+        requestAnimationFrame(() => trainerHomeEquipmentModal.classList.add('show'));
+    }
+
+    function closeTrainerHomeEquipmentModal() {
+        if (!trainerHomeEquipmentModal) return;
+        trainerHomeEquipmentModal.classList.remove('show');
+        trainerHomeEquipmentModal.style.display = 'none';
     }
 
     function handleTrainerDurationChange(minutes) {
@@ -974,6 +1162,7 @@
         if (!categorySelect) return;
         categorySelect.classList.toggle('select-orange', !!categorySelect.value);
         updateTrainerCustomSummary();
+        updateTrainerHomeEquipmentControls();
     }
 
     function syncGenerateButtonState() {
@@ -981,7 +1170,8 @@
         const hasCategory = !!(categorySelect && categorySelect.value);
         const isLoading = generateWorkoutBtn.dataset.loading === 'true';
         const customValid = isTrainerSelectionValid();
-        generateWorkoutBtn.disabled = !hasCategory || isLoading || !customValid;
+        const equipmentValid = !isTrainerHomeSelected() || getTrainerHomeEquipmentSelection().length > 0;
+        generateWorkoutBtn.disabled = !hasCategory || isLoading || !customValid || !equipmentValid;
     }
 
     function setGenerateButtonLoading(isLoading) {
@@ -1517,18 +1707,21 @@
         bindDurationPills();
 
         setTrainerSelection(getTrainerSelection());
+        setTrainerHomeEquipmentSelection(getTrainerHomeEquipmentSelection());
         handleTrainerDurationChange(trainerActiveDuration);
 
         syncSelectStyle();
         syncGenerateButtonState();
 
-        categorySelect?.addEventListener('change', () => {
-            syncSelectStyle();
-            syncGenerateButtonState();
-            if (isTrainerCustomSelected() && !getTrainerSelection().length) {
-                openTrainerCustomModal();
-            }
-        });
+        if (categorySelect) {
+            categorySelect.addEventListener('change', () => {
+                syncSelectStyle();
+                syncGenerateButtonState();
+                if (isTrainerCustomSelected() && !getTrainerSelection().length) {
+                    openTrainerCustomModal();
+                }
+            });
+        }
 
         if (trainerCustomButton) {
             trainerCustomButton.addEventListener('click', (event) => {
@@ -1583,6 +1776,54 @@
             });
         });
 
+        if (trainerHomeEquipmentButton) {
+            trainerHomeEquipmentButton.addEventListener('click', (event) => {
+                event.preventDefault();
+                if (trainerHomeEquipmentButton.disabled) return;
+                openTrainerHomeEquipmentModal();
+            });
+        }
+        if (trainerHomeEquipmentModalClose) {
+            trainerHomeEquipmentModalClose.addEventListener('click', () => closeTrainerHomeEquipmentModal());
+        }
+        if (trainerHomeEquipmentCancel) {
+            trainerHomeEquipmentCancel.addEventListener('click', (event) => {
+                event.preventDefault();
+                closeTrainerHomeEquipmentModal();
+            });
+        }
+        if (trainerHomeEquipmentModal) {
+            trainerHomeEquipmentModal.addEventListener('click', (event) => {
+                if (event.target === trainerHomeEquipmentModal) {
+                    closeTrainerHomeEquipmentModal();
+                }
+            });
+        }
+        if (trainerHomeEquipmentApply) {
+            trainerHomeEquipmentApply.addEventListener('click', () => {
+                setTrainerHomeEquipmentSelection(Array.from(trainerDraftHomeEquipmentSelection));
+                closeTrainerHomeEquipmentModal();
+            });
+        }
+        if (trainerHomeEquipmentClear) {
+            trainerHomeEquipmentClear.addEventListener('click', (event) => {
+                event.preventDefault();
+                trainerDraftHomeEquipmentSelection = new Set();
+                syncTrainerHomeEquipmentCheckboxes();
+            });
+        }
+        trainerHomeEquipmentCheckboxes.forEach((checkbox) => {
+            checkbox.addEventListener('change', () => {
+                const token = (checkbox.value || '').toUpperCase();
+                if (!token) return;
+                if (checkbox.checked) {
+                    trainerDraftHomeEquipmentSelection.add(token);
+                } else {
+                    trainerDraftHomeEquipmentSelection.delete(token);
+                }
+            });
+        });
+
         if (generateWorkoutBtn) {
             generateWorkoutBtn.dataset.loading = generateWorkoutBtn.dataset.loading || 'false';
         }
@@ -1596,7 +1837,13 @@
             if (isTrainerCustomSelected() && !isTrainerSelectionValid()) {
                 event.preventDefault();
                 syncGenerateButtonState();
-                alert('Select categories within the allowed range for this Custom Workout.');
+                alert(`Select categories within the allowed range for this ${getTrainerCustomLabel()}.`);
+                return;
+            }
+            if (isTrainerHomeSelected() && !getTrainerHomeEquipmentSelection().length) {
+                event.preventDefault();
+                syncGenerateButtonState();
+                alert('Select at least one piece of equipment for this Custom Home Workout.');
                 return;
             }
             // Defer to avoid blocking native submit behaviour

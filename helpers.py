@@ -52,7 +52,9 @@ WORKOUT_STRUCTURE = {
     },
 }
 
-CUSTOM_WORKOUT_TOKEN = "Custom Workout"
+CUSTOM_WORKOUT_TOKEN = "Custom Gym Workout"
+HOME_WORKOUT_TOKEN = "Custom Home Workout"
+CUSTOMIZABLE_WORKOUT_TOKENS = {CUSTOM_WORKOUT_TOKEN, HOME_WORKOUT_TOKEN}
 CUSTOM_WORKOUT_CATEGORIES = (
     "CHEST",
     "TRICEPS",
@@ -89,6 +91,89 @@ CUSTOM_WORKOUT_TOTAL_EXERCISES = {
     45: 7,
     60: 10,
 }
+
+HOME_EQUIPMENT_OPTIONS = [
+    {"token": "BODYWEIGHT", "label": "Bodyweight"},
+    {"token": "DUMBBELL", "label": "Dumbbells"},
+    {"token": "BARBELL", "label": "Barbell"},
+    {"token": "STABILITY_BALL", "label": "Stability Ball"},
+    {"token": "PULL_UP_BAR", "label": "Pull-Up Bar"},
+    {"token": "FREEWEIGHT_FLAT_BENCH", "label": "Freeweight Flat Bench"},
+    {"token": "FREEWEIGHT_ADJUSTABLE_BENCH", "label": "Freeweight Adjustable Bench"},
+]
+
+HOME_EQUIPMENT_FILTERS = {
+    "BODYWEIGHT": {
+        "include_any": ["bodyweight"],
+        "exclude_any": ["pull-up", "chin-up", "stability ball", "hanging", "ab wheel", "life fitness", "freemotion"],
+    },
+    "DUMBBELL": {
+        "include_any": ["dumbbell", "goblet squat"],
+        "exclude_any": ["bench", "incline", "preacher curl"],
+    },
+    "BARBELL": {
+        "include_any": ["barbell"],
+        "exclude_any": ["bench", "clean", "jerk", "snatch"],
+    },
+    "STABILITY_BALL": {
+        "include_any": ["stability ball"],
+    },
+    "PULL_UP_BAR": {
+        "include_any": ["pull-up", "chin-up", "hanging"],
+    },
+    "FREEWEIGHT_FLAT_BENCH": {
+        "include_any": ["flat bench"],
+    },
+    "FREEWEIGHT_ADJUSTABLE_BENCH": {
+        "include_any": ["flat bench", "incline bench", "seated shoulder press"],
+    },
+}
+HOME_EQUIPMENT_TOKEN_SET = {option["token"] for option in HOME_EQUIPMENT_OPTIONS}
+
+
+def normalize_home_equipment_selection(values) -> list[str]:
+    """Normalize a list of raw equipment tokens into uppercase identifiers."""
+    seen = set()
+    normalized: list[str] = []
+    for raw in values or []:
+        token = (str(raw) or '').strip().upper()
+        if token and token in HOME_EQUIPMENT_TOKEN_SET and token not in seen:
+            seen.add(token)
+            normalized.append(token)
+    return normalized
+
+
+def build_home_equipment_clause(equipment_tokens: list[str]) -> tuple[str, list[str]]:
+    """
+    Build a SQL clause restricting workouts by name based on selected equipment.
+    Returns (clause_sql, params). Clause is empty when no valid tokens exist.
+    """
+    clauses: list[str] = []
+    params: list[str] = []
+    for token in equipment_tokens or []:
+        spec = HOME_EQUIPMENT_FILTERS.get(token)
+        if not spec:
+            continue
+        include_terms = [term.strip().lower() for term in spec.get("include_any", []) if term.strip()]
+        if not include_terms:
+            continue
+        include_parts = ["LOWER(w.name) LIKE %s" for _ in include_terms]
+        clause_params = [f"%{term}%" for term in include_terms]
+
+        exclude_terms = [term.strip().lower() for term in spec.get("exclude_any", []) if term.strip()]
+        exclude_parts = ["LOWER(w.name) NOT LIKE %s" for _ in exclude_terms]
+        clause_params.extend(f"%{term}%" for term in exclude_terms)
+
+        clause = f"({' OR '.join(include_parts)})"
+        if exclude_parts:
+            clause = f"{clause} AND {' AND '.join(exclude_parts)}"
+        clauses.append(f"({clause})")
+        params.extend(clause_params)
+
+    if not clauses:
+        return "", []
+    return f"({' OR '.join(clauses)})", params
+
 
 def normalize_custom_workout_categories(categories) -> list[str]:
     seen = set()
@@ -466,6 +551,7 @@ def allocate_counts(subcategories: dict, scale: float, selected_category: str, t
         "Arms": ["SHOULDERS", "BICEPS", "TRICEPS"],
         "Cardio": ["CARDIO"],
         CUSTOM_WORKOUT_TOKEN: ["LEGS", "BACK", "CHEST", "SHOULDERS", "BICEPS", "TRICEPS", "ABS", "CARDIO"],
+        HOME_WORKOUT_TOKEN: ["LEGS", "BACK", "CHEST", "SHOULDERS", "BICEPS", "TRICEPS", "ABS", "CARDIO"],
     }
     priority = PRIORITY_MAP.get(selected_category, [])
 
@@ -539,7 +625,14 @@ def get_user_level(exercise_history: str | None) -> int:
     return LEVEL_MAP.get(exercise_history, 1)
 
 
-def generate_workout(selected_category, user_level, user_id, duration_minutes=60, custom_categories=None):
+def generate_workout(
+    selected_category,
+    user_level,
+    user_id,
+    duration_minutes=60,
+    custom_categories=None,
+    equipment_filters=None,
+):
     """
     Generate a workout based on the selected category, user level, and preferred duration.
     Respects user injury restrictions by omitting excluded categories.
@@ -558,7 +651,8 @@ def generate_workout(selected_category, user_level, user_id, duration_minutes=60
     # → 20 mins = ~0.33x, 30 = 0.5x, 45 = 0.75x, 60 = 1.0x
 
     category_key = (selected_category or "").strip()
-    is_custom = category_key == CUSTOM_WORKOUT_TOKEN
+    is_custom = category_key in CUSTOMIZABLE_WORKOUT_TOKENS
+    is_home = category_key == HOME_WORKOUT_TOKEN
 
     if is_custom:
         normalized = normalize_custom_workout_categories(custom_categories)
@@ -580,12 +674,18 @@ def generate_workout(selected_category, user_level, user_id, duration_minutes=60
             proportional = max(3, round((duration_minutes or 60) * (10 / 60)))
             total_target = proportional
         total_target = max(len(normalized), total_target)
+        equipment_tokens = normalize_home_equipment_selection(equipment_filters) if is_home else []
+        if is_home and not equipment_tokens:
+            raise ValueError("Select at least one piece of equipment for a Custom Home Workout.")
+        equipment_clause, equipment_params = build_home_equipment_clause(equipment_tokens)
     else:
         structure = WORKOUT_STRUCTURE.get(user_level, {})
         subcategories = structure.get(category_key, {})
         if not subcategories:
             raise ValueError("Invalid workout category selected.")
         subcategories = OrderedDict(subcategories.items())
+        equipment_clause = ""
+        equipment_params = []
 
     workout_plan = OrderedDict()
 
@@ -639,10 +739,17 @@ def generate_workout(selected_category, user_level, user_id, duration_minutes=60
                     LEFT JOIN user_exercise_progress uep
                         ON w.id = uep.workout_id AND uep.user_id = %s
                     WHERE w.category = %s AND w.level <= %s
+                """
+                params = [user_id, subcategory, user_level]
+                if equipment_clause:
+                    query += f" AND {equipment_clause}"
+                    params.extend(equipment_params)
+                query += """
                     ORDER BY RANDOM()
                     LIMIT %s
                 """
-                cursor.execute(query, (user_id, subcategory, user_level, n))
+                params.append(n)
+                cursor.execute(query, params)
                 exercises = cursor.fetchall()
                 if not exercises and subcategory_key in excluded_categories:
                     skipped['subcategories'].add(subcategory_key)

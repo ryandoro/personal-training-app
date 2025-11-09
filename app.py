@@ -31,9 +31,12 @@ from helpers import (
     parse_injury_payload,
     compute_injury_exclusions,
     CUSTOM_WORKOUT_TOKEN,
+    HOME_WORKOUT_TOKEN,
     CUSTOM_WORKOUT_CATEGORIES,
     CUSTOM_WORKOUT_SELECTION_LIMITS,
+    HOME_EQUIPMENT_OPTIONS,
     normalize_custom_workout_categories,
+    normalize_home_equipment_selection,
     custom_selection_bounds,
 )
 from collections import OrderedDict
@@ -566,6 +569,8 @@ def training():
             custom_workout_categories=CUSTOM_WORKOUT_CATEGORIES,
             custom_workout_limits=CUSTOM_WORKOUT_SELECTION_LIMITS,
             custom_workout_token=CUSTOM_WORKOUT_TOKEN,
+            home_workout_token=HOME_WORKOUT_TOKEN,
+            home_equipment_options=HOME_EQUIPMENT_OPTIONS,
         )
 
     # If the user submits the form and it hasn't been completed yet
@@ -662,6 +667,8 @@ def training():
                 custom_workout_categories=CUSTOM_WORKOUT_CATEGORIES,
                 custom_workout_limits=CUSTOM_WORKOUT_SELECTION_LIMITS,
                 custom_workout_token=CUSTOM_WORKOUT_TOKEN,
+                home_workout_token=HOME_WORKOUT_TOKEN,
+                home_equipment_options=HOME_EQUIPMENT_OPTIONS,
             ), 400
         
         workout_duration = int(workout_duration_raw)
@@ -724,6 +731,8 @@ def training():
                 custom_workout_categories=CUSTOM_WORKOUT_CATEGORIES,
                 custom_workout_limits=CUSTOM_WORKOUT_SELECTION_LIMITS,
                 custom_workout_token=CUSTOM_WORKOUT_TOKEN,
+                home_workout_token=HOME_WORKOUT_TOKEN,
+                home_equipment_options=HOME_EQUIPMENT_OPTIONS,
             )
 
     categories = get_category_groups()
@@ -830,6 +839,8 @@ def training():
         custom_workout_categories=CUSTOM_WORKOUT_CATEGORIES,
         custom_workout_limits=CUSTOM_WORKOUT_SELECTION_LIMITS,
         custom_workout_token=CUSTOM_WORKOUT_TOKEN,
+        home_workout_token=HOME_WORKOUT_TOKEN,
+        home_equipment_options=HOME_EQUIPMENT_OPTIONS,
     )
 
 
@@ -1076,11 +1087,14 @@ def client_profile(client_id):
             'plan': formatted_plan,
             'skipped': active_skipped,
             'custom_categories': workout_payload.get('custom_categories') if isinstance(workout_payload, dict) else [],
+            'home_equipment': workout_payload.get('home_equipment') if isinstance(workout_payload, dict) else [],
         }
 
     category_options = list(get_category_groups().keys())
     if CUSTOM_WORKOUT_TOKEN not in category_options:
         category_options.append(CUSTOM_WORKOUT_TOKEN)
+    if HOME_WORKOUT_TOKEN not in category_options:
+        category_options.append(HOME_WORKOUT_TOKEN)
     active_skip_categories = sorted(set(active_skipped.get('categories') or []))
     active_skip_subcategories = sorted(set(active_skipped.get('subcategories') or []))
     banner_categories = sorted(set(injury_excluded_categories) | set(active_skip_categories))
@@ -1111,6 +1125,8 @@ def client_profile(client_id):
         custom_workout_categories=CUSTOM_WORKOUT_CATEGORIES,
         custom_workout_limits=CUSTOM_WORKOUT_SELECTION_LIMITS,
         custom_workout_token=CUSTOM_WORKOUT_TOKEN,
+        home_workout_token=HOME_WORKOUT_TOKEN,
+        home_equipment_options=HOME_EQUIPMENT_OPTIONS,
         client_has_premium_access=client_has_premium_access,
         sessions_booked=client.get('sessions_booked') if client else 0,
         sessions_completed=sessions_completed_count,
@@ -2528,8 +2544,18 @@ def generate_client_workout(client_id):
             raw_custom = _flatten_custom_payload([raw_value])
     else:
         raw_custom = _flatten_custom_payload(raw_custom)
-    is_custom = selected_category == CUSTOM_WORKOUT_TOKEN
+    raw_home_equipment = request.form.getlist('home_equipment')
+    if not raw_home_equipment:
+        raw_home_equipment = request.form.getlist('home_equipment[]')
+    if not raw_home_equipment:
+        raw_equipment_value = request.form.get('home_equipment')
+        if raw_equipment_value:
+            raw_home_equipment = [raw_equipment_value]
+    raw_home_equipment = _flatten_custom_payload(raw_home_equipment)
+    is_custom = selected_category in {CUSTOM_WORKOUT_TOKEN, HOME_WORKOUT_TOKEN}
+    is_home = selected_category == HOME_WORKOUT_TOKEN
     custom_selection: list[str] = []
+    home_equipment: list[str] = []
 
     with get_connection() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
@@ -2575,12 +2601,17 @@ def generate_client_workout(client_id):
         count = len(custom_selection)
         if count < min_required or count > max_allowed:
             flash(
-                f"Select between {min_required} and {max_allowed} categories for a {duration_minutes}-minute Custom Workout.",
+                f"Select between {min_required} and {max_allowed} categories for a {duration_minutes}-minute {selected_category}.",
                 "warning",
             )
             return redirect(url_for('client_profile', client_id=client_id))
         if not custom_selection:
-            flash("Choose at least one category before generating a Custom Workout.", "warning")
+            flash(f"Choose at least one category before generating a {selected_category}.", "warning")
+            return redirect(url_for('client_profile', client_id=client_id))
+    if is_home:
+        home_equipment = normalize_home_equipment_selection(raw_home_equipment)
+        if not home_equipment:
+            flash("Select at least one piece of equipment for a Custom Home Workout.", "warning")
             return redirect(url_for('client_profile', client_id=client_id))
 
     try:
@@ -2590,6 +2621,7 @@ def generate_client_workout(client_id):
             client_id,
             duration_minutes,
             custom_categories=custom_selection if is_custom else None,
+            equipment_filters=home_equipment if is_home else None,
         )
     except ValueError as exc:
         flash(str(exc), "warning")
@@ -2601,6 +2633,8 @@ def generate_client_workout(client_id):
     }
     if is_custom:
         workout_payload['custom_categories'] = custom_selection
+    if is_home:
+        workout_payload['home_equipment'] = home_equipment
     set_active_workout(client_id, selected_category, workout_payload)
 
     flash_message = "Client workout generated and synced."
@@ -3176,8 +3210,17 @@ def generate_workout_route():
         raw_value = request.args.get('custom_categories')
         if raw_value:
             raw_custom = [part for part in raw_value.split(',') if part]
-    is_custom = selected_category == CUSTOM_WORKOUT_TOKEN
+    raw_home_equipment = request.args.getlist('home_equipment')
+    if not raw_home_equipment:
+        raw_home_equipment = request.args.getlist('home_equipment[]')
+    if not raw_home_equipment:
+        raw_equipment_value = request.args.get('home_equipment')
+        if raw_equipment_value:
+            raw_home_equipment = [part for part in raw_equipment_value.split(',') if part]
+    is_custom = selected_category in {CUSTOM_WORKOUT_TOKEN, HOME_WORKOUT_TOKEN}
+    is_home = selected_category == HOME_WORKOUT_TOKEN
     custom_selection: list[str] = []
+    home_equipment: list[str] = []
 
     user_id = session['user_id']
 
@@ -3206,10 +3249,14 @@ def generate_workout_route():
                 min_required, max_allowed = custom_selection_bounds(duration_minutes)
                 count = len(custom_selection)
                 if count < min_required or count > max_allowed:
-                    message = f"Select between {min_required} and {max_allowed} categories for a {duration_minutes}-minute Custom Workout."
+                    message = f"Select between {min_required} and {max_allowed} categories for a {duration_minutes}-minute {selected_category}."
                     return jsonify({'success': False, 'error': message}), 400
                 if not custom_selection:
-                    return jsonify({'success': False, 'error': 'Choose at least one category for a Custom Workout.'}), 400
+                    return jsonify({'success': False, 'error': f'Choose at least one category for a {selected_category}.'}), 400
+            if is_home:
+                home_equipment = normalize_home_equipment_selection(raw_home_equipment)
+                if not home_equipment:
+                    return jsonify({'success': False, 'error': 'Select at least one piece of equipment for a Custom Home Workout.'}), 400
 
     # Generate the workout
     try:
@@ -3219,6 +3266,7 @@ def generate_workout_route():
             user_id,
             duration_minutes,
             custom_categories=custom_selection if is_custom else None,
+            equipment_filters=home_equipment if is_home else None,
         )
     except ValueError as exc:
         return jsonify({'success': False, 'error': str(exc)}), 400
@@ -3229,6 +3277,8 @@ def generate_workout_route():
     }
     if is_custom:
         workout_payload['custom_categories'] = custom_selection
+    if is_home:
+        workout_payload['home_equipment'] = home_equipment
 
     set_active_workout(user_id, selected_category, workout_payload)
 
@@ -3241,6 +3291,7 @@ def generate_workout_route():
         'workout': formatted_workout,
         'skipped': skipped_meta,
         'custom_categories': custom_selection if is_custom else [],
+        'home_equipment': home_equipment if is_home else [],
     })
 
 
@@ -3266,6 +3317,7 @@ def get_active_workout_route():
         'workout': formatted_workout,
         'skipped': data.get('skipped', {}),
         'custom_categories': data.get('custom_categories', []),
+        'home_equipment': data.get('home_equipment', []),
     })
 
 
