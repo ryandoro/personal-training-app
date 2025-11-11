@@ -1,0 +1,164 @@
+{% extends "layout.html" %}
+
+{% block title %}FitBaseAI | Train Aware. Live Ready.{% endblock %}
+
+{% block content %}
+<div class="landing-page">
+<section class="landing-hero text-light glass-panel">
+    <div class="landing-band">
+        <div class="row align-items-center g-5">
+            <div class="col-lg-6">
+                <p class="landing-eyebrow text-uppercase mb-3">AI-powered coaching platform</p>
+                <h1 class="landing-title display-4 fw-bold mb-3">FitBase<span class="text-orange">AI</span> keeps your training in motion.</h1>
+                <p class="lead mb-4">
+                    Dynamic programming, workout tracking, and trainer collaboration all in one workspace.
+                    Choose your path and let FitBaseAI become the smartest teammate in your gym bag.
+                </p>
+                <div class="landing-cta-group">
+                    <a href="{{ url_for('register') }}" class="btn btn-ignite btn-lg">Create your account</a>
+                    <a href="{{ url_for('login') }}" class="btn btn-outline-light btn-lg">Log in</a>
+                </div>
+                <p class="landing-trial-note mt-3 mb-0">
+                    Every new signup who completes the quick questionnaire unlocks a free 14-day Premium trial automatically.
+                </p>
+                <ul class="landing-hero-list list-unstyled mt-4">
+                    <li><i class="bi bi-lightning-charge-fill me-2 text-orange"></i>Personalized workouts in seconds</li>
+                    <li><i class="bi bi-calendar-event me-2 text-orange"></i>Schedule clarity for you and your trainer/client</li>
+                    <li><i class="bi bi-shield-check me-2 text-orange"></i>Progress tracking across every session</li>
+                </ul>
+            </div>
+            <div class="col-lg-6">
+                <div class="landing-visual card border-0 shadow-lg">
+                    <div class="card-body p-4">
+                        <div class="d-flex align-items-center justify-content-between mb-3">
+                            <div>
+                                <p class="text-uppercase small fw-semibold text-muted mb-1">Real-time insights</p>
+                                <h3 class="mb-0">Today's Momentum</h3>
+                            </div>
+                            <span class="badge rounded-pill text-bg-warning text-dark">Live</span>
+                        </div>
+                        <div class="landing-stats-grid">
+                            <div class="landing-stat-card">
+                                <div class="landing-stat-icon text-orange">
+                                    <i class="bi bi-lightning-charge"></i>
+                                </div>
+                                <p class="text-muted text-uppercase small mb-1">Workouts generated this week</p>
+                                <p class="landing-stat-value mb-1">48</p>
+                                <p class="landing-stat-note text-success mb-0">+12 vs last week</p>
+                            </div>
+                            <div class="landing-stat-card">
+                                <div class="landing-stat-icon text-primary">
+                                    <i class="bi bi-trophy"></i>
+                                </div>
+                                <p class="text-muted text-uppercase small mb-1">Personal workouts recorded this week</p>
+                                <p class="landing-stat-value mb-1">14</p>
+                                <p class="landing-stat-note text-muted mb-0">Logged directly in your profile</p>
+                            </div>
+                            <div class="landing-stat-card">
+                                <div class="landing-stat-icon text-success">
+                                    <i class="bi bi-heart-pulse"></i>
+                                </div>
+                                <p class="text-muted text-uppercase small mb-1">Days injury-free</p>
+                                <p class="landing-stat-value mb-1">22</p>
+                                <p class="landing-stat-note text-success mb-0">Injury awareness keeps you accountable and training safely</p>
+                            </div>
+                        </div>
+                        <hr>
+                        <p class="fw-semibold mb-2 text-uppercase small text-muted">What FitBaseAI handles for you</p>
+                        <ul class="list-unstyled mb-0">
+                            <li class="landing-check"><i class="bi bi-check2-circle me-2"></i>Generates workouts around your goals and readiness</li>
+                            <li class="landing-check"><i class="bi bi-check2-circle me-2"></i>Adapts every plan with injury-aware programming</li>
+                            <li class="landing-check"><i class="bi bi-check2-circle me-2"></i>Tracks weights, reps, times, and progress automatically</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="landing-paths py-5 glass-panel" style="margin-bottom: -2rem;">
+    <div class="landing-band">
+        <div class="landing-paths-intro text-center mb-5">
+            <p class="landing-eyebrow text-uppercase mb-2">Choose your companion mode</p>
+            <h2 class="landing-paths-title fw-bold mb-3">One platform, two journeys</h2>
+            <p class="landing-paths-copy mb-0">FitBaseAI adapts to how you train—whether you’re showing up for yourself or coaching a roster of clients.</p>
+        </div>
+        <div class="row g-4">
+            <div class="col-lg-6">
+                <article class="persona-card h-100">
+                    <span class="persona-pill text-uppercase">For Gym-Goers</span>
+                    <h3 class="mt-3">Your personal trainer in your pocket</h3>
+                    <p class="text-muted">Answer a few intent questions and FitBaseAI builds adaptive workouts, tracks your progress, and keeps your wins organized.</p>
+                    <ul class="persona-list">
+                        <li><i class="bi bi-check-lg me-2"></i>AI-crafted strength and cardio sessions-always know your personal best</li>
+                        <li><i class="bi bi-check-lg me-2"></i>Guideline-based & injury-aware coaching</li>
+                        <li><i class="bi bi-check-lg me-2"></i>Digital training logs—no paper notebooks ever again</li>
+                    </ul>
+                    <div class="persona-actions">
+                        <a href="{{ url_for('register') }}" class="btn btn-brand">Start as an athlete</a>
+                        <a href="{{ url_for('login') }}" class="btn btn-link text-decoration-none">Already training? Log in</a>
+                    </div>
+                </article>
+            </div>
+            <div class="col-lg-6">
+                <article class="persona-card h-100 trainer-card">
+                    <span class="persona-pill text-uppercase">For Trainers</span>
+                    <h3 class="mt-3">A command center for every client</h3>
+                    <p class="text-muted">Centralize programming, scheduling, messaging, and data summaries so you can coach more efficiently without adding hours to your week.</p>
+                    <ul class="persona-list">
+                        <li><i class="bi bi-diagram-3 me-2"></i>Unified trainer dashboard with client insights and weekly scheduler</li>
+                        <li><i class="bi bi-calendar-check me-2"></i>Syncs time-off, availability, and session history across every client</li>
+                        <li><i class="bi bi-cloud-upload me-2"></i>Generates AI-powered workouts from your customized client profiles</li>
+                    </ul>
+                    <div class="persona-actions">
+                        <a href="{{ url_for('register') }}" class="btn btn-brand">Become a FitBaseAI trainer</a>
+                        <a href="{{ url_for('login') }}" class="btn btn-link text-decoration-none">Already registered? Manage your roster</a>
+                    </div>
+                </article>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="landing-grid py-5 glass-panel mb-5">
+    <div class="landing-band">
+        <div class="row g-4">
+            <div class="col-md-4">
+                <div class="landing-tile">
+                    <span class="tile-icon text-orange"><i class="bi bi-stars"></i></span>
+                    <h4>Adaptive by design</h4>
+                    <p class="text-muted mb-0">FitBaseAI pulls from your training history, preferences, and readiness markers so every session feels personal.</p>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="landing-tile">
+                    <span class="tile-icon text-primary"><i class="bi bi-people"></i></span>
+                    <h4>Built for collaboration</h4>
+                    <p class="text-muted mb-0">Invite trainers or clients, share workouts instantly, and keep every conversation tied to the right plan.</p>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="landing-tile">
+                    <span class="tile-icon text-success"><i class="bi bi-lock"></i></span>
+                    <h4>Data you can trust</h4>
+                    <p class="text-muted mb-0">Secure logins, audit-ready activity, and proactive reminders keep everyone accountable and informed.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="landing-cta-final text-light text-center py-5 glass-panel">
+    <div class="landing-band">
+        <p class="landing-eyebrow text-uppercase mb-2">Train aware. Live ready.</p>
+        <h2 class="fw-bold mb-3">Ready to experience FitBaseAI?</h2>
+        <p class="lead mb-4">Spin up your account in seconds and unlock programming intelligence that scales with you.</p>
+        <div class="landing-cta-group justify-content-center">
+            <a href="{{ url_for('register') }}" class="btn btn-ignite btn-lg">Create account</a>
+            <a href="{{ url_for('login') }}" class="btn btn-outline-light btn-lg">Log in</a>
+        </div>
+    </div>
+</section>
+</div>
+{% endblock %}

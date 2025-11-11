@@ -5,7 +5,7 @@
 {% endblock %}
 
 {% block content %}
-<div class="container">
+<div class="container client-profile-container">
     {% set sessions_total = client.sessions_remaining %}
     {% set sessions_booked = client.sessions_booked or 0 %}
     {% set sessions_completed = sessions_completed or 0 %}
@@ -15,30 +15,44 @@
     {% else %}
         {% set sessions_left = None %}
     {% endif %}
-    <div class="row g-4">
-        <div class="col-12 col-lg-4">
+    <div class="row g-4 client-profile-grid">
+        <div class="col-12 col-lg-4 client-profile-hero-col">
             <div class="card shadow-sm border-0 h-100 overflow-hidden">
                 <div class="p-4 text-white rounded-3" style="background: linear-gradient(135deg, #1EA4E6 0%, #33C3F0 100%);">
                     <div class="d-flex flex-column gap-3">
-                    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
-                        <div class="d-flex flex-wrap gap-2">
-                            <a href="{{ url_for('trainer_dashboard') }}"
-                               class="btn btn-outline-light btn-sm">
-                                <i class="bi bi-arrow-left me-1"></i>Back to Dashboard
-                            </a>
-                            <a href="{{ url_for('trainer_client_agenda', client_id=client.id) }}"
-                               class="btn btn-agenda btn-sm">
-                                <i class="bi bi-calendar-event me-1"></i>Agenda View
-                            </a>
-                        </div>
-                        <form method="POST"
-                              action="{{ url_for('trainer_remove_client', client_id=client.id) }}"
-                              onsubmit="return confirm('Remove this client from your roster? All upcoming bookings will be cleared.');"
-                              class="ms-auto">
-                            <button type="submit" class="btn btn-danger btn-sm">
-                                <i class="bi bi-person-dash me-1"></i>Remove Client
+                    <div class="d-flex align-items-center flex-wrap gap-2 w-100">
+                        <a href="{{ url_for('trainer_dashboard') }}"
+                           class="btn btn-outline-light btn-sm">
+                            <i class="bi bi-arrow-left me-1"></i>Back to Dashboard
+                        </a>
+                        <div class="dropdown ms-auto">
+                            <button class="btn btn-outline-light btn-sm d-flex align-items-center"
+                                    type="button"
+                                    id="client-actions-menu"
+                                    data-bs-toggle="dropdown"
+                                    aria-expanded="false">
+                                <i class="bi bi-three-dots"></i>
                             </button>
-                        </form>
+                            <ul class="dropdown-menu dropdown-menu-end text-dark" aria-labelledby="client-actions-menu">
+                                <li>
+                                    <a class="dropdown-item d-flex align-items-center gap-2"
+                                       href="{{ url_for('trainer_client_agenda', client_id=client.id) }}">
+                                        <i class="bi bi-calendar-event"></i>
+                                        Agenda View
+                                    </a>
+                                </li>
+                                <li>
+                                    <form method="POST"
+                                          action="{{ url_for('trainer_remove_client', client_id=client.id) }}"
+                                          onsubmit="return confirm('Remove this client from your roster? All upcoming bookings will be cleared.');">
+                                        <button type="submit" class="dropdown-item d-flex align-items-center gap-2 text-danger">
+                                            <i class="bi bi-person-dash"></i>
+                                            Remove Client
+                                        </button>
+                                    </form>
+                                </li>
+                            </ul>
+                        </div>
                     </div>
                         <div class="d-flex align-items-center gap-3">
                             <div class="rounded-circle d-flex align-items-center justify-content-center bg-white text-dark"
@@ -148,7 +162,7 @@
                     {% set trainer_goals_list = (client.fitness_goals or '').split(',') | map('trim') | list %}
                     {% set trainer_chip_region_slugs = ['neck','shoulders','upper_back','lower_back','elbows','wrists','hips','knees','ankles','cardio'] %}
 
-                    <div class="card shadow-sm border-0 mt-4 collapsible-card" style="margin-bottom: -2rem;">
+                    <div class="card shadow-sm border-0 mt-4 collapsible-card w-100" style="margin-bottom: -2rem;">
                         <button type="button"
                                 class="collapsible-toggle"
                                 data-target="trainer-settings-card"
@@ -157,9 +171,9 @@
                             <i class="bi bi-chevron-down collapsible-chevron" aria-hidden="true"></i>
                         </button>
                         <div id="trainer-settings-card" class="collapsible-content" hidden>
-                            <div class="card-body bg-light-subtle">
-                                <form method="POST" action="{{ url_for('trainer_update_client_training_profile', client_id=client.id) }}" class="mb-4">
-                                    <div class="border rounded-3 p-3 bg-light-subtle">
+                            <div class="card-body bg-light-subtle w-100">
+                                <form method="POST" action="{{ url_for('trainer_update_client_training_profile', client_id=client.id) }}" class="mb-4 w-100">
+                                    <div class="border rounded-3 p-3 bg-light-subtle w-100">
                                         <label class="form-label fw-bold mb-1">Training Focus</label>
                                         <p class="form-text text-muted mb-3">Adjust the goals and training level used when generating workouts.</p>
 
@@ -212,8 +226,8 @@
 
                                 <hr class="my-4">
 
-                                <form id="trainer-injury-form" method="POST" action="{{ url_for('trainer_update_client_injury', client_id=client.id) }}">
-                                    <div class="border rounded-3 p-3 bg-light-subtle">
+                                <form id="trainer-injury-form" method="POST" action="{{ url_for('trainer_update_client_injury', client_id=client.id) }}" class="w-100">
+                                    <div class="border rounded-3 p-3 bg-light-subtle w-100">
                                         <label class="form-label fw-bold mb-1">Update Restrictions</label>
                                         <p class="form-text text-muted mb-3">Changes here update the client's workout generator and account settings.</p>
 
@@ -296,12 +310,10 @@
 
         <div class="col-12 col-lg-8 training-container client-workout">
             <div class="card border-0 shadow-lg mb-4" style="border-radius: 20px;">
-                <div class="card-header border-0" style="background: linear-gradient(135deg, #1EA4E6 0%, #33C3F0 100%); border-top-left-radius: 20px; border-top-right-radius: 20px;">
-                    <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-center text-white">
-                        <div>
-                            <h5 class="mb-1 text-white">Generate Workout for {{ client.name or client.username }}</h5>
-                        </div>
-                    </div>
+                <div class="card-header border-0 bg-transparent text-center">
+                    <h3 class="text-center text-white fw-bold p-3 rounded-3 border mb-0" style="text-shadow: 0 0 1.5px black; box-shadow: 0 0 12px lightslategray; background: #1EA4E6;">
+                        Generate Workout for {{ client.name or client.username }}
+                    </h3>
                 </div>
                 <div class="card-body bg-white p-4">
                     {% set wd = client.workout_duration or 60 %}

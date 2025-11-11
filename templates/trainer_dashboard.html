@@ -43,7 +43,9 @@
                     <div class="card h-100 border-0 shadow-sm">
                         <div class="card-body text-center">
                             <h5 class="card-title text-muted text-uppercase mb-2">Sessions Completed</h5>
-                            <p class="display-6 fw-bold mb-0">{{ trainer_stats.sessions_completed or 0 }}</p>
+                            <p class="display-6 fw-bold mb-0">
+                                <span class="trainer-sessions-completed-value">{{ trainer_stats.sessions_completed or 0 }}</span>
+                            </p>
                         </div>
                     </div>
                 </div>
@@ -76,7 +78,9 @@
                     <div class="card h-100 border-0 shadow-sm">
                         <div class="card-body text-center">
                             <h5 class="card-title text-muted text-uppercase mb-2">Sessions Completed</h5>
-                            <p class="display-6 fw-bold mb-0">{{ trainer_stats.sessions_completed or 0 }}</p>
+                            <p class="display-6 fw-bold mb-0">
+                                <span class="trainer-sessions-completed-value">{{ trainer_stats.sessions_completed or 0 }}</span>
+                            </p>
                         </div>
                     </div>
                 </div>
@@ -397,6 +401,31 @@
     const toastMessageEl = document.getElementById('toastMessage');
     const toastVariants = ['toast-success', 'toast-warning', 'toast-danger', 'toast-info'];
     let toastTimeout = null;
+    const trainerSessionsCompletedEls = document.querySelectorAll('.trainer-sessions-completed-value');
+    const trainerStats = {
+        totalClients: {{ trainer_stats.total_clients or 0 }},
+        sessionsCompleted: {{ trainer_stats.sessions_completed or 0 }}
+    };
+
+    function setTrainerSessionsCompleted(value) {
+        const numeric = Number(value);
+        if (!Number.isFinite(numeric)) return;
+        const normalized = Math.max(0, Math.round(numeric));
+        trainerStats.sessionsCompleted = normalized;
+        trainerSessionsCompletedEls.forEach(el => {
+            if (el) {
+                el.textContent = normalized;
+            }
+        });
+    }
+
+    function adjustTrainerSessionsCompleted(delta) {
+        if (!delta) return;
+        const current = Number(trainerStats.sessionsCompleted || 0);
+        setTrainerSessionsCompleted(current + delta);
+    }
+
+    setTrainerSessionsCompleted(trainerStats.sessionsCompleted || 0);
 
     if (eventRepeatWeeksInput) {
         const sanitizeRepeatWeeks = () => {
@@ -1471,7 +1500,9 @@
         }
 
         const targetClientId = target ? target.client_id : null;
-        const wasBooked = (target?.status || 'booked').toLowerCase() === 'booked';
+        const targetStatus = (target?.status || 'booked').toLowerCase();
+        const wasBooked = targetStatus === 'booked';
+        const wasCompleted = targetStatus === 'completed';
 
         return fetch(`/trainer/schedule/${eventId}`, { method: 'DELETE' })
             .then(res => res.json())
@@ -1482,34 +1513,43 @@
                 }
                 state.events = state.events.filter(ev => eventKey(ev) !== key);
                 renderEvents();
-                if (targetClientId && wasBooked) {
-                    let newBooked = null;
-                    let totalSessions = null;
-                    let completedSessions = 0;
-                    let workoutsCompleted = 0;
-                    let buttonRef = null;
+                if (targetClientId && (wasBooked || wasCompleted)) {
+                    const payload = {};
+                    let hasUpdate = false;
                     if (state.selectedClient && state.selectedClient.id === targetClientId) {
-                        newBooked = Math.max((state.selectedClient.sessionsBooked || 1) - 1, 0);
-                        totalSessions = state.selectedClient.sessions;
-                        completedSessions = state.selectedClient.sessionsCompleted || 0;
-                        workoutsCompleted = state.selectedClient.workoutsCompleted || 0;
+                        if (wasBooked) {
+                            payload.sessions_booked = Math.max((state.selectedClient.sessionsBooked || 1) - 1, 0);
+                            hasUpdate = true;
+                        }
+                        if (wasCompleted) {
+                            payload.sessions_completed = Math.max((state.selectedClient.sessionsCompleted || 1) - 1, 0);
+                            hasUpdate = true;
+                        }
+                        payload.sessions_remaining = state.selectedClient.sessions;
+                        payload.workouts_completed = state.selectedClient.workoutsCompleted || 0;
                     } else {
-                        buttonRef = document.querySelector(`.book-client-btn[data-client-id="${targetClientId}"]`);
+                        const buttonRef = document.querySelector(`.book-client-btn[data-client-id="${targetClientId}"]`);
                         if (buttonRef) {
-                            newBooked = Math.max(Number(buttonRef.dataset.sessionsBooked || '0') - 1, 0);
-                            totalSessions = buttonRef.dataset.sessions === '' ? null : Number(buttonRef.dataset.sessions || '0');
-                            completedSessions = Number(buttonRef.dataset.sessionsCompleted || '0');
-                            workoutsCompleted = Number(buttonRef.dataset.workoutsCompleted || '0');
+                            if (wasBooked) {
+                                const bookedValue = Number(buttonRef.dataset.sessionsBooked || '1');
+                                payload.sessions_booked = Math.max(bookedValue - 1, 0);
+                                hasUpdate = true;
+                            }
+                            if (wasCompleted) {
+                                const completedValue = Number(buttonRef.dataset.sessionsCompleted || '1');
+                                payload.sessions_completed = Math.max(completedValue - 1, 0);
+                                hasUpdate = true;
+                            }
+                            payload.sessions_remaining = buttonRef.dataset.sessions === '' ? null : Number(buttonRef.dataset.sessions || '0');
+                            payload.workouts_completed = Number(buttonRef.dataset.workoutsCompleted || '0');
                         }
                     }
-                    if (newBooked !== null) {
-                        syncClientSessionCounts(targetClientId, {
-                            sessions_booked: newBooked,
-                            sessions_remaining: totalSessions,
-                            sessions_completed: completedSessions,
-                            workouts_completed: workoutsCompleted
-                        });
+                    if (hasUpdate) {
+                        syncClientSessionCounts(targetClientId, payload);
                     }
+                }
+                if (wasCompleted) {
+                    adjustTrainerSessionsCompleted(-1);
                 }
                 showDashboardToast('Booking removed.', 'success');
                 return true;
@@ -1653,6 +1693,12 @@
                 const updatedEvent = data.event;
                 const newStatus = (updatedEvent.status || desired).toLowerCase();
                 const clientId = updatedEvent.client_id;
+                let trainerCompletedDelta = 0;
+                if (currentStatus !== 'completed' && newStatus === 'completed') {
+                    trainerCompletedDelta = 1;
+                } else if (currentStatus === 'completed' && newStatus !== 'completed') {
+                    trainerCompletedDelta = -1;
+                }
 
                 upsertEvent(updatedEvent);
                 sortEvents();
@@ -1701,6 +1747,9 @@
                             }
                         }
                     }
+                }
+                if (trainerCompletedDelta) {
+                    adjustTrainerSessionsCompleted(trainerCompletedDelta);
                 }
                 showDashboardToast(`Status updated to ${STATUS_LABELS[newStatus] || newStatus}.`, 'success');
                 closeEventModal();

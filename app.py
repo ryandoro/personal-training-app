@@ -145,11 +145,13 @@ def format_workout_for_response(selected_category, workout_plan):
     return formatted
 
 @app.route('/')
-@login_required
 def home():
-    """Show user's stats and progress."""
+    """Public landing page or the logged-in dashboard."""
+    if 'user_id' not in session:
+        return render_template('landing.html')
+
     # Get the user ID from the session
-    user_id = session['user_id']        
+    user_id = session['user_id']
 
     # Connect to the database to fetch the username
     sessions: list[dict] = []
@@ -927,7 +929,12 @@ def trainer_dashboard():
     with get_connection() as conn:
         with conn.cursor() as cursor:
             cursor.execute(
-                "SELECT COUNT(*) FROM trainer_sessions WHERE trainer_id = %s",
+                """
+                SELECT COUNT(*)
+                  FROM trainer_schedule
+                 WHERE trainer_id = %s
+                   AND status = 'completed'
+                """,
                 (user_id,),
             )
             sessions_completed = cursor.fetchone()[0]
@@ -2134,6 +2141,13 @@ def trainer_client_agenda(client_id):
             with conn_read.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
                 total, sessions = _fetch_client_sessions(cursor, trainer_id, client_id, None, offset)
 
+    def _format_local_time(dt):
+        try:
+            localized = dt.astimezone()
+            return localized.strftime('%I:%M %p').lstrip('0')
+        except Exception:
+            return fmt_utc(dt)
+
     agenda_events = []
     for row in sessions:
         start_dt = row.get('start_time')
@@ -2145,15 +2159,11 @@ def trainer_client_agenda(client_id):
             try:
                 start_local = start_dt.astimezone()
                 date_display = start_local.strftime('%b %d, %Y')
-                start_time_display = start_local.strftime('%I:%M %p')
+                start_time_display = _format_local_time(start_dt)
             except Exception:
                 start_time_display = fmt_utc(start_dt)
         if end_dt:
-            try:
-                end_local = end_dt.astimezone()
-                end_time_display = end_local.strftime('%I:%M %p')
-            except Exception:
-                end_time_display = fmt_utc(end_dt)
+            end_time_display = _format_local_time(end_dt)
         agenda_events.append({
             'id': row['id'],
             'status': (row.get('status') or 'booked').lower(),

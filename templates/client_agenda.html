@@ -58,7 +58,12 @@
                 <table class="table table-hover align-middle text-center agenda-table">
                     <thead>
                         <tr>
-                            <th style="width:1%;"></th>
+                            <th style="width:1%;">
+                                <input type="checkbox"
+                                       class="form-check-input"
+                                       id="selectAllSessions"
+                                       title="Select all sessions">
+                            </th>
                             <th>Status</th>
                             <th>Date</th>
                             <th>Start Time</th>
@@ -98,4 +103,42 @@
         </div>
     </form>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const selectAll = document.getElementById('selectAllSessions');
+    if (!selectAll) return;
+
+    function getSessionCheckboxes() {
+        return Array.from(document.querySelectorAll('.session-checkbox'));
+    }
+
+    function updateMasterState() {
+        const checkboxes = getSessionCheckboxes();
+        if (!checkboxes.length) {
+            selectAll.checked = false;
+            selectAll.indeterminate = false;
+            return;
+        }
+        const checkedCount = checkboxes.filter(cb => cb.checked).length;
+        selectAll.checked = checkedCount === checkboxes.length;
+        selectAll.indeterminate = checkedCount > 0 && checkedCount < checkboxes.length;
+    }
+
+    selectAll.addEventListener('change', () => {
+        const checkboxes = getSessionCheckboxes();
+        checkboxes.forEach(cb => {
+            cb.checked = selectAll.checked;
+        });
+    });
+
+    document.addEventListener('change', (event) => {
+        if (event.target?.classList?.contains('session-checkbox')) {
+            updateMasterState();
+        }
+    });
+
+    updateMasterState();
+});
+</script>
 {% endblock %}
