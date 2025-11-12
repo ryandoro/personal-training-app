@@ -254,6 +254,11 @@
                         <i class="bi bi-calendar-plus me-1"></i>Block Personal Time
                     </button>
                 </div>
+                <div class="col-12">
+                    <label for="timeOffNote" class="form-label small text-uppercase text-muted">Trainer Note (optional)</label>
+                    <textarea class="form-control" id="timeOffNote" rows="2" maxlength="1000" placeholder="Add a private reminder about this block"></textarea>
+                    <div class="form-text">Only you can see these notes.</div>
+                </div>
             </form>
         </div>
     </div>
@@ -300,16 +305,17 @@
             <div class="event-session-modal__section">
                 <label for="eventStatusSelect" class="form-label small text-uppercase text-muted">Session Status</label>
                 <form id="eventStatusForm" class="event-session-modal__inline" novalidate>
-                    <select class="form-select" id="eventStatusSelect">
+                    <div class="status-select-wrapper" id="eventStatusWrapper">
+                        <select class="form-select status-select" id="eventStatusSelect">
                         <option value="booked">Booked</option>
                         <option value="completed">Completed</option>
                         <option value="cancelled">Cancelled</option>
                     </select>
+                    </div>
                     <button type="submit" class="btn btn-primary" id="eventStatusUpdate">
                         <i class="bi bi-check2-circle me-1"></i>Apply
                     </button>
                 </form>
-                <div class="form-text" id="eventStatusInfo">Status changes update client balances immediately.</div>
             </div>
 
             <div class="event-session-modal__section" id="eventRepeatSection">
@@ -320,7 +326,23 @@
                         <i class="bi bi-arrow-repeat me-1"></i>Repeat
                     </button>
                 </form>
-                <div class="form-text" id="eventRepeatInfo">Repeats will use available sessions remaining.</div>
+                <div class="form-text d-none" id="eventRepeatInfo"></div>
+            </div>
+            <div class="event-session-modal__section">
+                <div class="event-session-modal__noteform-wrapper">
+                    <div class="event-session-modal__noteform-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                        <label for="eventNoteInput" class="form-label small text-uppercase text-muted mb-0">Trainer Note</label>
+                    </div>
+                    <form id="eventNoteForm" class="event-session-modal__noteform" novalidate>
+                        <textarea class="form-control" id="eventNoteInput" rows="3" maxlength="1000" placeholder="Add a private note for this booking or block"></textarea>
+                        <div class="event-session-modal__noteform-actions">
+                            <span class="small fw-semibold text-success d-none" id="eventNoteStatus">Saved</span>
+                            <button type="submit" class="btn btn-note-save w-100" id="eventNoteSave">
+                                <i class="bi bi-save me-1"></i>Save Note
+                            </button>
+                        </div>
+                    </form>
+                </div>
             </div>
         </div>
         <div class="event-session-modal__footer">
@@ -338,6 +360,9 @@
             <span class="calendar-event-dragtext">Drag to Move</span>
         </div>
         <div class="calendar-event-content">
+            <div class="calendar-event-note-indicator" aria-hidden="true">
+                <i class="bi bi-journal-text"></i>
+            </div>
             <div class="calendar-event-title"></div>
             <div class="calendar-event-time"></div>
         </div>
@@ -385,6 +410,7 @@
     const eventRepeatSection = document.getElementById('eventRepeatSection');
     const eventStatusForm = document.getElementById('eventStatusForm');
     const eventStatusSelect = document.getElementById('eventStatusSelect');
+    const eventStatusWrapper = document.getElementById('eventStatusWrapper');
     const eventStatusUpdate = document.getElementById('eventStatusUpdate');
     const eventStatusInfo = document.getElementById('eventStatusInfo');
     const eventDeleteSession = document.getElementById('eventDeleteSession');
@@ -393,14 +419,22 @@
     const timeOffStartInput = document.getElementById('timeOffStart');
     const timeOffEndInput = document.getElementById('timeOffEnd');
     const timeOffSubmit = document.getElementById('timeOffSubmit');
+    const timeOffNoteInput = document.getElementById('timeOffNote');
+    const eventNoteForm = document.getElementById('eventNoteForm');
+    const eventNoteInput = document.getElementById('eventNoteInput');
+    const eventNoteSave = document.getElementById('eventNoteSave');
+    const eventNoteStatus = document.getElementById('eventNoteStatus');
+    const eventNoteWrapper = document.querySelector('.event-session-modal__noteform-wrapper');
     const clientProfileBase = "{{ url_for('client_profile', client_id=0)[:-1] }}";
     const eventRepeatSubmitDefault = eventRepeatSubmit ? eventRepeatSubmit.innerHTML : '';
     const eventStatusUpdateDefault = eventStatusUpdate ? eventStatusUpdate.innerHTML : '';
     const eventDeleteDefault = eventDeleteSession ? eventDeleteSession.innerHTML : '';
+    const eventNoteSaveDefault = eventNoteSave ? eventNoteSave.innerHTML : '';
     const globalToast = document.getElementById('globalToast');
     const toastMessageEl = document.getElementById('toastMessage');
     const toastVariants = ['toast-success', 'toast-warning', 'toast-danger', 'toast-info'];
     let toastTimeout = null;
+    let eventNoteStatusTimer = null;
     const trainerSessionsCompletedEls = document.querySelectorAll('.trainer-sessions-completed-value');
     const trainerStats = {
         totalClients: {{ trainer_stats.total_clients or 0 }},
@@ -676,6 +710,56 @@
         }
     }
 
+    function updateStatusSelectAppearance(status) {
+        const baseClasses = ['status-select--booked', 'status-select--completed', 'status-select--cancelled'];
+        eventStatusWrapper?.classList.remove(...baseClasses);
+        const normalized = (status || 'booked').toLowerCase();
+        const appliedClass = normalized === 'completed'
+            ? 'status-select--completed'
+            : normalized === 'cancelled'
+                ? 'status-select--cancelled'
+                : 'status-select--booked';
+        eventStatusWrapper?.classList.add(appliedClass);
+    }
+
+    function setRepeatInfoMessage(message) {
+        if (!eventRepeatInfo) return;
+        const text = message ? String(message) : '';
+        eventRepeatInfo.textContent = text;
+        eventRepeatInfo.classList.toggle('d-none', !text);
+    }
+
+    function updateNoteWrapperHighlight(value) {
+        if (!eventNoteWrapper) return;
+        const hasNote = Boolean(value && String(value).trim());
+        eventNoteWrapper.classList.toggle('has-note', hasNote);
+    }
+
+    function clearEventNoteStatus() {
+        if (eventNoteStatusTimer) {
+            clearTimeout(eventNoteStatusTimer);
+            eventNoteStatusTimer = null;
+        }
+        if (eventNoteStatus) {
+            eventNoteStatus.textContent = '';
+            eventNoteStatus.classList.add('d-none');
+            eventNoteStatus.classList.remove('text-success', 'text-danger');
+        }
+    }
+
+    function showEventNoteStatus(message, variant = 'success') {
+        if (!eventNoteStatus) return;
+        clearEventNoteStatus();
+        eventNoteStatus.textContent = message;
+        eventNoteStatus.classList.remove('d-none');
+        eventNoteStatus.classList.add(variant === 'success' ? 'text-success' : 'text-danger');
+        eventNoteStatusTimer = setTimeout(() => {
+            if (eventNoteStatus) {
+                eventNoteStatus.classList.add('d-none');
+            }
+        }, 4000);
+    }
+
     function updateClientRowCounts(clientId, totalSessions, bookedSessions, completedSessions = 0, workoutsCompleted = null) {
         const row = document.querySelector(`tr[data-client-id="${clientId}"]`);
         if (!row) return;
@@ -888,17 +972,15 @@
         if (eventRepeatSection) {
             eventRepeatSection.hidden = repeatHidden;
         }
-        if (eventRepeatInfo) {
-            if (status === 'cancelled') {
-                eventRepeatInfo.textContent = 'This session has been cancelled.';
-            } else if (modalData.repeatInfo) {
-                eventRepeatInfo.textContent = modalData.repeatInfo;
-            } else if (eventType === 'time_off') {
-                eventRepeatInfo.textContent = 'Repeats will create additional personal time blocks on future weeks.';
-            } else {
-                eventRepeatInfo.textContent = 'Repeats will use available sessions remaining.';
-            }
+        let repeatMessage = '';
+        if (status === 'cancelled') {
+            repeatMessage = 'This session has been cancelled.';
+        } else if (modalData.repeatInfo) {
+            repeatMessage = modalData.repeatInfo;
+        } else if (eventType === 'time_off') {
+            repeatMessage = 'Repeats will create additional personal time blocks on future weeks.';
         }
+        setRepeatInfoMessage(repeatMessage);
 
         if (eventRepeatSubmit) {
             eventRepeatSubmit.disabled = false;
@@ -907,6 +989,8 @@
 
         if (eventStatusSelect) {
             eventStatusSelect.value = eventType === 'time_off' ? 'booked' : status;
+            const selectStatus = eventType === 'time_off' ? 'booked' : status;
+            updateStatusSelectAppearance(selectStatus);
         }
         if (eventStatusInfo) {
             eventStatusInfo.textContent = eventType === 'time_off'
@@ -940,6 +1024,15 @@
             }
             eventDeleteSession.disabled = false;
         }
+        if (eventNoteInput) {
+            eventNoteInput.value = modalData.note ?? '';
+            updateNoteWrapperHighlight(eventNoteInput.value);
+        }
+        if (eventNoteSave) {
+            eventNoteSave.disabled = false;
+            eventNoteSave.innerHTML = eventNoteSaveDefault;
+        }
+        clearEventNoteStatus();
     }
 
     function openEventModal(eventData) {
@@ -987,6 +1080,12 @@
             eventDeleteSession.disabled = false;
             eventDeleteSession.innerHTML = eventDeleteDefault;
         }
+        if (eventNoteSave) {
+            eventNoteSave.disabled = false;
+            eventNoteSave.innerHTML = eventNoteSaveDefault;
+        }
+        updateNoteWrapperHighlight('');
+        clearEventNoteStatus();
         state.modalEvent = null;
     }
 
@@ -1078,7 +1177,11 @@
             header.className = 'calendar-day-header';
             header.dataset.date = dayDate.toISOString();
             const { weekday, month, day } = formatDayParts(dayDate);
-            header.innerHTML = `<span class="calendar-day-label">${weekday}</span><span class="calendar-date-label">${month}, ${day}</span>`;
+            header.innerHTML = [
+                `<span class="calendar-day-label">${weekday},</span>`,
+                `<span class="calendar-month-label">${month}</span>`,
+                `<span class="calendar-date-label">${day}</span>`
+            ].join('');
             dayHeaderEl.appendChild(header);
 
             const col = document.createElement('div');
@@ -1175,6 +1278,18 @@
             eventNode.classList.toggle('calendar-event-timeoff', isTimeOff);
             eventNode.style.top = `${top}%`;
             eventNode.style.height = `${height}%`;
+            const noteIndicator = eventNode.querySelector('.calendar-event-note-indicator');
+            const noteText = typeof event.note === 'string' ? event.note : (event.note ?? '');
+            const hasNote = Boolean(noteText && noteText.trim());
+            if (noteIndicator) {
+                noteIndicator.classList.toggle('is-visible', hasNote);
+                if (hasNote) {
+                    noteIndicator.setAttribute('title', 'Trainer note added');
+                } else {
+                    noteIndicator.removeAttribute('title');
+                }
+            }
+            eventNode.classList.toggle('calendar-event--has-note', hasNote);
 
             const title = eventNode.querySelector('.calendar-event-title');
             if (isTimeOff) {
@@ -1239,6 +1354,7 @@
                 const incoming = Array.isArray(data.events) ? data.events.map(ev => {
                     const normalized = { ...ev };
                     normalized.type = ev.type || (ev.status === 'time_off' ? 'time_off' : 'session');
+                    normalized.note = typeof ev.note === 'string' ? ev.note : (ev.note ?? '');
                     if (normalized.type === 'time_off') {
                         normalized.status = 'time_off';
                         normalized.title = normalized.title || 'Personal Time';
@@ -1384,13 +1500,15 @@
 
         timeOffSubmit.disabled = true;
         timeOffSubmit.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Saving...';
+        const notePayload = timeOffNoteInput ? timeOffNoteInput.value : '';
 
         fetch('/trainer/time-off', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 start_time: startDate.toISOString(),
-                end_time: endDate.toISOString()
+                end_time: endDate.toISOString(),
+                note: notePayload
             })
         })
             .then(res => res.json())
@@ -1596,9 +1714,9 @@
                 if (!data.success) {
                     const errorMessage = data.error || (isTimeOff ? 'Unable to repeat that personal time block.' : 'Unable to repeat that booking.');
                     showDashboardToast(errorMessage, 'danger');
-                    if (eventRepeatInfo && Array.isArray(data.conflicts) && data.conflicts.length > 0) {
+                    if (Array.isArray(data.conflicts) && data.conflicts.length > 0) {
                         const skippedMessage = `Skipped ${data.conflicts.length} week(s) due to conflicts.`;
-                        eventRepeatInfo.textContent = skippedMessage;
+                        setRepeatInfoMessage(skippedMessage);
                         if (state.modalEvent) {
                             state.modalEvent.repeatInfo = skippedMessage;
                         }
@@ -1611,19 +1729,17 @@
                     sortEvents();
                     renderEvents();
                 }
-                if (eventRepeatInfo) {
-                    let infoMessage = '';
-                    if (Array.isArray(data.conflicts) && data.conflicts.length > 0) {
-                        infoMessage = `Added ${data.created_count} ${isTimeOff ? 'personal time block' : 'session'}${data.created_count === 1 ? '' : 's'}; ${data.conflicts.length} week(s) skipped because of conflicts.`;
-                    } else if (!isTimeOff && data.remaining_quota === 0 && data.sessions_remaining !== null) {
-                        infoMessage = 'All available sessions are now booked.';
-                    } else {
-                        infoMessage = `Added ${data.created_count} weekly ${isTimeOff ? 'personal time block' : 'session'}${data.created_count === 1 ? '' : 's'}.`;
-                    }
-                    eventRepeatInfo.textContent = infoMessage;
-                    if (state.modalEvent) {
-                        state.modalEvent.repeatInfo = infoMessage;
-                    }
+                let infoMessage = '';
+                if (Array.isArray(data.conflicts) && data.conflicts.length > 0) {
+                    infoMessage = `Added ${data.created_count} ${isTimeOff ? 'personal time block' : 'session'}${data.created_count === 1 ? '' : 's'}; ${data.conflicts.length} week(s) skipped because of conflicts.`;
+                } else if (!isTimeOff && data.remaining_quota === 0 && data.sessions_remaining !== null) {
+                    infoMessage = 'All available sessions are now booked.';
+                } else {
+                    infoMessage = `Added ${data.created_count} weekly ${isTimeOff ? 'personal time block' : 'session'}${data.created_count === 1 ? '' : 's'}.`;
+                }
+                setRepeatInfoMessage(infoMessage);
+                if (state.modalEvent) {
+                    state.modalEvent.repeatInfo = infoMessage;
                 }
                 if (eventRepeatWeeksInput) {
                     eventRepeatWeeksInput.value = '';
@@ -1711,6 +1827,7 @@
                     repeatInfo: priorRepeatInfo
                 };
                 refreshModalFromState();
+                updateStatusSelectAppearance(newStatus);
 
                 if (typeof data.sessions_booked !== 'undefined' || typeof data.sessions_remaining !== 'undefined' || typeof data.sessions_completed !== 'undefined') {
                     syncClientSessionCounts(clientId, {
@@ -1763,6 +1880,69 @@
                     eventStatusUpdate.innerHTML = eventStatusUpdateDefault;
                 }
                 fetchEvents();
+            });
+    }
+
+    function handleNoteSubmit(event) {
+        if (event) event.preventDefault();
+        if (!state.modalEvent || !eventNoteInput || !eventNoteSave) return;
+        const entryType = state.modalEvent.type || (state.modalEvent.status === 'time_off' ? 'time_off' : 'session');
+        const endpoint = entryType === 'time_off'
+            ? `/trainer/time-off/${state.modalEvent.id}`
+            : `/trainer/schedule/${state.modalEvent.id}`;
+        const notePayload = eventNoteInput.value || '';
+        eventNoteSave.disabled = true;
+        eventNoteSave.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Saving...';
+        clearEventNoteStatus();
+        fetch(endpoint, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ note: notePayload })
+        })
+            .then(res => res.json())
+            .then(data => {
+                if (!data.success) {
+                    const errorMessage = data.error || 'Unable to save note.';
+                    showEventNoteStatus(errorMessage, 'danger');
+                    showDashboardToast(errorMessage, 'danger');
+                    return;
+                }
+                const payload = entryType === 'time_off' ? data.block : data.event;
+                if (!payload) {
+                    fetchEvents();
+                    return;
+                }
+                upsertEvent(payload);
+                sortEvents();
+                renderEvents();
+                const repeatInfo = state.modalEvent ? state.modalEvent.repeatInfo : undefined;
+                const normalizedNote = payload.note ?? '';
+                const normalizedStatus = entryType === 'time_off'
+                    ? 'time_off'
+                    : (payload.status || state.modalEvent.status || 'booked');
+                state.modalEvent = {
+                    ...state.modalEvent,
+                    ...payload,
+                    note: normalizedNote,
+                    repeatInfo,
+                    status: normalizedStatus
+                };
+                if (eventNoteInput) {
+                    eventNoteInput.value = normalizedNote;
+                }
+                updateNoteWrapperHighlight(normalizedNote);
+                showEventNoteStatus(normalizedNote ? 'Note saved.' : 'Note cleared.', 'success');
+            })
+            .catch(() => {
+                const fallbackMessage = 'Unable to save note right now.';
+                showEventNoteStatus(fallbackMessage, 'danger');
+                showDashboardToast(fallbackMessage, 'danger');
+            })
+            .finally(() => {
+                if (eventNoteSave) {
+                    eventNoteSave.disabled = false;
+                    eventNoteSave.innerHTML = eventNoteSaveDefault;
+                }
             });
     }
 
@@ -2132,6 +2312,20 @@
         }
         if (eventStatusForm) {
             eventStatusForm.addEventListener('submit', handleStatusUpdate);
+        }
+        if (eventStatusSelect) {
+            eventStatusSelect.addEventListener('change', () => {
+                const nextStatus = (eventStatusSelect.value || '').toLowerCase();
+                updateStatusSelectAppearance(nextStatus);
+            });
+        }
+        if (eventNoteForm) {
+            eventNoteForm.addEventListener('submit', handleNoteSubmit);
+        }
+        if (eventNoteInput) {
+            eventNoteInput.addEventListener('input', () => {
+                updateNoteWrapperHighlight(eventNoteInput.value);
+            });
         }
         if (eventDeleteSession) {
             eventDeleteSession.addEventListener('click', handleDeleteEntry);

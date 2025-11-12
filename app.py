@@ -74,6 +74,19 @@ RESEND_COOLDOWN_SECONDS = 60
 VERIFY_PURPOSE = "verify_email"
 RESET_TTL_HOURS = 2
 
+TRAINER_NOTE_MAX_LENGTH = 1000
+
+
+def _sanitize_trainer_note_input(value):
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    if len(text) > TRAINER_NOTE_MAX_LENGTH:
+        text = text[:TRAINER_NOTE_MAX_LENGTH]
+    return text
+
 
 def _normalize_plan_for_iteration(plan):
     if isinstance(plan, list):
@@ -1005,6 +1018,8 @@ def client_profile(client_id):
         flash("Trainer access required.", "danger")
         return redirect(url_for('home'))
 
+    exercise_search_term = (request.args.get('exercise_q') or '').strip()
+    exercise_search_results = []
 
     sessions_completed_count = 0
     with get_connection() as conn:
@@ -1049,6 +1064,29 @@ def client_profile(client_id):
             )
             completed_row = cursor.fetchone() or {}
             sessions_completed_count = int(completed_row.get('completed_count') or 0)
+
+            if exercise_search_term:
+                cursor.execute(
+                    """
+                    SELECT w.id AS workout_id,
+                           w.name,
+                           w.description,
+                           w.category,
+                           w.youtube_id,
+                           uep.max_weight,
+                           uep.max_reps,
+                           uep.notes
+                      FROM workouts w
+                 LEFT JOIN user_exercise_progress uep
+                        ON uep.workout_id = w.id
+                       AND uep.user_id = %s
+                     WHERE w.name ILIKE %s
+                     ORDER BY w.name
+                     LIMIT 25
+                    """,
+                    (client_id, f"%{exercise_search_term}%"),
+                )
+                exercise_search_results = cursor.fetchall() or []
 
     injury_payload = parse_injury_payload(client.get('injury') if client else None)
     cardio_restriction_flag = bool(client.get('cardio_restriction') if client else False) or injury_payload['cardio']
@@ -1119,6 +1157,8 @@ def client_profile(client_id):
         trainer=trainer,
         client=client,
         active_workout=active_workout,
+        exercise_search_term=exercise_search_term,
+        exercise_search_results=exercise_search_results,
         category_options=category_options,
         injury_status=injury_status,
         injury_regions=injury_regions,
@@ -1137,6 +1177,7 @@ def client_profile(client_id):
         client_has_premium_access=client_has_premium_access,
         sessions_booked=client.get('sessions_booked') if client else 0,
         sessions_completed=sessions_completed_count,
+        NOTES_PLACEHOLDER='No notes yet.',
     )
 
 
@@ -1296,6 +1337,7 @@ def _serialize_schedule_row(row):
         'end_time': row['end_time'].isoformat() if row.get('end_time') else None,
         'status': row.get('status') or 'booked',
         'type': 'session',
+        'note': row.get('note'),
     }
 
 
@@ -1312,6 +1354,7 @@ def _serialize_time_off_row(row):
         'status': 'time_off',
         'title': row.get('title') or 'Personal Time',
         'type': 'time_off',
+        'note': row.get('note'),
     }
 
 
@@ -1336,7 +1379,7 @@ def trainer_schedule_data():
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
             cursor.execute(
                 """
-                SELECT ts.id, ts.trainer_id, ts.client_id, ts.start_time, ts.end_time, ts.status,
+                SELECT ts.id, ts.trainer_id, ts.client_id, ts.start_time, ts.end_time, ts.status, ts.note,
                        c.name AS client_name, c.last_name AS client_last_name, c.username AS client_username
                   FROM trainer_schedule ts
                   JOIN users c ON c.id = ts.client_id
@@ -1350,7 +1393,7 @@ def trainer_schedule_data():
             session_rows = cursor.fetchall() or []
             cursor.execute(
                 """
-                SELECT id, trainer_id, start_time, end_time, title
+                SELECT id, trainer_id, start_time, end_time, title, note
                   FROM trainer_time_off
                  WHERE trainer_id = %s
                    AND start_time < %s
@@ -1436,6 +1479,7 @@ def trainer_schedule_book():
     payload = request.get_json(silent=True) or {}
     client_id = payload.get('client_id')
     duration_minutes = payload.get('duration_minutes') or 60
+    note_value = _sanitize_trainer_note_input(payload.get('note'))
 
     try:
         client_id = int(client_id)
@@ -1495,11 +1539,11 @@ def trainer_schedule_book():
 
             cursor.execute(
                 """
-                INSERT INTO trainer_schedule (trainer_id, client_id, start_time, end_time)
-                VALUES (%s, %s, %s, %s)
+                INSERT INTO trainer_schedule (trainer_id, client_id, start_time, end_time, note)
+                VALUES (%s, %s, %s, %s, %s)
                 RETURNING id
                 """,
-                (trainer_id, client_id, start_dt, end_dt),
+                (trainer_id, client_id, start_dt, end_dt, note_value),
             )
             new_id_row = cursor.fetchone()
             new_id = new_id_row['id'] if isinstance(new_id_row, dict) else new_id_row[0]
@@ -1514,7 +1558,7 @@ def trainer_schedule_book():
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
                 cursor.execute(
                     """
-                    SELECT ts.id, ts.trainer_id, ts.client_id, ts.start_time, ts.end_time, ts.status,
+                    SELECT ts.id, ts.trainer_id, ts.client_id, ts.start_time, ts.end_time, ts.status, ts.note,
                            c.name AS client_name, c.last_name AS client_last_name, c.username AS client_username
                       FROM trainer_schedule ts
                       JOIN users c ON c.id = ts.client_id
@@ -1582,8 +1626,10 @@ def trainer_schedule_modify(event_id):
     start_raw = payload.get('start_time')
     end_raw = payload.get('end_time')
     status_raw = payload.get('status')
+    note_provided = 'note' in payload
+    note_value = _sanitize_trainer_note_input(payload.get('note')) if note_provided else None
 
-    if start_raw is None and end_raw is None and status_raw is None:
+    if start_raw is None and end_raw is None and status_raw is None and not note_provided:
         return jsonify({'success': False, 'error': 'No changes specified.'}), 400
 
     if (start_raw is None) ^ (end_raw is None):
@@ -1689,6 +1735,18 @@ def trainer_schedule_modify(event_id):
             if status_delta:
                 with conn.cursor() as cursor:
                     _adjust_sessions_booked(cursor, client_id, status_delta)
+        if note_provided:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE trainer_schedule
+                       SET note = %s
+                     WHERE id = %s AND trainer_id = %s
+                    """,
+                    (note_value, event_id, trainer_id),
+                )
+                if cursor.rowcount == 0:
+                    return jsonify({'success': False, 'error': 'Booking not found.'}), 404
         if workout_delta:
             with conn.cursor() as cursor:
                 cursor.execute(
@@ -1708,7 +1766,7 @@ def trainer_schedule_modify(event_id):
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
             cursor.execute(
                 """
-                SELECT ts.id, ts.trainer_id, ts.client_id, ts.start_time, ts.end_time, ts.status,
+                SELECT ts.id, ts.trainer_id, ts.client_id, ts.start_time, ts.end_time, ts.status, ts.note,
                        c.name AS client_name, c.last_name AS client_last_name, c.username AS client_username
                   FROM trainer_schedule ts
                   JOIN users c ON c.id = ts.client_id
@@ -1763,6 +1821,7 @@ def trainer_time_off_create():
     start_raw = payload.get('start_time')
     end_raw = payload.get('end_time')
     title_raw = payload.get('title') or ''
+    note_value = _sanitize_trainer_note_input(payload.get('note'))
     title = str(title_raw).strip() or 'Personal Time'
     if len(title) > 120:
         title = title[:120]
@@ -1782,11 +1841,11 @@ def trainer_time_off_create():
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
             cursor.execute(
                 """
-                INSERT INTO trainer_time_off (trainer_id, start_time, end_time, title)
-                VALUES (%s, %s, %s, %s)
-                RETURNING id, trainer_id, start_time, end_time, title
+                INSERT INTO trainer_time_off (trainer_id, start_time, end_time, title, note)
+                VALUES (%s, %s, %s, %s, %s)
+                RETURNING id, trainer_id, start_time, end_time, title, note
                 """,
-                (trainer_id, start_dt, end_dt, title),
+                (trainer_id, start_dt, end_dt, title, note_value),
             )
             row = cursor.fetchone()
             conn.commit()
@@ -1820,6 +1879,8 @@ def trainer_time_off_modify(block_id):
     start_raw = payload.get('start_time')
     end_raw = payload.get('end_time')
     title_raw = payload.get('title')
+    note_present = 'note' in payload
+    note_value = _sanitize_trainer_note_input(payload.get('note')) if note_present else None
 
     if (start_raw is None) ^ (end_raw is None):
         return jsonify({'success': False, 'error': 'Both start and end times are required.'}), 400
@@ -1843,7 +1904,7 @@ def trainer_time_off_modify(block_id):
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
             cursor.execute(
                 """
-                SELECT id, trainer_id, start_time, end_time, title
+                SELECT id, trainer_id, start_time, end_time, title, note
                   FROM trainer_time_off
                  WHERE id = %s AND trainer_id = %s
                 """,
@@ -1882,12 +1943,23 @@ def trainer_time_off_modify(block_id):
                     (title, block_id, trainer_id),
                 )
 
+        if note_present:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE trainer_time_off
+                       SET note = %s
+                     WHERE id = %s AND trainer_id = %s
+                    """,
+                    (note_value, block_id, trainer_id),
+                )
+
         conn.commit()
 
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
             cursor.execute(
                 """
-                SELECT id, trainer_id, start_time, end_time, title
+                SELECT id, trainer_id, start_time, end_time, title, note
                   FROM trainer_time_off
                  WHERE id = %s
                 """,
@@ -1923,7 +1995,7 @@ def trainer_time_off_repeat(block_id):
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
             cursor.execute(
                 """
-                SELECT id, trainer_id, start_time, end_time, title
+                SELECT id, trainer_id, start_time, end_time, title, note
                   FROM trainer_time_off
                  WHERE id = %s AND trainer_id = %s
                 """,
@@ -1937,6 +2009,7 @@ def trainer_time_off_repeat(block_id):
         base_start: datetime = base_block['start_time']
         base_end: datetime = base_block['end_time']
         block_title = base_block.get('title') or 'Personal Time'
+        block_note = base_block.get('note')
         created_rows: list[dict[str, object]] = []
         skipped_conflicts: list[dict[str, object]] = []
 
@@ -1951,11 +2024,11 @@ def trainer_time_off_repeat(block_id):
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
                 cursor.execute(
                     """
-                    INSERT INTO trainer_time_off (trainer_id, start_time, end_time, title)
-                    VALUES (%s, %s, %s, %s)
-                    RETURNING id, trainer_id, start_time, end_time, title
+                    INSERT INTO trainer_time_off (trainer_id, start_time, end_time, title, note)
+                    VALUES (%s, %s, %s, %s, %s)
+                    RETURNING id, trainer_id, start_time, end_time, title, note
                     """,
-                    (trainer_id, new_start, new_end, block_title),
+                    (trainer_id, new_start, new_end, block_title, block_note),
                 )
                 row = cursor.fetchone()
                 if row:
@@ -1978,44 +2051,64 @@ def trainer_time_off_repeat(block_id):
     })
 
 
-def _fetch_client_sessions(cursor, trainer_id: int, client_id: int, limit: int | None, offset: int):
+def _fetch_client_sessions(
+    cursor,
+    trainer_id: int,
+    client_id: int,
+    limit: int | None,
+    offset: int,
+    start_time_from: datetime | None = None,
+    start_time_to: datetime | None = None,
+):
+    base_conditions = ["trainer_id = %s", "client_id = %s"]
+    base_params = [trainer_id, client_id]
+
     cursor.execute(
-        """
+        f"""
         SELECT COUNT(*) AS total
           FROM trainer_schedule
-         WHERE trainer_id = %s
-           AND client_id = %s
+         WHERE {' AND '.join(base_conditions)}
         """,
-        (trainer_id, client_id),
+        base_params,
     )
-    count_row = cursor.fetchone() or {}
-    total = int(count_row.get('total') or 0)
+    total_all_row = cursor.fetchone() or {}
+    total_all = int(total_all_row.get('total') or 0)
 
+    filtered_conditions = list(base_conditions)
+    filtered_params = list(base_params)
+    if start_time_from:
+        filtered_conditions.append("start_time >= %s")
+        filtered_params.append(start_time_from)
+    if start_time_to:
+        filtered_conditions.append("start_time < %s")
+        filtered_params.append(start_time_to)
+    where_clause = ' AND '.join(filtered_conditions)
+
+    cursor.execute(
+        f"""
+        SELECT COUNT(*) AS total
+          FROM trainer_schedule
+         WHERE {where_clause}
+        """,
+        filtered_params,
+    )
+    filtered_row = cursor.fetchone() or {}
+    filtered_total = int(filtered_row.get('total') or 0)
+
+    query = f"""
+        SELECT id, start_time, end_time, status, created_at
+          FROM trainer_schedule
+         WHERE {where_clause}
+         ORDER BY start_time ASC
+    """
+    data_params = list(filtered_params)
     if limit is not None:
-        cursor.execute(
-            """
-            SELECT id, start_time, end_time, status, created_at
-              FROM trainer_schedule
-             WHERE trainer_id = %s
-               AND client_id = %s
-             ORDER BY start_time DESC
-             LIMIT %s OFFSET %s
-            """,
-            (trainer_id, client_id, limit, offset),
-        )
-    else:
-        cursor.execute(
-            """
-            SELECT id, start_time, end_time, status, created_at
-              FROM trainer_schedule
-             WHERE trainer_id = %s
-               AND client_id = %s
-             ORDER BY start_time DESC
-            """,
-            (trainer_id, client_id),
-        )
+        query += " LIMIT %s OFFSET %s"
+        data_params.extend([limit, offset])
+
+    cursor.execute(query, data_params)
     rows = cursor.fetchall() or []
-    return total, rows
+    return total_all, filtered_total, rows
 
 
 @app.route('/trainer/clients/<int:client_id>/agenda', methods=['GET', 'POST'])
@@ -2027,8 +2120,108 @@ def trainer_client_agenda(client_id):
         flash("Trainer access required.", "danger")
         return redirect(url_for('home'))
 
-    per_page = None
-    offset = 0
+    per_page_selections = (10, 30, 50, 100)
+    per_page = session.get('client_agenda_per_page')
+    if per_page not in per_page_selections:
+        per_page = per_page_selections[0]
+    per_page_arg = request.args.get('per_page')
+    if per_page_arg is not None:
+        try:
+            per_page_candidate = int(per_page_arg)
+        except (TypeError, ValueError):
+            per_page_candidate = None
+        if per_page_candidate in per_page_selections:
+            per_page = per_page_candidate
+
+    if not isinstance(per_page, int) or per_page <= 0:
+        per_page = per_page_selections[0]
+
+    if session.get('client_agenda_per_page') != per_page:
+        session['client_agenda_per_page'] = per_page
+
+    try:
+        page = int(request.args.get('page', 1))
+    except (TypeError, ValueError):
+        page = 1
+    page = max(page, 1)
+    offset = (page - 1) * per_page
+
+    allowed_views = {'upcoming', 'all', 'today', 'week', 'month', 'custom'}
+    selected_view = (request.args.get('view') or 'upcoming').lower()
+    if selected_view not in allowed_views:
+        selected_view = 'upcoming'
+
+    start_date_raw = request.args.get('start_date') or ''
+    end_date_raw = request.args.get('end_date') or ''
+    if selected_view != 'custom' and (start_date_raw or end_date_raw):
+        selected_view = 'custom'
+
+    now_local = datetime.now().astimezone()
+    tz_info = now_local.tzinfo or timezone.utc
+    today_local = now_local.date()
+
+    def _start_of_day(target_date: date | None):
+        if not target_date:
+            return None
+        return datetime.combine(target_date, datetime.min.time(), tzinfo=tz_info)
+
+    def _start_of_next_day(target_date: date | None):
+        if not target_date:
+            return None
+        return _start_of_day(target_date + timedelta(days=1))
+
+    def _parse_date(value: str):
+        if not value:
+            return None
+        try:
+            return datetime.strptime(value, '%Y-%m-%d').date()
+        except (TypeError, ValueError):
+            return None
+
+    start_date_value = _parse_date(start_date_raw)
+    end_date_value = _parse_date(end_date_raw)
+    custom_date_error = False
+    custom_error_message = ''
+    if start_date_raw and not start_date_value:
+        custom_date_error = True
+        custom_error_message = 'Enter a valid start date.'
+    if end_date_raw and not end_date_value:
+        custom_date_error = True
+        custom_error_message = 'Enter a valid end date.'
+    if start_date_value and end_date_value and start_date_value > end_date_value:
+        custom_date_error = True
+        custom_error_message = 'Start date must be before the end date.'
+
+    filter_start = None
+    filter_end = None
+    if selected_view == 'today':
+        filter_start = _start_of_day(today_local)
+        filter_end = _start_of_next_day(today_local)
+    elif selected_view == 'week':
+        week_start = today_local - timedelta(days=today_local.weekday())
+        filter_start = _start_of_day(week_start)
+        filter_end = _start_of_day(week_start + timedelta(days=7))
+    elif selected_view == 'month':
+        month_start = today_local.replace(day=1)
+        if month_start.month == 12:
+            next_month = date(month_start.year + 1, 1, 1)
+        else:
+            next_month = date(month_start.year, month_start.month + 1, 1)
+        filter_start = _start_of_day(month_start)
+        filter_end = _start_of_day(next_month)
+    elif selected_view == 'all':
+        filter_start = None
+        filter_end = None
+    elif selected_view == 'custom':
+        if not custom_date_error:
+            if start_date_value:
+                filter_start = _start_of_day(start_date_value)
+            if end_date_value:
+                filter_end = _start_of_next_day(end_date_value)
+    else:  # upcoming default
+        filter_start = _start_of_day(today_local)
+        filter_end = None
+
     bulk_action = (request.form.get('bulk_action') or '').strip()
     selected_ids_raw = request.form.getlist('session_id')
     selected_ids: list[int] = []
@@ -2137,9 +2330,29 @@ def trainer_client_agenda(client_id):
                             flash(f"Updated {len(events)} session(s) to {desired_status}.", "success")
                             action_performed = True
 
+        if action_performed:
+            return redirect(request.url)
+
         with get_connection() as conn_read:
             with conn_read.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
-                total, sessions = _fetch_client_sessions(cursor, trainer_id, client_id, None, offset)
+                total_all, total_filtered, sessions = _fetch_client_sessions(
+                    cursor,
+                    trainer_id,
+                    client_id,
+                    per_page,
+                    offset,
+                    filter_start,
+                    filter_end,
+                )
+
+    total_pages = 1
+    if total_filtered and per_page:
+        total_pages = (total_filtered + per_page - 1) // per_page
+    total_pages = max(total_pages, 1)
+    if page > total_pages:
+        args = request.args.to_dict(flat=True)
+        args['page'] = total_pages
+        return redirect(url_for('trainer_client_agenda', client_id=client_id, **args))
 
     def _format_local_time(dt):
         try:
@@ -2152,6 +2365,8 @@ def trainer_client_agenda(client_id):
     for row in sessions:
         start_dt = row.get('start_time')
         end_dt = row.get('end_time')
+        start_iso = start_dt.isoformat() if start_dt else None
+        end_iso = end_dt.isoformat() if end_dt else None
         date_display = '—'
         start_time_display = '—'
         end_time_display = '—'
@@ -2170,17 +2385,58 @@ def trainer_client_agenda(client_id):
             'date': date_display,
             'start_time': start_time_display,
             'end_time': end_time_display,
+            'start_time_iso': start_iso,
+            'end_time_iso': end_iso,
         })
+
+    if total_filtered:
+        page_start_index = offset + 1 if agenda_events else 0
+        page_end_index = offset + len(agenda_events)
+    else:
+        page_start_index = 0
+        page_end_index = 0
+
+    window_radius = 2
+    start_page = max(1, page - window_radius)
+    end_page = min(total_pages, page + window_radius)
+    if end_page - start_page < window_radius * 2:
+        if start_page == 1:
+            end_page = min(total_pages, start_page + window_radius * 2)
+        elif end_page == total_pages:
+            start_page = max(1, end_page - window_radius * 2)
+    page_numbers = list(range(start_page, end_page + 1))
+
+    quick_filters = [
+        {'key': 'upcoming', 'label': 'Upcoming'},
+        {'key': 'today', 'label': 'Today'},
+        {'key': 'week', 'label': 'This Week'},
+        {'key': 'month', 'label': 'This Month'},
+        {'key': 'all', 'label': 'All'},
+    ]
+
+    start_date_input = start_date_value.isoformat() if start_date_value else (start_date_raw or '')
+    end_date_input = end_date_value.isoformat() if end_date_value else (end_date_raw or '')
 
     return render_template(
         'client_agenda.html',
         trainer=trainer,
         client=client,
         events=agenda_events,
-        total_sessions=total,
-        page=1,
-        total_pages=1,
-        per_page=total,
+        total_sessions=total_all,
+        filtered_total=total_filtered,
+        page=page,
+        total_pages=total_pages,
+        per_page=per_page,
+        per_page_options=per_page_selections,
+        page_numbers=page_numbers,
+        page_start_index=page_start_index,
+        page_end_index=page_end_index,
+        selected_view=selected_view,
+        start_date_input=start_date_input,
+        end_date_input=end_date_input,
+        custom_date_error=custom_date_error,
+        custom_date_error_message=custom_error_message,
+        quick_filters=quick_filters,
         selected_ids=selected_ids if request.method == 'POST' and not action_performed else [],
         bulk_action=bulk_action if request.method == 'POST' else '',
     )
@@ -2210,7 +2466,7 @@ def trainer_schedule_repeat(event_id):
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
             cursor.execute(
                 """
-                SELECT id, client_id, start_time, end_time, status
+                SELECT id, client_id, start_time, end_time, status, note
                   FROM trainer_schedule
                  WHERE id = %s AND trainer_id = %s
                 """,
@@ -2260,6 +2516,7 @@ def trainer_schedule_repeat(event_id):
 
         base_start: datetime = base_event['start_time']
         base_end: datetime = base_event['end_time']
+        base_note = base_event.get('note')
         created_ids: list[int] = []
         skipped_conflicts: list[dict[str, str | int]] = []
 
@@ -2278,11 +2535,11 @@ def trainer_schedule_repeat(event_id):
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
                 cursor.execute(
                     """
-                    INSERT INTO trainer_schedule (trainer_id, client_id, start_time, end_time)
-                    VALUES (%s, %s, %s, %s)
+                    INSERT INTO trainer_schedule (trainer_id, client_id, start_time, end_time, note)
+                    VALUES (%s, %s, %s, %s, %s)
                     RETURNING id
                     """,
-                    (trainer_id, client_id, new_start, new_end),
+                    (trainer_id, client_id, new_start, new_end, base_note),
                 )
                 inserted = cursor.fetchone()
                 new_id = inserted['id'] if isinstance(inserted, dict) else inserted[0]
@@ -2312,7 +2569,7 @@ def trainer_schedule_repeat(event_id):
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
                 cursor.execute(
                     """
-                    SELECT ts.id, ts.trainer_id, ts.client_id, ts.start_time, ts.end_time, ts.status,
+                    SELECT ts.id, ts.trainer_id, ts.client_id, ts.start_time, ts.end_time, ts.status, ts.note,
                            c.name AS client_name, c.last_name AS client_last_name, c.username AS client_username
                       FROM trainer_schedule ts
                       JOIN users c ON c.id = ts.client_id
@@ -2372,7 +2629,7 @@ def client_schedule_data():
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
             cursor.execute(
                 """
-                SELECT ts.id, ts.trainer_id, ts.client_id, ts.start_time, ts.end_time, ts.status,
+                SELECT ts.id, ts.trainer_id, ts.client_id, ts.start_time, ts.end_time, ts.status, ts.note,
                        t.name AS trainer_name, t.last_name AS trainer_last_name,
                        t.username AS trainer_username
                   FROM trainer_schedule ts
@@ -2389,6 +2646,7 @@ def client_schedule_data():
     events = []
     for row in rows:
         event = _serialize_schedule_row(row)
+        event.pop('note', None)
         event['trainer_name'] = row.get('trainer_name')
         event['trainer_last_name'] = row.get('trainer_last_name')
         event['trainer_username'] = row.get('trainer_username')

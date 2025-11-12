@@ -16,7 +16,7 @@
         {% set sessions_left = None %}
     {% endif %}
     <div class="row g-4 client-profile-grid">
-        <div class="col-12 col-lg-4 client-profile-hero-col">
+        <div class="col-12 client-profile-hero-col">
             <div class="card shadow-sm border-0 h-100 overflow-hidden">
                 <div class="p-4 text-white rounded-3" style="background: linear-gradient(135deg, #1EA4E6 0%, #33C3F0 100%);">
                     <div class="d-flex flex-column gap-3">
@@ -304,11 +304,122 @@
                             </div>
                         </div>
                     </div>
+
+                    <div class="card border-0 shadow-lg mt-5 pt-3 exercise-lookup-card">
+                        <div class="card-body p-4">
+                            <div class="exercise-lookup-header d-flex flex-column flex-lg-row align-items-start align-items-lg-center gap-4">
+                                <div class="d-flex align-items-center gap-3" aria-hidden="true">
+                                    <div class="exercise-lookup-icon">
+                                        <i class="bi bi-search"></i>
+                                    </div>
+                                </div>
+                                <form class="exercise-lookup-form ms-lg-auto w-100 w-lg-50" method="GET" action="{{ url_for('client_profile', client_id=client.id) }}">
+                                    <label for="exercise-search-input" class="visually-hidden">Search client workouts</label>
+                                    <div class="lookup-input-group">
+                                        <input id="exercise-search-input"
+                                               type="search"
+                                               name="exercise_q"
+                                               class="form-control lookup-input"
+                                               placeholder="Search client's workouts..."
+                                               value="{{ exercise_search_term }}">
+                                        <button class="btn btn-brand lookup-search-btn" type="submit">
+                                            Search
+                                        </button>
+                                        {% if exercise_search_term %}
+                                            <a class="btn btn-outline-secondary lookup-clear-btn" href="{{ url_for('client_profile', client_id=client.id) }}">Clear</a>
+                                        {% endif %}
+                                    </div>
+                                </form>
+                            </div>
+
+                            <div class="exercise-lookup-results mt-4" id="exercise-lookup-results" tabindex="-1">
+                                {% if exercise_search_term %}
+                                    {% if exercise_search_results %}
+                                        <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4 lookup-results-grid">
+                                            {% for workout in exercise_search_results %}
+                                                {% set workout_name = workout.name or 'Workout' %}
+                                                {% set workout_category = workout.category or 'General' %}
+                                                {% set is_cardio = workout_category|lower == 'cardio' %}
+                                                {% set is_bodyweight = 'bodyweight' in workout_name|lower %}
+                                                {% if is_bodyweight or is_cardio %}
+                                                    {% set weight_display = 'Bodyweight' %}
+                                                {% elif workout.max_weight is not none %}
+                                                    {% set weight_display = (workout.max_weight|string) ~ ' lbs' %}
+                                                {% else %}
+                                                    {% set weight_display = '—' %}
+                                                {% endif %}
+                                                {% if workout.max_reps is not none %}
+                                                    {% set reps_unit = ' min' if is_cardio else ' reps' %}
+                                                    {% set reps_display = (workout.max_reps|string) ~ reps_unit %}
+                                                {% else %}
+                                                    {% set reps_display = '—' %}
+                                                {% endif %}
+                                                {% set notes_text = workout.notes or '' %}
+                                                {% set has_notes = notes_text|trim %}
+                                                <div class="col">
+                                                    <div class="card h-100 lookup-result-card shadow-sm" data-workout-card="{{ workout.workout_id }}">
+                                                        <div class="card-body d-flex flex-column">
+                                                            <div class="d-flex justify-content-center align-items-center">
+                                                                <h5 class="card-title text-primary fw-bold mb-0">{{ workout_name }}</h5>
+                                                            </div>
+                                                            <div class="personal-best max-summary mt-3 text-center" data-id="{{ workout.workout_id }}" data-category="{{ workout_category }}">
+                                                                <span class="max-label text-uppercase fw-semibold d-block small text-muted">Client Max</span>
+                                                                <div class="max-pill-group d-inline-flex gap-2">
+                                                                    <span class="max-pill max-pill-weight">{{ weight_display }}</span>
+                                                                    <span class="max-pill max-pill-reps">{{ reps_display }}</span>
+                                                                </div>
+                                                                <span class="personal-max-text d-none">Client Max: {{ weight_display }} × {{ reps_display }}</span>
+                                                            </div>
+                                                            <div class="d-flex flex-column flex-sm-column gap-2 mt-3">
+                                                                <button class="btn btn-outline-secondary btn-sm max-action-btn update-pr-link" data-id="{{ workout.workout_id }}" data-category="{{ workout_category }}">Update Max</button>
+                                                                <button class="btn btn-outline-primary btn-sm max-action-btn toggle-description"
+                                                                        type="button"
+                                                                        data-id="lookup-desc-{{ workout.workout_id }}-{{ loop.index0 }}"
+                                                                        data-label-show="View Description"
+                                                                        data-label-hide="Hide Description">
+                                                                    View Description
+                                                                </button>
+                                                            </div>
+                                                            <div id="lookup-desc-{{ workout.workout_id }}-{{ loop.index0 }}" class="exercise-description lookup-description mt-3 text-center" style="display:none;">
+                                                                <p class="small text-muted mb-0">{{ workout.description or 'No description available.' }}</p>
+                                                            </div>
+                                                            <div class="exercise-notes mt-3 text-start">
+                                                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                                                    <i class="bi bi-journal-text text-primary"></i>
+                                                                    <button class="btn btn-outline-info btn-sm edit-notes-btn" data-id="{{ workout.workout_id }}" data-category="{{ workout_category }}" data-notes="{{ notes_text|urlencode }}">
+                                                                        {{ 'Edit Notes' if has_notes else 'Add Notes' }}
+                                                                    </button>
+                                                                </div>
+                                                                <div class="notes-body small" data-id="{{ workout.workout_id }}">
+                                                                    {% if has_notes %}
+                                                                        {{ notes_text|replace('\n', '<br>')|safe }}
+                                                                    {% else %}
+                                                                        <span class="text-muted">{{ NOTES_PLACEHOLDER }}</span>
+                                                                    {% endif %}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            {% endfor %}
+                                        </div>
+                                    {% else %}
+                                        <div class="lookup-empty-state text-center">
+                                            <i class="bi bi-emoji-neutral"></i>
+                                            <p class="mb-0">No workouts found for &ldquo;{{ exercise_search_term }}&rdquo;. Try a different phrase.</p>
+                                        </div>
+                                    {% endif %}
+                                {% else %}
+                                    <!-- Intentionally left blank when no query -->
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <div class="col-12 col-lg-8 training-container client-workout">
+        <div class="col-12 training-container client-workout">
             <div class="card border-0 shadow-lg mb-4" style="border-radius: 20px;">
                 <div class="card-header border-0 bg-transparent text-center">
                     <h3 class="text-center text-white fw-bold p-3 rounded-3 border mb-0" style="text-shadow: 0 0 1.5px black; box-shadow: 0 0 12px lightslategray; background: #1EA4E6;">
@@ -485,7 +596,7 @@
                                                 {% set end_src = None %}
                                             {% endif %}
                                             <li class="mb-4">
-                                                <div class="card shadow text-center w-100 exercise-card">
+                                                <div class="card shadow text-center w-100 exercise-card" data-workout-card="{{ exercise.workout_id }}">
                                                     <h6 class="exercise-name">{{ exercise_name }}</h6>
                                                     {% if start_src or end_src %}
                                                     <div class="exercise-media-row d-flex justify-content-center flex-nowrap mb-3 px-2">
@@ -523,7 +634,13 @@
                                                         </div>
                                                         <div class="d-flex flex-wrap justify-content-center gap-2 max-action-buttons">
                                                             <button class="btn btn-outline-secondary btn-sm max-action-btn update-pr-link" data-id="{{ exercise.workout_id }}" data-category="{{ block.subcategory }}">Update Max</button>
-                                                            <button class="btn btn-outline-primary btn-sm max-action-btn toggle-description" type="button" data-id="desc-{{ exercise.workout_id }}">View Description</button>
+                                                            <button class="btn btn-outline-primary btn-sm max-action-btn toggle-description"
+                                                                    type="button"
+                                                                    data-id="desc-{{ exercise.workout_id }}"
+                                                                    data-label-show="View Description"
+                                                                    data-label-hide="Hide Description">
+                                                                View Description
+                                                            </button>
                                                         </div>
                                                     </div>
                                                     <div id="desc-{{ exercise.workout_id }}" class="exercise-description mt-3 text-center" style="display: none;">
@@ -1489,7 +1606,9 @@
         currentWorkoutId = target.dataset.id;
         const categoryLabel = (target.dataset.category || '').toLowerCase();
         const isCardio = categoryLabel === 'cardio';
-        const personalBest = document.querySelector(`.personal-best[data-id="${currentWorkoutId}"]`);
+        const container = target.closest('[data-workout-card]');
+        const personalBestSelector = `.personal-best[data-id="${currentWorkoutId}"]`;
+        const personalBest = container?.querySelector(personalBestSelector) || document.querySelector(personalBestSelector);
         const weightSpan = personalBest?.querySelector('.max-pill-weight');
         const repsSpan = personalBest?.querySelector('.max-pill-reps');
         const weightText = weightSpan ? weightSpan.textContent.trim() : '';
@@ -1539,16 +1658,16 @@
                 alert(data.error || 'Unable to update max.');
                 return;
             }
-            const personalBest = document.querySelector(`.personal-best[data-id="${currentWorkoutId}"]`);
-            if (personalBest) {
+            const personalBestBlocks = document.querySelectorAll(`.personal-best[data-id="${currentWorkoutId}"]`);
+            const isCardio = maxRepsInput?.dataset.isCardio === '1';
+            const isBodyweight = maxWeightInput?.disabled;
+            const returnedWeight = data.max_weight;
+            const returnedReps = data.max_reps;
+
+            personalBestBlocks.forEach((personalBest) => {
                 const weightSpan = personalBest.querySelector('.max-pill-weight');
                 const repsSpan = personalBest.querySelector('.max-pill-reps');
                 const summary = personalBest.querySelector('.personal-max-text');
-
-                const isCardio = maxRepsInput?.dataset.isCardio === '1';
-                const isBodyweight = maxWeightInput?.disabled;
-                const returnedWeight = data.max_weight;
-                const returnedReps = data.max_reps;
 
                 if (weightSpan) {
                     if (isBodyweight) {
@@ -1571,7 +1690,7 @@
                 if (summary && weightSpan && repsSpan) {
                     summary.textContent = `Client Max: ${weightSpan.textContent} × ${repsSpan.textContent}`;
                 }
-            }
+            });
             closeModal(prModal);
             showToast('Personal record updated!');
         })
@@ -1604,12 +1723,11 @@
                 alert(data.error || 'Unable to update notes.');
                 return;
             }
-            const notesBody = document.querySelector(`.notes-body[data-id="${currentWorkoutId}"]`);
             const triggers = document.querySelectorAll(`.edit-notes-btn[data-id="${currentWorkoutId}"]`);
             const displayHtml = notesValue ? escapeHtml(notesValue).replace(/\n/g, '<br>') : `<span class="text-muted">${escapeHtml(NOTES_PLACEHOLDER)}</span>`;
-            if (notesBody) {
-                notesBody.innerHTML = displayHtml;
-            }
+            document.querySelectorAll(`.notes-body[data-id="${currentWorkoutId}"]`).forEach((body) => {
+                body.innerHTML = displayHtml;
+            });
             triggers.forEach(btn => {
                 btn.dataset.notes = encodeURIComponent(notesValue);
                 btn.textContent = notesValue ? 'Edit Notes' : 'Add Notes';
@@ -1635,6 +1753,8 @@
             const descId = target.dataset.id;
             const descEl = document.getElementById(descId);
             if (!descEl) return;
+            const showLabel = target.dataset.labelShow;
+            const hideLabel = target.dataset.labelHide;
             const isHidden = descEl.style.display === '' || descEl.style.display === 'none';
             if (isHidden) {
                 descEl.style.display = 'block';
@@ -1644,13 +1764,17 @@
                 requestAnimationFrame(() => {
                     descEl.style.maxHeight = descEl.scrollHeight + 'px';
                 });
-                target.textContent = 'Hide Description';
+                if (typeof hideLabel !== 'undefined') {
+                    target.textContent = hideLabel;
+                }
             } else {
                 descEl.style.maxHeight = '0px';
                 setTimeout(() => {
                     descEl.style.display = 'none';
                 }, 300);
-                target.textContent = 'View Description';
+                if (typeof showLabel !== 'undefined') {
+                    target.textContent = showLabel;
+                }
             }
         };
 
@@ -1883,3 +2007,29 @@
 })();
 </script>
 {% endblock %}
+
+{% if exercise_search_term %}
+<script>
+(function() {
+    const resultsSection = document.getElementById('exercise-lookup-results');
+    if (!resultsSection) return;
+
+    const scrollToResults = () => {
+        requestAnimationFrame(() => {
+            resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            try {
+                resultsSection.focus({ preventScroll: true });
+            } catch (err) {
+                resultsSection.focus();
+            }
+        });
+    };
+
+    if (document.readyState === 'complete' || document.readyState === 'interactive') {
+        scrollToResults();
+    } else {
+        document.addEventListener('DOMContentLoaded', scrollToResults, { once: true });
+    }
+})();
+</script>
+{% endif %}
