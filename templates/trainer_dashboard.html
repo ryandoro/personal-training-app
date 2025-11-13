@@ -6,97 +6,84 @@
 
 {% block content %}
 <div class="trainer-dashboard-container container-fluid px-0 px-sm-3 px-lg-5">
-    <div class="card w-100 shadow-sm p-0 border border-2 rounded-3 mb-4 trainer-dashboard-card" style="border-color: #ced4da;">
-        <div class="card-body">
-            <h2 class="card-header text-center text-white mb-4 p-3" style="background-color: #1EA4E6;">
-                TRAINER DASHBOARD
-            </h2>
+    <div class="card w-100 border-0 shadow-lg trainer-dashboard-card mx-auto">
+        {% set add_client_url = url_for('add_client') %}
+        {% set show_trainer_column = trainer.role == 'admin' %}
+        {% set first_name = trainer.name or '' %}
+        {% set last_name = trainer.last_name or '' %}
+        {% if first_name or last_name %}
+            {% set trainer_display_name = (first_name ~ ' ' ~ last_name)|trim %}
+        {% else %}
+            {% set trainer_display_name = trainer.username %}
+        {% endif %}
 
-            {% set add_client_url = url_for('add_client') %}
-            {% set show_trainer_column = trainer.role == 'admin' %}
-
-            <div class="d-flex flex-column align-items-center text-center gap-2 mb-4">
-                <div>
-                    <h3 class="mb-1">
-                        {% set first_name = trainer.name or '' %}
-                        {% set last_name = trainer.last_name or '' %}
-                        {% if first_name or last_name %}
-                            {{ first_name }} {{ last_name }}
-                        {% else %}
-                            {{ trainer.username }}
-                        {% endif %}
-                    </h3>
-                    <p class="text-muted mb-0">Manage your clients and sessions at a glance.</p>
+        <div class="trainer-dashboard-hero text-white text-center">
+            <div class="trainer-dashboard-hero__content">
+                <div class="dashboard-snapshot__icon dashboard-snapshot__icon--hero mb-3" aria-hidden="true">
+                    <i class="bi bi-people-fill"></i>
                 </div>
-            </div>
-
-            <div class="row g-3 mb-4">
-                <div class="col-md-6">
-                    <div class="card h-100 border-0 shadow-sm">
-                        <div class="card-body text-center">
-                            <h5 class="card-title text-muted text-uppercase mb-2">Total Clients</h5>
-                            <p class="display-6 fw-bold mb-0">{{ trainer_stats.total_clients or 0 }}</p>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-6">
-                    <div class="card h-100 border-0 shadow-sm">
-                        <div class="card-body text-center">
-                            <h5 class="card-title text-muted text-uppercase mb-2">Sessions Completed</h5>
-                            <p class="display-6 fw-bold mb-0">
-                                <span class="trainer-sessions-completed-value">{{ trainer_stats.sessions_completed or 0 }}</span>
-                            </p>
-                        </div>
+                <h2 class="trainer-dashboard-hero__title mb-3">Trainer Dashboard</h2>
+                <p class="trainer-dashboard-hero__subtitle mb-0">
+                    Manage your clients, upcoming sessions, and roster health.
+                </p>
+                <p class="trainer-dashboard-hero__meta mb-3">Signed in as {{ trainer_display_name }}</p>
+                <div class="dashboard-snapshot dashboard-snapshot--inline" aria-label="Roster snapshot">
+                    <div class="dashboard-snapshot__body">
+                        <p class="dashboard-snapshot__label mb-1">Roster Snapshot</p>
+                        <p class="dashboard-snapshot__value mb-1">
+                            {{ trainer_stats.total_clients or 0 }} clients •
+                            <span class="trainer-sessions-completed-value">{{ trainer_stats.sessions_completed or 0 }}</span> sessions
+                        </p>
+                        <p class="dashboard-snapshot__meta mb-0">All-time totals</p>
                     </div>
                 </div>
             </div>
+        </div>
 
-            <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between mb-4">
-                <form method="GET" action="{{ url_for('trainer_dashboard') }}" class="d-flex flex-column flex-md-row gap-2 w-100 w-md-auto">
-                    <div class="input-group">
-                        <input type="text" name="search" class="form-control" placeholder="Search clients by name, username, or email" value="{{ search_term }}">
-                        <button class="btn btn-brand-outline" type="submit">Search</button>
-                    </div>
-                </form>
-                <div class="mt-3 mt-md-0 ms-md-3">
-                    <a href="{{ add_client_url }}" class="btn btn-success w-100 w-md-auto">
-                        <i class="bi bi-person-plus-fill me-1"></i>Add Client
+        <div class="trainer-dashboard-body">
+            <div class="dashboard-quicklinks mb-3">
+                <span class="dashboard-quicklinks__label">
+                    <i class="bi bi-arrow-down"></i> Quick Jump
+                </span>
+                <div class="dashboard-quicklinks__buttons">
+                    <a href="#trainer-schedule" class="dashboard-quicklink">
+                        Schedule
+                    </a>
+                    <a href="#trainer-timeoff" class="dashboard-quicklink">
+                        Personal Time
                     </a>
                 </div>
             </div>
 
-            <div class="row g-3 mb-4 d-none">
-                <div class="col-md-6">
-                    <div class="card h-100 border-0 shadow-sm">
-                        <div class="card-body text-center">
-                            <h5 class="card-title text-muted text-uppercase mb-2">Total Clients</h5>
-                            <p class="display-6 fw-bold mb-0">{{ trainer_stats.total_clients or 0 }}</p>
-                        </div>
+            <div class="trainer-dashboard-toolbar d-flex flex-column flex-lg-row align-items-stretch gap-3 mt-4">
+                <form method="GET"
+                      action="{{ url_for('trainer_dashboard') }}"
+                      class="trainer-search-form flex-grow-1">
+                    <label for="trainer-dashboard-search" class="visually-hidden">Search Clients</label>
+                    <div class="input-group trainer-search-group">
+                        <span class="input-group-text">
+                            <i class="bi bi-search"></i>
+                        </span>
+                        <input type="text"
+                               id="trainer-dashboard-search"
+                               name="search"
+                               class="form-control trainer-search-input"
+                               placeholder="Search clients by name, username, or email"
+                               value="{{ search_term }}">
+                        <button class="btn btn-brand trainer-search-button" type="submit">Search</button>
                     </div>
-                </div>
-                <div class="col-md-6">
-                    <div class="card h-100 border-0 shadow-sm">
-                        <div class="card-body text-center">
-                            <h5 class="card-title text-muted text-uppercase mb-2">Sessions Completed</h5>
-                            <p class="display-6 fw-bold mb-0">
-                                <span class="trainer-sessions-completed-value">{{ trainer_stats.sessions_completed or 0 }}</span>
-                            </p>
-                        </div>
-                    </div>
+                </form>
+                <div class="trainer-add-client w-100">
+                    <a href="{{ add_client_url }}" class="btn btn-brand-outline w-100 trainer-add-client-btn">
+                        <i class="bi bi-person-plus-fill me-2"></i>Add Client
+                    </a>
                 </div>
             </div>
-
-            <form method="GET" action="{{ url_for('trainer_dashboard') }}" class="mb-4 d-none">
-                <div class="input-group">
-                    <input type="text" name="search" class="form-control" placeholder="Search clients by name, username, or email" value="{{ search_term }}">
-                    <button class="btn btn-brand-outline" type="submit">Search</button>
-                </div>
-            </form>
 
             {% with messages = get_flashed_messages(with_categories=true) %}
                 {% if messages %}
                     {% for category, message in messages %}
-                        <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                        <div class="alert alert-{{ category }} alert-dismissible fade show mt-4" role="alert">
                             {{ message }}
                             <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                         </div>
@@ -104,64 +91,71 @@
                 {% endif %}
             {% endwith %}
 
-            <div class="table-responsive">
-                <table class="table table-bordered table-hover align-middle mt-2">
-                    <thead class="table-light text-center">
-                        <tr>
-                            <th>First Name</th>
-                            <th>Last Name</th>
-                            <th>Workouts Completed</th>
-                            <th>Sessions Booked</th>
-                            <th>Sessions Completed</th>
-                            <th>Sessions Left</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% if clients %}
-                            {% for client in clients %}
-                                <tr data-client-id="{{ client.id }}">
-                                    {% set client_profile_url = url_for('client_profile', client_id=client.id) %}
-                                    <td><a href="{{ client_profile_url }}" class="text-decoration-none">{{ client.name or '—' }}</a></td>
-                                    <td><a href="{{ client_profile_url }}" class="text-decoration-none">{{ client.last_name or '—' }}</a></td>
-                                    <td class="text-center workouts-completed-cell">{{ client.workouts_completed or 0 }}</td>
-                                    <td class="text-center sessions-booked-cell">{{ client.sessions_booked or 0 }}</td>
-                                    <td class="text-center sessions-completed-cell">{{ client.sessions_completed_count }}</td>
-                                    <td class="text-center sessions-left-cell">
-                                        {% if client.sessions_total is not none %}
-                                            {{ client.sessions_left }} / {{ client.sessions_total }}
-                                        {% else %}
-                                            &infin;
-                                        {% endif %}
-                                    </td>
-                                    <td class="text-center">
-                                        <button type="button"
-                                                class="btn btn-sm btn-outline-primary book-client-btn"
-                                                data-client-id="{{ client.id }}"
-                                                data-client-name="{{ client.name or client.username }}"
-                                                data-client-lastname="{{ client.last_name or '' }}"
-                                                data-sessions="{{ client.sessions_total if client.sessions_total is not none else '' }}"
-                                                data-sessions-booked="{{ client.sessions_booked or 0 }}"
-                                                data-sessions-completed="{{ client.sessions_completed_count }}"
-                                                data-workouts-completed="{{ client.workouts_completed or 0 }}">
-                                            Book Now
-                                        </button>
-                                    </td>
-                                </tr>
-                            {% endfor %}
-                        {% else %}
+            <div class="trainer-clients-table mt-4">
+                <div class="table-responsive trainer-client-table-wrapper">
+                    <table class="table table-borderless align-middle trainer-client-table">
+                        <thead>
                             <tr>
-                                <td colspan="8" class="text-center text-muted">No clients assigned yet.</td>
+                                <th scope="col">Name</th>
+                                <th scope="col" class="text-center">Workouts Completed</th>
+                                <th scope="col" class="text-center">Sessions Booked</th>
+                                <th scope="col" class="text-center">Sessions Completed</th>
+                                <th scope="col" class="text-center">Sessions Left</th>
+                                <th scope="col" class="text-center">Actions</th>
                             </tr>
-                        {% endif %}
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody>
+                            {% if clients %}
+                                {% for client in clients %}
+                                    <tr data-client-id="{{ client.id }}">
+                                        {% set client_profile_url = url_for('client_profile', client_id=client.id) %}
+                                        {% set full_name = ((client.name or '') ~ ' ' ~ (client.last_name or '')) | trim %}
+                                        {% set client_display_name = full_name if full_name else (client.username or '—') %}
+                                        <td>
+                                            <a href="{{ client_profile_url }}" class="trainer-client-link table-link-pill text-decoration-none">
+                                                <span>{{ client_display_name }}</span>
+                                                <span class="visually-hidden">Open client profile</span>
+                                            </a>
+                                        </td>
+                                        <td class="text-center workouts-completed-cell">{{ client.workouts_completed or 0 }}</td>
+                                        <td class="text-center sessions-booked-cell">{{ client.sessions_booked or 0 }}</td>
+                                        <td class="text-center sessions-completed-cell">{{ client.sessions_completed_count }}</td>
+                                        <td class="text-center sessions-left-cell">
+                                            {% if client.sessions_total is not none %}
+                                                {{ client.sessions_left }} / {{ client.sessions_total }}
+                                            {% else %}
+                                                &infin;
+                                            {% endif %}
+                                        </td>
+                                        <td class="text-center">
+                                            <button type="button"
+                                                    class="btn trainer-client-action book-client-btn"
+                                                    data-client-id="{{ client.id }}"
+                                                    data-client-name="{{ client.name or client.username }}"
+                                                    data-client-lastname="{{ client.last_name or '' }}"
+                                                    data-sessions="{{ client.sessions_total if client.sessions_total is not none else '' }}"
+                                                    data-sessions-booked="{{ client.sessions_booked or 0 }}"
+                                                    data-sessions-completed="{{ client.sessions_completed_count }}"
+                                                    data-workouts-completed="{{ client.workouts_completed or 0 }}">
+                                                Book Now
+                                            </button>
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                            {% else %}
+                                <tr>
+                                    <td colspan="6" class="text-center text-muted py-4">No clients assigned yet.</td>
+                                </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
     </div>
 </div>
 
-<div class="trainer-calendar-container container-fluid px-0 px-sm-3 px-lg-5">
+<div class="trainer-calendar-container container-fluid px-0 px-sm-3 px-lg-5" id="trainer-schedule">
     <div id="calendar-card" class="card border-0 shadow-lg mt-4 trainer-schedule-card mx-auto" style="border-radius: 20px;">
         <div class="card-header border-0 d-flex flex-column align-items-center text-center gap-3"
              style="background: linear-gradient(135deg, #1EA4E6 0%, #33C3F0 100%); border-top-left-radius: 20px; border-top-right-radius: 20px;">
@@ -227,7 +221,7 @@
     </div>
 </div>
 
-<div class="trainer-timeoff-container container-fluid px-0 px-sm-3 px-lg-5">
+<div class="trainer-timeoff-container container-fluid px-0 px-sm-3 px-lg-5" id="trainer-timeoff">
     <div class="card border-0 shadow-sm mt-4 mb-5 timeoff-card mx-auto" style="border-radius: 18px;">
         <div class="card-body p-4">
             <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center mb-3 gap-3">
@@ -461,10 +455,7 @@
     let toastTimeout = null;
     let eventNoteStatusTimer = null;
     const trainerSessionsCompletedEls = document.querySelectorAll('.trainer-sessions-completed-value');
-    const trainerStats = {
-        totalClients: {{ trainer_stats.total_clients or 0 }},
-        sessionsCompleted: {{ trainer_stats.sessions_completed or 0 }}
-    };
+    const trainerStats = JSON.parse('{{ {"totalClients": trainer_stats.total_clients|default(0, true), "sessionsCompleted": trainer_stats.sessions_completed|default(0, true)} | tojson | safe }}');
 
     function setTrainerSessionsCompleted(value) {
         const numeric = Number(value);
