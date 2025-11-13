@@ -318,6 +318,25 @@
                 </form>
             </div>
 
+            <div class="event-session-modal__section d-none" id="timeOffEditSection">
+                <label class="form-label small text-uppercase text-muted">Personal Time Block</label>
+                <form id="timeOffModalForm" class="row g-2" novalidate>
+                    <div class="col-12 col-sm-6">
+                        <label for="timeOffModalStart" class="form-label mb-1">Start</label>
+                        <input type="datetime-local" class="form-control" id="timeOffModalStart" step="900" required>
+                    </div>
+                    <div class="col-12 col-sm-6">
+                        <label for="timeOffModalEnd" class="form-label mb-1">End</label>
+                        <input type="datetime-local" class="form-control" id="timeOffModalEnd" step="900" required>
+                    </div>
+                    <div class="col-12">
+                        <button type="submit" class="btn btn-warning w-100" id="timeOffModalSave">
+                            <i class="bi bi-save me-1"></i>Update Personal Time
+                        </button>
+                    </div>
+                </form>
+            </div>
+
             <div class="event-session-modal__section" id="eventRepeatSection">
                 <label for="eventRepeatWeeks" class="form-label small text-uppercase text-muted">Repeat Weekly</label>
                 <form id="eventRepeatForm" class="event-session-modal__inline" novalidate>
@@ -420,6 +439,11 @@
     const timeOffEndInput = document.getElementById('timeOffEnd');
     const timeOffSubmit = document.getElementById('timeOffSubmit');
     const timeOffNoteInput = document.getElementById('timeOffNote');
+    const timeOffEditSection = document.getElementById('timeOffEditSection');
+    const timeOffModalForm = document.getElementById('timeOffModalForm');
+    const timeOffModalStartInput = document.getElementById('timeOffModalStart');
+    const timeOffModalEndInput = document.getElementById('timeOffModalEnd');
+    const timeOffModalSaveButton = document.getElementById('timeOffModalSave');
     const eventNoteForm = document.getElementById('eventNoteForm');
     const eventNoteInput = document.getElementById('eventNoteInput');
     const eventNoteSave = document.getElementById('eventNoteSave');
@@ -430,6 +454,7 @@
     const eventStatusUpdateDefault = eventStatusUpdate ? eventStatusUpdate.innerHTML : '';
     const eventDeleteDefault = eventDeleteSession ? eventDeleteSession.innerHTML : '';
     const eventNoteSaveDefault = eventNoteSave ? eventNoteSave.innerHTML : '';
+    const timeOffModalSaveDefault = timeOffModalSaveButton ? timeOffModalSaveButton.innerHTML : '';
     const globalToast = document.getElementById('globalToast');
     const toastMessageEl = document.getElementById('toastMessage');
     const toastVariants = ['toast-success', 'toast-warning', 'toast-danger', 'toast-info'];
@@ -1004,6 +1029,22 @@
         if (eventStatusSection) {
             eventStatusSection.hidden = eventType === 'time_off';
         }
+        if (timeOffEditSection) {
+            timeOffEditSection.classList.toggle('d-none', eventType !== 'time_off');
+        }
+        if (timeOffModalStartInput && timeOffModalEndInput) {
+            if (eventType === 'time_off') {
+                timeOffModalStartInput.value = formatDateTimeLocalInput(start);
+                timeOffModalEndInput.value = formatDateTimeLocalInput(end);
+            } else {
+                timeOffModalStartInput.value = '';
+                timeOffModalEndInput.value = '';
+            }
+        }
+        if (timeOffModalSaveButton) {
+            timeOffModalSaveButton.disabled = eventType !== 'time_off';
+            timeOffModalSaveButton.innerHTML = timeOffModalSaveDefault;
+        }
         if (eventViewProfileBtn) {
             if (eventType === 'time_off') {
                 eventViewProfileBtn.hidden = true;
@@ -1083,6 +1124,10 @@
         if (eventNoteSave) {
             eventNoteSave.disabled = false;
             eventNoteSave.innerHTML = eventNoteSaveDefault;
+        }
+        if (timeOffModalSaveButton) {
+            timeOffModalSaveButton.disabled = false;
+            timeOffModalSaveButton.innerHTML = timeOffModalSaveDefault;
         }
         updateNoteWrapperHighlight('');
         clearEventNoteStatus();
@@ -1338,6 +1383,16 @@
         return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
     }
 
+    function formatDateTimeLocalInput(date) {
+        if (!(date instanceof Date) || Number.isNaN(date.getTime())) return '';
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        const hours = String(date.getHours()).padStart(2, '0');
+        const minutes = String(date.getMinutes()).padStart(2, '0');
+        return `${year}-${month}-${day}T${hours}:${minutes}`;
+    }
+
     function rangesOverlap(startA, endA, startB, endB) {
         return startA < endB && endA > startB;
     }
@@ -1533,6 +1588,94 @@
                 if (timeOffSubmit) {
                     timeOffSubmit.disabled = false;
                     timeOffSubmit.innerHTML = '<i class="bi bi-calendar-plus me-1"></i>Block Personal Time';
+                }
+            });
+    }
+
+    function handleTimeOffModalSubmit(event) {
+        if (event) event.preventDefault();
+        if (!state.modalEvent || state.modalEvent.type !== 'time_off') return;
+        if (!timeOffModalStartInput || !timeOffModalEndInput || !timeOffModalSaveButton) return;
+        const startValue = timeOffModalStartInput.value;
+        const endValue = timeOffModalEndInput.value;
+        if (!startValue || !endValue) {
+            showDashboardToast('Select both a start and end time for personal time.', 'warning');
+            return;
+        }
+        const startDate = new Date(startValue);
+        const endDate = new Date(endValue);
+        if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+            showDashboardToast('Enter valid start and end times.', 'warning');
+            return;
+        }
+        if (startDate >= endDate) {
+            showDashboardToast('End time must be after the start time.', 'warning');
+            return;
+        }
+        if (startDate.toDateString() !== endDate.toDateString()) {
+            showDashboardToast('Personal time blocks must start and end on the same day.', 'warning');
+            return;
+        }
+        if ((startDate.getMinutes() % 15) !== 0 || (endDate.getMinutes() % 15) !== 0) {
+            showDashboardToast('Times must be aligned to 15-minute increments.', 'warning');
+            return;
+        }
+        const windowStartMinutes = state.viewStart * 60;
+        const windowEndMinutes = state.viewEnd * 60;
+        const blockStartMinutes = startDate.getHours() * 60 + startDate.getMinutes();
+        const blockEndMinutes = endDate.getHours() * 60 + endDate.getMinutes();
+        if (blockStartMinutes < windowStartMinutes || blockEndMinutes > windowEndMinutes) {
+            showDashboardToast('Personal time must stay within your visible availability window.', 'warning');
+            return;
+        }
+        const currentKey = eventKey(state.modalEvent);
+        if (hasBlockingConflict(startDate, endDate, 'time_off', currentKey)) {
+            showDashboardToast('Personal time cannot overlap sessions or other personal time blocks.', 'danger');
+            return;
+        }
+
+        timeOffModalSaveButton.disabled = true;
+        timeOffModalSaveButton.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Saving...';
+
+        fetch(`/trainer/time-off/${state.modalEvent.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                start_time: startDate.toISOString(),
+                end_time: endDate.toISOString()
+            })
+        })
+            .then(res => res.json())
+            .then(data => {
+                if (!data.success) {
+                    showDashboardToast(data.error || 'Unable to update personal time block.', 'danger');
+                    return;
+                }
+                const updatedBlock = data.block || null;
+                if (updatedBlock) {
+                    upsertEvent(updatedBlock);
+                    sortEvents();
+                    renderEvents();
+                    const priorRepeatInfo = state.modalEvent ? state.modalEvent.repeatInfo : undefined;
+                    state.modalEvent = {
+                        ...updatedBlock,
+                        type: 'time_off',
+                        status: 'time_off',
+                        repeatInfo: priorRepeatInfo
+                    };
+                    refreshModalFromState();
+                } else {
+                    fetchEvents();
+                }
+                showDashboardToast('Personal time updated.', 'success');
+            })
+            .catch(() => {
+                showDashboardToast('Network error updating personal time block.', 'danger');
+            })
+            .finally(() => {
+                if (timeOffModalSaveButton) {
+                    timeOffModalSaveButton.disabled = false;
+                    timeOffModalSaveButton.innerHTML = timeOffModalSaveDefault;
                 }
             });
     }
@@ -2329,6 +2472,9 @@
         }
         if (eventDeleteSession) {
             eventDeleteSession.addEventListener('click', handleDeleteEntry);
+        }
+        if (timeOffModalForm) {
+            timeOffModalForm.addEventListener('submit', handleTimeOffModalSubmit);
         }
         if (timeOffForm) {
             timeOffForm.addEventListener('submit', handleTimeOffSubmit);
