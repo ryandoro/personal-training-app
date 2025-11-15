@@ -5,270 +5,358 @@ Account Settings
 {% endblock %}
 
 {% block content %}
-<div class="page-hero page-hero--scroll">
-    <div class="page-card page-card--wide page-card--flush" style="background: rgba(255, 255, 255, 0.75); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);">
-        <div class="page-section text-center">
-            <h2 class="fw-semibold mb-0">Account Settings</h2>
+<div class="experience-container experience-container--wide">
+    <div class="surface-card">
+        <div class="surface-hero surface-hero--dashboard">
+            <div class="surface-hero__icon">
+                <i class="bi bi-sliders"></i>
+            </div>
+            <h2 class="surface-hero__title">Account Settings</h2>
+            <p class="surface-hero__subtitle">
+                Keep your information current so training plans, billing, and messaging stay perfectly in sync.
+            </p>
         </div>
-
-        <form method="post">
-            {% if form_completed %}
-                <!-- Account Info -->
-                <h5 class="mt-4 text-primary">Account Info</h5>
-                {% for field in ['username', 'name', 'last_name', 'email'] %}
-                <div class="mb-3">
-                    <label class="form-label fw-bold">{{ field.replace('_', ' ').title() }}</label>
-                    <input type="text" class="form-control" name="{{ field }}" value="{{ user.get(field, '') }}">
-                </div>
-                {% endfor %}
-
-                <!-- Manage Stripe Subscription -->
-                {% if user.subscription_type == 'premium' and (not user.trial_end_date or user.trial_end_date < current_date) %}
-                    <!-- Active Premium User (not in trial) -->
-                    <div class="text-center mt-4">
-                        <a href="{{ url_for('customer_portal') }}" class="btn btn-brand">
-                            Manage Subscription
-                        </a>
-                        <small class="d-block text-muted mt-2">Update your subscription anytime</small>
-                    </div>
-                {% else %}
-                    <!-- Free or Trial user -->
-                    <div class="text-center mt-4">
-                        <a href="{{ url_for('upgrade') }}" class="btn btn-brand">
-                            Upgrade to Premium
-                        </a>
-                        <small class="d-block text-muted mt-2">Unlock full access to your personalized training experience</small>
-                    </div>
-                {% endif %}            
-
-                <!-- Training Info -->
-                <h5 class="mt-4 text-primary">Personal & Training Info</h5>
-
-                <!-- Age -->
-                <div class="mb-3">
-                    <label class="form-label fw-bold">Age</label>
-                    <input type="number" class="form-control" name="age" step="1" inputmode="numeric" value="{{ user.get('age', '') }}">
-                </div>
-
-                <!-- Weight -->
-                <div class="mb-3">
-                    <label class="form-label fw-bold">Weight (Pounds)</label>
-                    <input type="number" class="form-control" name="weight" step="0.1" min="0" max="999.9" inputmode="decimal" value="{{ user.get('weight', '') }}">
-                </div>
-
-                <!-- Height -->
-                <div class="mb-3 row">
-                    <label class="form-label fw-bold">Height</label>
-                    <div class="col">
-                        <input type="number" class="form-control" name="height_feet" placeholder="Feet" step="1" min="0" inputmode="numeric" value="{{ user.get('height_feet', '') }}">
-                    </div>
-                    <div class="col">
-                        <input type="number" class="form-control" name="height_inches" placeholder="Inches" value="{{ user.get('height_inches', '') }}" min="0" max="11" step="1" inputmode="numeric">
-                    </div>
-                </div>
-
-                <!-- Gender -->
-                <div class="mb-3">
-                    <label class="form-label fw-bold d-block">Gender</label>
-                    <div class="form-check form-check-inline">
-                        <input class="form-check-input" type="radio" name="gender" id="gender-male" value="Male" {% if user.get('gender') == 'Male' %}checked{% endif %}>
-                        <label class="form-check-label" for="gender-male">Male</label>
-                    </div>
-                    <div class="form-check form-check-inline">
-                        <input class="form-check-input" type="radio" name="gender" id="gender-female" value="Female" {% if user.get('gender') == 'Female' %}checked{% endif %}>
-                        <label class="form-check-label" for="gender-female">Female</label>
-                    </div>
-                </div>
-
-                <!-- Exercise History -->
-                <div class="mb-3">
-                    <label class="form-label fw-bold">Exercise History</label>
-                    <select class="form-select" name="exercise_history">
-                        <option value="" disabled>Select an option</option>
-                        {% for option in ['No Exercise History', 'Exercise less than 1 year', 'Exercise 1-5 years', 'Exercise 5+ years'] %}
-                            <option value="{{ option }}" {% if user.get('exercise_history') == option %}selected{% endif %}>{{ option }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-
-                <!-- Fitness Goals -->
-                <div class="mb-3">
-                    <label class="form-label fw-bold d-block">Fitness Goals <small>(Select up to 2)</small></label>
-                    <small class="text-muted d-block mb-2">
-                        We recommend selecting 1 or 2 goals to help keep your training focused and effective.
-                    </small>
-                    <div id="fitness-goals-group">
-                        {% set goals_list = user.get('fitness_goals', '').split(',') | map('trim') | list %}
-                        {% for goal in ['Lose Weight', 'Gain Muscle', 'Tone Muscle', 'Abs', 'Increase Strength', 'Increase Endurance', 'Feel Better'] %}
-                        <div class="form-check">
-                            <input type="checkbox" class="form-check-input goal-checkbox" id="{{ goal | lower | replace(' ', '-') }}" name="fitness_goals" value="{{ goal }}"
-                                {% if goal in goals_list %}checked{% endif %}>
-                            <label class="form-check-label" for="{{ goal | lower | replace(' ', '-') }}">{{ goal }}</label>
+        <div class="surface-body surface-body--dense">
+            <form method="post" class="d-flex flex-column gap-4">
+                {% if form_completed %}
+                    <div class="surface-section surface-section--flat">
+                        <div class="surface-section__header">
+                            <div class="surface-section__icon">
+                                <i class="bi bi-person-badge"></i>
+                            </div>
+                            <div>
+                                <h5 class="surface-section__title mb-1">Account Info</h5>
+                                <p class="surface-section__subtitle mb-0">Update the basics that power your login and communications.</p>
+                            </div>
                         </div>
-                        {% endfor %}
-                    </div>
-                    <div class="text-danger small mt-1" id="goal-warning" style="display: none;"></div>
-                </div>
-
-                {% set injury_status_value = injury_status or 'No' %}
-                {% set injury_regions_json = (injury_regions | default([], true)) | tojson %}
-                {% set cardio_checked = cardio_restriction %}
-                {% set chip_region_slugs = ['neck','shoulders','upper_back','lower_back','elbows','wrists','hips','knees','ankles','cardio'] %}
-
-                <!-- Injury or Restriction Intake -->
-                <div class="mb-4">
-                    <p class="form-label fw-bold d-block mb-1">
-                        Do you currently have any injuries or medical restrictions that require you to avoid exercising certain areas of your body?
-                    </p>
-                    <p class="form-text text-muted">Selecting "Yes" means FitBaseAI will skip exercises involving those areas.</p>
-
-                    <div class="d-flex flex-wrap justify-content-center gap-4 injury-radio-group">
-                        <div class="form-check">
-                            <input type="radio"
-                                   class="form-check-input"
-                                   id="injury-status-yes"
-                                   name="injury_status"
-                                   value="Yes"
-                                   {% if injury_status_value == 'Yes' %}checked{% endif %}>
-                            <label class="form-check-label" for="injury-status-yes">Yes</label>
+                        <div class="row g-3">
+                            {% for field in ['username', 'name', 'last_name', 'email'] %}
+                                <div class="col-md-6">
+                                    <label class="form-label fw-semibold">{{ field.replace('_', ' ').title() }}</label>
+                                    <input type="text"
+                                           class="form-control"
+                                           name="{{ field }}"
+                                           value="{{ user.get(field, '') }}">
+                                </div>
+                            {% endfor %}
                         </div>
-                        <div class="form-check">
-                            <input type="radio"
-                                   class="form-check-input"
-                                   id="injury-status-no"
-                                   name="injury_status"
-                                   value="No"
-                                   {% if injury_status_value != 'Yes' %}checked{% endif %}>
-                            <label class="form-check-label" for="injury-status-no">No</label>
+                        <div class="surface-actions justify-content-center mt-3">
+                            {% if user.subscription_type == 'premium' and (not user.trial_end_date or user.trial_end_date < current_date) %}
+                                <a href="{{ url_for('customer_portal') }}" class="btn btn-brand">
+                                    Manage Subscription
+                                </a>
+                            {% else %}
+                                <a href="{{ url_for('upgrade') }}" class="btn btn-brand">
+                                    Upgrade to Premium
+                                </a>
+                            {% endif %}
                         </div>
+                        <p class="text-center text-muted small mb-0">
+                            {% if user.subscription_type == 'premium' and (not user.trial_end_date or user.trial_end_date < current_date) %}
+                                Update your subscription anytime.
+                            {% else %}
+                                Unlock full access to your personalized training experience.
+                            {% endif %}
+                        </p>
                     </div>
 
-                    <div id="injury-fields-wrapper"
-                         class="injury-fields-wrapper {% if injury_status_value == 'Yes' %}expanded{% else %}collapsed{% endif %}">
-
-                        <div id="injury-fields" class="injury-fields mt-3 text-center"
-                             data-initial-regions='{{ injury_regions_json | e }}'
-                             data-cardio-prefill="{{ 'true' if cardio_checked else 'false' }}">
-
-                            <p class="text-muted small mb-2">
-                                Tap the buttons below to mark areas FitBaseAI should skip.
-                            </p>
-
-                            <div class="injury-chip-cloud mb-3">
-                                {% for slug in chip_region_slugs %}
-                                    {% set label = slug.replace('_', ' ')|title %}
-                                    <button type="button"
-                                            class="injury-chip"
-                                            data-region="{{ slug }}"
-                                            {% if slug in injury_regions %}data-active="true" aria-pressed="true"{% else %}data-active="false" aria-pressed="false"{% endif %}>
-                                        {{ label }}
-                                    </button>
+                    <div class="surface-section surface-section--flat">
+                        <div class="surface-section__header">
+                            <div class="surface-section__icon">
+                                <i class="bi bi-clipboard2-pulse"></i>
+                            </div>
+                            <div>
+                                <h5 class="surface-section__title mb-1">Personal & Training Info</h5>
+                                <p class="surface-section__subtitle mb-0">These details keep your programming precise.</p>
+                            </div>
+                        </div>
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <label class="form-label fw-semibold">Age</label>
+                                <input type="number"
+                                       class="form-control"
+                                       name="age"
+                                       step="1"
+                                       inputmode="numeric"
+                                       value="{{ user.get('age', '') }}">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label fw-semibold">Weight (Pounds)</label>
+                                <input type="number"
+                                       class="form-control"
+                                       name="weight"
+                                       step="0.1"
+                                       min="0"
+                                       max="999.9"
+                                       inputmode="decimal"
+                                       value="{{ user.get('weight', '') }}">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label fw-semibold d-block">Height</label>
+                                <div class="row g-2">
+                                    <div class="col">
+                                        <input type="number"
+                                               class="form-control"
+                                               name="height_feet"
+                                               placeholder="Feet"
+                                               step="1"
+                                               min="0"
+                                               inputmode="numeric"
+                                               value="{{ user.get('height_feet', '') }}">
+                                    </div>
+                                    <div class="col">
+                                        <input type="number"
+                                               class="form-control"
+                                               name="height_inches"
+                                               placeholder="Inches"
+                                               min="0"
+                                               max="11"
+                                               step="1"
+                                               inputmode="numeric"
+                                               value="{{ user.get('height_inches', '') }}">
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold d-block">Gender</label>
+                                <div class="d-flex flex-wrap gap-3">
+                                    <div class="form-check">
+                                        <input class="form-check-input"
+                                               type="radio"
+                                               name="gender"
+                                               id="gender-male"
+                                               value="Male"
+                                               {% if user.get('gender') == 'Male' %}checked{% endif %}>
+                                        <label class="form-check-label" for="gender-male">Male</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input"
+                                               type="radio"
+                                               name="gender"
+                                               id="gender-female"
+                                               value="Female"
+                                               {% if user.get('gender') == 'Female' %}checked{% endif %}>
+                                        <label class="form-check-label" for="gender-female">Female</label>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold">Exercise History</label>
+                                <select class="form-select" name="exercise_history">
+                                    <option value="" disabled>Select an option</option>
+                                    {% for option in ['No Exercise History', 'Exercise less than 1 year', 'Exercise 1-5 years', 'Exercise 5+ years'] %}
+                                        <option value="{{ option }}" {% if user.get('exercise_history') == option %}selected{% endif %}>{{ option }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                        <div class="mt-4">
+                            <label class="form-label fw-semibold d-block">Fitness Goals <small class="text-muted">(Select up to 2)</small></label>
+                            <small class="text-muted d-block mb-2">
+                                We recommend selecting one or two goals to keep your training focused and effective.
+                            </small>
+                            <div id="fitness-goals-group" class="row row-cols-1 row-cols-sm-2 row-cols-lg-3 g-2">
+                                {% set goals_list = user.get('fitness_goals', '').split(',') | map('trim') | list %}
+                                {% for goal in ['Lose Weight', 'Gain Muscle', 'Tone Muscle', 'Abs', 'Increase Strength', 'Increase Endurance', 'Feel Better'] %}
+                                    <div class="form-check">
+                                        <input type="checkbox"
+                                               class="form-check-input goal-checkbox"
+                                               id="{{ goal | lower | replace(' ', '-') }}"
+                                               name="fitness_goals"
+                                               value="{{ goal }}"
+                                               {% if goal in goals_list %}checked{% endif %}>
+                                        <label class="form-check-label" for="{{ goal | lower | replace(' ', '-') }}">{{ goal }}</label>
+                                    </div>
                                 {% endfor %}
                             </div>
+                            <div class="text-danger small mt-1" id="goal-warning" style="display: none;"></div>
+                        </div>
+                    </div>
 
-                            <input type="hidden" id="cardio-restriction" name="cardio_restriction" value="{% if cardio_checked %}yes{% endif %}">
-
-                            <div class="mt-3">
-                                <label for="injury-details" class="form-label fw-bold">Additional details</label>
-                                <textarea class="form-control"
-                                          id="injury-details"
-                                          name="injury_details"
-                                          rows="3"
-                                          placeholder="Share notes about the injury"
-                                          required>{{ injury_details }}</textarea>
+                    {% set injury_status_value = injury_status or 'No' %}
+                    {% set injury_regions_json = (injury_regions | default([], true)) | tojson %}
+                    {% set cardio_checked = cardio_restriction %}
+                    {% set chip_region_slugs = ['neck','shoulders','upper_back','lower_back','elbows','wrists','hips','knees','ankles','cardio'] %}
+                    <div class="surface-section surface-section--flat">
+                        <div class="surface-section__header">
+                            <div class="surface-section__icon">
+                                <i class="bi bi-heart-pulse"></i>
                             </div>
-
-                            <div class="mt-3">
-                                <span class="small text-muted d-block">Selected areas:</span>
-                                <div id="injury-selected" class="injury-selected-pills mt-2"></div>
+                            <div>
+                                <h5 class="surface-section__title mb-1">Injury & Restriction Intake</h5>
+                                <p class="surface-section__subtitle mb-0">Tell us what to avoid so we can keep you training safely.</p>
                             </div>
+                        </div>
+                        <p class="form-text text-muted mb-3">Selecting "Yes" means FitBaseAI will skip exercises involving those areas.</p>
+                        <div class="d-flex flex-wrap justify-content-center gap-4 injury-radio-group mb-3">
+                            <div class="form-check">
+                                <input type="radio"
+                                       class="form-check-input"
+                                       id="injury-status-yes"
+                                       name="injury_status"
+                                       value="Yes"
+                                       {% if injury_status_value == 'Yes' %}checked{% endif %}>
+                                <label class="form-check-label" for="injury-status-yes">Yes</label>
+                            </div>
+                            <div class="form-check">
+                                <input type="radio"
+                                       class="form-check-input"
+                                       id="injury-status-no"
+                                       name="injury_status"
+                                       value="No"
+                                       {% if injury_status_value != 'Yes' %}checked{% endif %}>
+                                <label class="form-check-label" for="injury-status-no">No</label>
+                            </div>
+                        </div>
 
-                            <input type="hidden" id="injury-input" name="injury" value='{{ injury_regions_json | e }}'>
+                        <div id="injury-fields-wrapper"
+                             class="injury-fields-wrapper {% if injury_status_value == 'Yes' %}expanded{% else %}collapsed{% endif %}">
+                            <div id="injury-fields"
+                                 class="injury-fields mt-3 text-center"
+                                 data-initial-regions='{{ injury_regions_json | e }}'
+                                 data-cardio-prefill="{{ 'true' if cardio_checked else 'false' }}">
+                                <p class="text-muted small mb-2">
+                                    Tap the buttons below to mark areas FitBaseAI should skip.
+                                </p>
+                                <div class="injury-chip-cloud mb-3">
+                                    {% for slug in chip_region_slugs %}
+                                        {% set label = slug.replace('_', ' ')|title %}
+                                        <button type="button"
+                                                class="injury-chip"
+                                                data-region="{{ slug }}"
+                                                {% if slug in injury_regions %}data-active="true" aria-pressed="true"{% else %}data-active="false" aria-pressed="false"{% endif %}>
+                                            {{ label }}
+                                        </button>
+                                    {% endfor %}
+                                </div>
+
+                                <input type="hidden" id="cardio-restriction" name="cardio_restriction" value="{% if cardio_checked %}yes{% endif %}">
+
+                                <div class="mt-3">
+                                    <label for="injury-details" class="form-label fw-semibold">Additional details</label>
+                                    <textarea class="form-control"
+                                              id="injury-details"
+                                              name="injury_details"
+                                              rows="3"
+                                              placeholder="Share notes about the injury"
+                                              required>{{ injury_details }}</textarea>
+                                </div>
+
+                                <div class="mt-3">
+                                    <span class="small text-muted d-block">Selected areas:</span>
+                                    <div id="injury-selected" class="injury-selected-pills mt-2"></div>
+                                </div>
+
+                                <input type="hidden" id="injury-input" name="injury" value='{{ injury_regions_json | e }}'>
+                            </div>
+                        </div>
+
+                        {% set skip_namespace = namespace(items=[]) %}
+                        {% if injury_excluded_categories %}
+                            {% for token in injury_excluded_categories %}
+                                {% if token not in skip_namespace.items %}
+                                    {% set _ = skip_namespace.items.append(token) %}
+                                {% endif %}
+                            {% endfor %}
+                        {% endif %}
+                        {% if injury_skipped_subcategories %}
+                            {% for token in injury_skipped_subcategories %}
+                                {% if token not in skip_namespace.items %}
+                                    {% set _ = skip_namespace.items.append(token) %}
+                                {% endif %}
+                            {% endfor %}
+                        {% endif %}
+
+                        <div id="injury-alert-banner"
+                             class="alert alert-success mt-3 {% if not skip_namespace.items %}d-none{% endif %}"
+                             role="status"
+                             data-default-categories='{{ (injury_excluded_categories | default([], true)) | tojson }}'
+                             data-default-subcategories='{{ (injury_skipped_subcategories | default([], true)) | tojson }}'
+                             data-default-cardio="{{ 'true' if cardio_restriction else 'false' }}">
+                            <strong>Workout adjustments applied:</strong>
+                            <span id="injury-alert-message">
+                                {% if skip_namespace.items %}
+                                    Skipping {{ skip_namespace.items | join(', ') }} exercises based on your restrictions.
+                                {% else %}
+                                    Your next workouts will consider any restrictions you add here.
+                                {% endif %}
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="surface-section surface-section--flat">
+                        <div class="surface-section__header">
+                            <div class="surface-section__icon">
+                                <i class="bi bi-hourglass-split"></i>
+                            </div>
+                            <div>
+                                <h5 class="surface-section__title mb-1">Preferences & Notes</h5>
+                                <p class="surface-section__subtitle mb-0">Fine-tune how your plan fits your schedule.</p>
+                            </div>
+                        </div>
+                        {% set wd = (user.get('workout_duration') | string) if user.get('workout_duration') is not none else '' %}
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold">Preferred workout duration</label>
+                            <select class="form-select" name="workout_duration" required>
+                                <option value="" disabled {% if not wd %}selected{% endif %}>Select an option</option>
+                                <option value="20" {% if wd == '20' %}selected{% endif %}>20 minutes</option>
+                                <option value="30" {% if wd == '30' %}selected{% endif %}>30 minutes</option>
+                                <option value="45" {% if wd == '45' %}selected{% endif %}>45 minutes</option>
+                                <option value="60" {% if wd == '60' %}selected{% endif %}>60 minutes</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold">Weekly commitment</label>
+                            <select class="form-select" name="commitment">
+                                <option value="" disabled>Select an option</option>
+                                {% for option in ['1 day per week', '2 days per week', '3 days per week'] %}
+                                    <option value="{{ option }}" {% if user.get('commitment') == option %}selected{% endif %}>{{ option }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div>
+                            <label class="form-label fw-semibold">Anything else you'd like to share?</label>
+                            <textarea class="form-control" name="additional_notes" rows="3">{{ user.get('additional_notes', '') }}</textarea>
+                        </div>
+                    </div>
+                {% else %}
+                    <div class="surface-section surface-section--flat">
+                        <div class="alert alert-info mb-0">
+                            To personalize your experience, please complete the
+                            <a href="{{ url_for('training') }}" class="alert-link">Personal Training Questionnaire</a> first.
+                        </div>
+                    </div>
+                {% endif %}
+
+                <div class="surface-section surface-section--flat">
+                    <div class="surface-section__header">
+                        <div class="surface-section__icon">
+                            <i class="bi bi-key"></i>
+                        </div>
+                        <div>
+                            <h5 class="surface-section__title mb-1">Change Password (Optional)</h5>
+                            <p class="surface-section__subtitle mb-0">Refresh your credentials securely whenever you need.</p>
+                        </div>
+                    </div>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">New Password</label>
+                            <input type="password" class="form-control" name="password" autocomplete="new-password">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Confirm New Password</label>
+                            <input type="password" class="form-control" name="confirm_password" autocomplete="new-password">
                         </div>
                     </div>
                 </div>
 
-                {% set skip_namespace = namespace(items=[]) %}
-                {% if injury_excluded_categories %}
-                    {% for token in injury_excluded_categories %}
-                        {% if token not in skip_namespace.items %}
-                            {% set _ = skip_namespace.items.append(token) %}
-                        {% endif %}
-                    {% endfor %}
-                {% endif %}
-                {% if injury_skipped_subcategories %}
-                    {% for token in injury_skipped_subcategories %}
-                        {% if token not in skip_namespace.items %}
-                            {% set _ = skip_namespace.items.append(token) %}
-                        {% endif %}
-                    {% endfor %}
-                {% endif %}
-
-                <div id="injury-alert-banner"
-                     class="alert alert-success mt-2 {% if not skip_namespace.items %}d-none{% endif %}"
-                     role="status"
-                     data-default-categories='{{ (injury_excluded_categories | default([], true)) | tojson }}'
-                     data-default-subcategories='{{ (injury_skipped_subcategories | default([], true)) | tojson }}'
-                     data-default-cardio="{{ 'true' if cardio_restriction else 'false' }}">
-                    <strong>Workout adjustments applied:</strong>
-                    <span id="injury-alert-message">
-                        {% if skip_namespace.items %}
-                            Skipping {{ skip_namespace.items | join(', ') }} exercises based on your restrictions.
-                        {% else %}
-                            Your next workouts will consider any restrictions you add here.
-                        {% endif %}
-                    </span>
+                <div class="surface-actions">
+                    <button type="submit" class="btn btn-brand btn-lg w-100 w-md-auto">
+                        Save Changes
+                    </button>
                 </div>
-
-                <!-- Preferred Workout Duration -->
-                <div class="mb-3">
-                    <label class="form-label fw-bold">What is your preferred workout duration?</label>
-                    {% set wd = (user.get('workout_duration') | string) if user.get('workout_duration') is not none else '' %}
-                    <select class="form-select" name="workout_duration" required>
-                    <option value="" disabled {% if not wd %}selected{% endif %}>Select an option</option>
-                    <option value="20" {% if wd == '20' %}selected{% endif %}>20 minutes</option>
-                    <option value="30" {% if wd == '30' %}selected{% endif %}>30 minutes</option>
-                    <option value="45" {% if wd == '45' %}selected{% endif %}>45 minutes</option>
-                    <option value="60" {% if wd == '60' %}selected{% endif %}>60 minutes</option>
-                    </select>
-                </div>
-  
-                <!-- Commitment -->
-                <div class="mb-3">
-                    <label class="form-label fw-bold">How many days per week are you willing to commit to your goals?</label>
-                    <select class="form-select" name="commitment">
-                        <option value="" disabled>Select an option</option>
-                        {% for option in ['1 day per week', '2 days per week', '3 days per week'] %}
-                            <option value="{{ option }}" {% if user.get('commitment') == option %}selected{% endif %}>{{ option }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-
-                <!-- Additional Notes -->
-                <div class="mb-3">
-                    <label class="form-label fw-bold">Anything else you'd like to share?</label>
-                    <textarea class="form-control" name="additional_notes" rows="3">{{ user.get('additional_notes', '') }}</textarea>
-                </div>
-            {% else %}
-                <div class="alert alert-info">
-                    To personalize your experience, please complete the <a href="{{ url_for('training') }}" class="alert-link">Personal Training Questionnaire</a> first.
-                </div>
-            {% endif %}
-
-            <!-- Password Update -->
-            <h5 class="mt-4 text-primary">Change Password (Optional)</h5>
-            <div class="mb-3">
-                <label class="form-label fw-bold">New Password</label>
-                <input type="password" class="form-control" name="password" autocomplete="new-password">
-            </div>
-            <div class="mb-3">
-                <label class="form-label fw-bold">Confirm New Password</label>
-                <input type="password" class="form-control" name="confirm_password" autocomplete="new-password">
-            </div>
-
-            <!-- Submit -->
-            <button type="submit" class="btn btn-brand w-100">Save Changes</button>
-        </form>
+            </form>
+        </div>
     </div>
 </div>
 

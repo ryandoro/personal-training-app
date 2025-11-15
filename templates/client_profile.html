@@ -17,16 +17,15 @@
     {% endif %}
     <div class="row g-4 client-profile-grid mb-3">
         <div class="col-12 client-profile-hero-col">
-            <div class="card shadow-sm border-0 h-100 overflow-hidden">
-                <div class="p-4 text-white rounded-3" style="background: linear-gradient(135deg, #1EA4E6 0%, #33C3F0 100%);">
-                    <div class="d-flex flex-column gap-3">
-                    <div class="d-flex align-items-center flex-wrap gap-2 w-100">
+            <div class="surface-card client-profile-hero-card">
+                <div class="surface-hero surface-hero--dashboard text-center text-md-start">
+                    <div class="d-flex flex-wrap align-items-center gap-2 w-100 surface-hero__actions justify-content-start">
                         <a href="{{ url_for('trainer_dashboard') }}"
-                           class="btn btn-outline-light btn-sm">
+                           class="btn btn-outline-secondary hero-action bg-white bg-opacity-10 text-white border-white">
                             <i class="bi bi-arrow-left me-1"></i>Back to Dashboard
                         </a>
                         <div class="dropdown ms-auto">
-                            <button class="btn btn-outline-light btn-sm d-flex align-items-center"
+                            <button class="btn btn-outline-light hero-action d-flex align-items-center justify-content-center"
                                     type="button"
                                     id="client-actions-menu"
                                     data-bs-toggle="dropdown"
@@ -70,8 +69,7 @@
                         </div>
                     </div>
                 </div>
-            </div>
-            <div class="card-body">
+                <div class="surface-body">
                 <div class="client-metrics-grid">
                     <div class="client-metric">
                         <span class="client-metric__label">Workouts</span>
@@ -100,7 +98,6 @@
                         <span class="client-metric__value">{{ client.last_workout_completed or '—' }}</span>
                     </div>
                 </div>
-                <hr class="my-4">
                     {% if injury_status == 'Yes' %}
                     <div class="alert alert-danger d-flex flex-column gap-2" role="status">
                         <div class="d-flex align-items-center gap-2">
@@ -143,7 +140,7 @@
                     {% set trainer_goals_list = (client.fitness_goals or '').split(',') | map('trim') | list %}
                     {% set trainer_chip_region_slugs = ['neck','shoulders','upper_back','lower_back','elbows','wrists','hips','knees','ankles','cardio'] %}
 
-                    <div class="card shadow-sm border-0 mt-4 collapsible-card w-100" style="margin-bottom: -2rem;">
+                    <div class="card shadow-sm border-0 mt-1 collapsible-card w-100" style="margin-bottom: -2rem;">
                         <button type="button"
                                 class="collapsible-toggle"
                                 data-target="trainer-settings-card"
@@ -286,7 +283,7 @@
                         </div>
                     </div>
 
-                    <section class="exercise-lookup-card mt-5 pt-2">
+                    <section class="exercise-lookup-card mt-4 pt-2">
                         <form class="exercise-lookup-form" method="GET" action="{{ url_for('client_profile', client_id=client.id) }}">
                             <label for="exercise-search-input" class="visually-hidden">Search client workouts</label>
                             <div class="lookup-input-group mb-4">

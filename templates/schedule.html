@@ -5,15 +5,12 @@
 {% endblock %}
 
 {% block content %}
-<div class="trainer-calendar-container container-fluid px-0 px-sm-3 px-lg-5">
-    <div id="calendar-card" class="card border-0 shadow-lg mt-4 trainer-schedule-card schedule-card mx-auto" style="border-radius: 20px;">
-        <div class="card-header border-0 d-flex flex-column align-items-center text-center gap-3"
-             style="background: linear-gradient(135deg, #1EA4E6 0%, #33C3F0 100%); border-top-left-radius: 20px; border-top-right-radius: 20px;">
-            <div class="d-flex flex-column gap-3 text-white w-100">
-                <div>
-                    <h4 class="mb-1 text-white">My Training Schedule</h4>
-                    <p class="mb-0 text-white-50">Your trainer keeps this calendar up to date. Check what's coming next.</p>
-                </div>
+<div class="trainer-calendar-container experience-container experience-container--wide">
+    <div id="calendar-card" class="surface-card trainer-schedule-card schedule-card mx-auto">
+        <div class="surface-hero surface-hero--dashboard text-white text-center">
+            <div class="surface-hero__content w-100">
+                <h4 class="surface-hero__title mb-1">My Training Schedule</h4>
+                <p class="surface-hero__subtitle mb-3">Your trainer keeps this calendar up to date. Check what's coming next.</p>
                 <div class="d-flex flex-column align-items-center">
                     <div class="selected-client-pill {% if not trainer_info %}selected-client-pill--empty{% endif %}">
                         <span class="selected-client-pill__label">Assigned Trainer</span>
@@ -28,7 +25,7 @@
                 </div>
             </div>
         </div>
-        <div class="card-body">
+        <div class="surface-body">
             {% if not trainer_info %}
                 <div class="alert alert-warning mb-3" role="alert">
                     You are not currently linked with a trainer. Schedule information will appear here once a trainer is assigned to you.

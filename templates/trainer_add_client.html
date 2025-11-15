@@ -5,57 +5,96 @@
 {% endblock %}
 
 {% block content %}
-<div class="container">
-    {% with messages = get_flashed_messages(with_categories=true) %}
-        {% if messages %}
-            {% for category, message in messages %}
-                <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
-                    {{ message }}
-                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                </div>
-            {% endfor %}
-        {% endif %}
-    {% endwith %}
-
-    <div class="card shadow-sm border-0">
-        <div class="card-body p-4">
-            <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center mb-4">
-                <div>
-                    <h2 class="mb-1">Add Client</h2>
-                    <p class="text-muted mb-0">Invite a client by email and we’ll send them a link to finish creating their account.</p>
-                </div>
-                <div class="mt-3 mt-md-0">
-                    <a href="{{ url_for('trainer_dashboard') }}" class="btn btn-outline-secondary">
-                        <i class="bi bi-arrow-left me-1"></i>Back to Dashboard
-                    </a>
-                </div>
+<div class="experience-container experience-container--wide">
+    <div class="surface-card">
+        <div class="surface-hero surface-hero--dashboard text-center">
+            <div class="d-flex flex-wrap justify-content-center gap-2 w-100 mb-3 surface-hero__actions">
+                <a href="{{ url_for('trainer_dashboard') }}"
+                   class="btn btn-outline-secondary hero-action bg-white bg-opacity-10 text-white border-white">
+                    <i class="bi bi-grid me-1"></i>Back to Dashboard
+                </a>
             </div>
+            <div class="d-flex flex-column align-items-center gap-2 w-100">
+                <div class="surface-hero__icon mb-2">
+                    <i class="bi bi-person-plus"></i>
+                </div>
+                <p class="surface-hero__eyebrow">Trainer Toolkit</p>
+                <h2 class="surface-hero__title mb-2">Invite a New Client</h2>
+                <p class="surface-hero__subtitle">
+                    Send a personal invite so clients can finish onboarding in minutes.
+                </p>
+            </div>
+        </div>
+        <div class="surface-body">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                            {{ message }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
 
             <div class="alert alert-info" role="alert">
-                Your client will receive an email to pick their username and password. You can also copy the invite link from the success message if you prefer to share it manually.
+                Your client receives a secure email to pick their username and password. You can also copy the invite link from the success message if you want to share it manually.
             </div>
 
-            <form method="POST" class="row g-4">
-                <div class="col-md-6">
-                    <label for="name" class="form-label">First Name</label>
-                    <input type="text" class="form-control" id="name" name="name" value="{{ form_data.get('name') if form_data else '' }}" placeholder="First Name">
+            <form method="POST" class="surface-section surface-section--flat">
+                <div class="surface-section__header">
+                    <div class="surface-section__icon">
+                        <i class="bi bi-envelope-paper"></i>
+                    </div>
+                    <div>
+                        <h5 class="surface-section__title mb-1">Client Details</h5>
+                        <p class="surface-section__subtitle mb-0">Basic info helps us personalize the welcome email.</p>
+                    </div>
                 </div>
-                <div class="col-md-6">
-                    <label for="last_name" class="form-label">Last Name</label>
-                    <input type="text" class="form-control" id="last_name" name="last_name" value="{{ form_data.get('last_name') if form_data else '' }}" placeholder="Last Name">
+                <div class="row g-4">
+                    <div class="col-md-6">
+                        <label for="name" class="form-label fw-semibold">First Name</label>
+                        <input type="text"
+                               class="form-control"
+                               id="name"
+                               name="name"
+                               value="{{ form_data.get('name') if form_data else '' }}"
+                               placeholder="First Name">
+                    </div>
+                    <div class="col-md-6">
+                        <label for="last_name" class="form-label fw-semibold">Last Name</label>
+                        <input type="text"
+                               class="form-control"
+                               id="last_name"
+                               name="last_name"
+                               value="{{ form_data.get('last_name') if form_data else '' }}"
+                               placeholder="Last Name">
+                    </div>
+                    <div class="col-md-6">
+                        <label for="email" class="form-label fw-semibold">Email <span class="text-danger">*</span></label>
+                        <input type="email"
+                               class="form-control"
+                               id="email"
+                               name="email"
+                               value="{{ form_data.get('email') if form_data else '' }}"
+                               required
+                               placeholder="client@email.com">
+                    </div>
+                    <div class="col-md-6">
+                        <label for="sessions_remaining" class="form-label fw-semibold">Sessions Purchased</label>
+                        <input type="number"
+                               class="form-control"
+                               id="sessions_remaining"
+                               name="sessions_remaining"
+                               min="0"
+                               value="{{ form_data.get('sessions_remaining') if form_data else '' }}"
+                               placeholder="Optional">
+                        <div class="form-text">Leave blank if sessions are unlimited.</div>
+                    </div>
                 </div>
-                <div class="col-md-6">
-                    <label for="email" class="form-label">Email <span class="text-danger">*</span></label>
-                    <input type="email" class="form-control" id="email" name="email" value="{{ form_data.get('email') if form_data else '' }}" required placeholder="Email">
-                </div>
-                <div class="col-md-6">
-                    <label for="sessions_remaining" class="form-label">Sessions Purchased</label>
-                    <input type="number" class="form-control" id="sessions_remaining" name="sessions_remaining" min="0" value="{{ form_data.get('sessions_remaining') if form_data else '' }}" placeholder="Sessions Purchased or Remaining">
-                    <div class="form-text">Leave blank if sessions are unlimited.</div>
-                </div>
-                <div class="col-12">
-                    <button type="submit" class="btn btn-primary">
-                        <i class="bi bi-person-plus-fill me-1"></i>Create Client
+                <div class="surface-actions mt-4">
+                    <button type="submit" class="btn btn-brand btn-lg">
+                        <i class="bi bi-send-fill me-2"></i>Send Invite
                     </button>
                 </div>
             </form>

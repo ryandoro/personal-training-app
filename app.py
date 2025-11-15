@@ -3992,18 +3992,33 @@ def search():
         flash("Please enter a search term.", "warning")
         return redirect("/training")
 
-    db = get_connection()
-    cursor = db.cursor()
-    cursor.execute("""
-        SELECT w.id, w.name, w.description, w.category, uep.max_weight, uep.max_reps
-        FROM workouts w
-        LEFT JOIN user_exercise_progress uep
-        ON w.id = uep.workout_id AND uep.user_id = %s
-        WHERE LOWER(w.name) LIKE LOWER(%s)
-    """, (session["user_id"], f"%{query}%"))
-    results = cursor.fetchall()
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            cursor.execute(
+                """
+                SELECT w.id AS workout_id,
+                       w.name,
+                       w.description,
+                       w.category,
+                       uep.max_weight,
+                       uep.max_reps,
+                       uep.notes
+                  FROM workouts w
+             LEFT JOIN user_exercise_progress uep
+                    ON w.id = uep.workout_id
+                   AND uep.user_id = %s
+                 WHERE LOWER(w.name) LIKE LOWER(%s)
+                """,
+                (session["user_id"], f"%{query}%"),
+            )
+            results = cursor.fetchall() or []
 
-    return render_template("search_results.html", query=query, results=results)
+    return render_template(
+        "search_results.html",
+        query=query,
+        results=results,
+        NOTES_PLACEHOLDER="No notes yet.",
+    )
 
 
 @app.route('/update_goals', methods=['POST'])
@@ -5151,6 +5166,28 @@ def admin_reactivate_user(user_id):
 
     flash("User reactivated.", "success")
     return redirect(url_for('admin_user_profile', user_id=user_id))
+
+
+@app.post('/admin/user/<int:user_id>/delete')
+@login_required
+def admin_delete_user(user_id):
+    if not is_admin(session['user_id']):
+        return "Access denied", 403
+
+    if session['user_id'] == user_id:
+        flash("You cannot delete your own account.", "warning")
+        return redirect(url_for('admin_user_profile', user_id=user_id))
+
+    with get_connection() as conn, conn.cursor() as cur:
+        cur.execute("DELETE FROM users WHERE id=%s", (user_id,))
+        if cur.rowcount == 0:
+            flash("User not found.", "warning")
+            conn.commit()
+            return redirect(url_for('admin_users'))
+        conn.commit()
+
+    flash("User account deleted.", "success")
+    return redirect(url_for('admin_users'))
 
 
 @app.context_processor

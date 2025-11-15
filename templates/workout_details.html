@@ -5,70 +5,91 @@
 {% endblock %}
 
 {% block content %}
-<div class="page-hero page-hero--scroll">
-    <div class="page-card page-card--wide page-card--flush" style="background: rgba(255, 255, 255, 0.75); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);">
-        <div class="page-section text-center">
-            <h2 class="fw-semibold mb-1">{{ display_category }}</h2>
-            <p class="text-muted mb-0">Workout Details</p>
+<div class="experience-container experience-container--wide">
+    <div class="surface-card surface-card--glass">
+        <div class="surface-hero">
+            <div class="surface-hero__icon">
+                <i class="bi bi-activity"></i>
+            </div>
+            <p class="surface-hero__eyebrow">Workout Details</p>
+            <h2 class="surface-hero__title">{{ display_category }}</h2>
+            <p class="surface-hero__subtitle">
+                Explore your most recently completed workout, including personal maxes and coaching notes.
+            </p>
         </div>
-
-        {% if workouts %}
+        <div class="surface-body">
+            {% if workouts %}
                 {% for subcategory, exercises in workouts.items() %}
                     {% set subcat_index = loop.index %}
-                    <h5 class="text-primary mt-4">{{ subcategory }}</h5>
-                    <ul class="list-group p-2 rounded-3 mb-4">
-                        {% for exercise in exercises %}
-                            {% set ex_index = loop.index %}
-                            <li class="list-group-item shadow-sm p-3 rounded-4 mb-3">
-                                <h6 class="mb-2 fw-semibold text-center">{{ exercise.name }}</h6>
-                                
-                                {% set is_cardio = subcategory|lower == 'cardio' %}
-                                {% set is_bodyweight = 'bodyweight' in exercise.name|lower or exercise.max_weight == 0 %}
-                                
-                                {% if is_cardio %}
-                                    {% if exercise.max_reps is not none %}
-                                        <p class="mb-0 text-dark small text-center">
-                                            Max: Bodyweight × {{ exercise.max_reps }} min
-                                        </p>
-                                    {% else %}
-                                        <p class="mb-0 text-muted small fst-italic text-center">No max recorded</p>
-                                    {% endif %}
-                                {% elif is_bodyweight %}
-                                    {% if exercise.max_reps is not none %}
-                                        <p class="mb-0 text-dark small text-center">
-                                            Max: Bodyweight × {{ exercise.max_reps }} reps
-                                        </p>
-                                    {% else %}
-                                        <p class="mb-0 text-muted small fst-italic text-center">No max recorded</p>
-                                    {% endif %}
-                                {% elif exercise.max_weight is not none and exercise.max_reps is not none %}
-                                    <p class="mb-0 text-dark small text-center">
-                                        Max: {{ exercise.max_weight|float|round(1) }} lbs × {{ exercise.max_reps }} reps
-                                    </p>
-                                {% else %}
-                                    <p class="mb-0 text-muted small fst-italic text-center">No max recorded</p>
-                                {% endif %}           
+                    <div class="surface-section surface-section--flat">
+                        <div class="surface-section__header">
+                            <div class="surface-section__icon">
+                                <i class="bi bi-layers"></i>
+                            </div>
+                            <div>
+                                <h5 class="surface-section__title mb-1">{{ subcategory }}</h5>
+                                <p class="surface-section__subtitle mb-0">Tap any exercise to read the detailed description.</p>
+                            </div>
+                        </div>
+                        <ul class="list-group p-2 rounded-3 mb-0">
+                            {% for exercise in exercises %}
+                                {% set ex_index = loop.index %}
+                                <li class="list-group-item shadow-sm p-3 rounded-4 mb-3">
+                                    <h6 class="mb-2 fw-semibold text-center">{{ exercise.name }}</h6>
 
-                                <div class="text-center mt-2">
-                                    <button class="btn btn-sm btn-brand-outline toggle-description"
-                                            data-id="desc-{{ subcat_index }}-{{ ex_index }}">
-                                        View Description
-                                    </button>
-                                </div>
-                                
-                                <div id="desc-{{ subcat_index }}-{{ ex_index }}" class="mt-3 ps-2 text-muted description text-center" style="display: none;">
-                                    {{ exercise.description }}
-                                </div>
-                            </li>
-                        {% endfor %}
-                    </ul>
+                                    {% set is_cardio = subcategory|lower == 'cardio' %}
+                                    {% set is_bodyweight = 'bodyweight' in exercise.name|lower or exercise.max_weight == 0 %}
+
+                                    {% if is_cardio %}
+                                        {% if exercise.max_reps is not none %}
+                                            <p class="mb-0 text-dark small text-center">
+                                                Max: Bodyweight × {{ exercise.max_reps }} min
+                                            </p>
+                                        {% else %}
+                                            <p class="mb-0 text-muted small fst-italic text-center">No max recorded</p>
+                                        {% endif %}
+                                    {% elif is_bodyweight %}
+                                        {% if exercise.max_reps is not none %}
+                                            <p class="mb-0 text-dark small text-center">
+                                                Max: Bodyweight × {{ exercise.max_reps }} reps
+                                            </p>
+                                        {% else %}
+                                            <p class="mb-0 text-muted small fst-italic text-center">No max recorded</p>
+                                        {% endif %}
+                                    {% elif exercise.max_weight is not none and exercise.max_reps is not none %}
+                                        <p class="mb-0 text-dark small text-center">
+                                            Max: {{ exercise.max_weight|float|round(1) }} lbs × {{ exercise.max_reps }} reps
+                                        </p>
+                                    {% else %}
+                                        <p class="mb-0 text-muted small fst-italic text-center">No max recorded</p>
+                                    {% endif %}
+
+                                    <div class="text-center mt-3">
+                                        <button class="btn btn-sm btn-brand-outline toggle-description"
+                                                data-id="desc-{{ subcat_index }}-{{ ex_index }}">
+                                            View Description
+                                        </button>
+                                    </div>
+
+                                    <div id="desc-{{ subcat_index }}-{{ ex_index }}"
+                                         class="mt-3 ps-2 text-muted description text-center"
+                                         style="display: none;">
+                                        {{ exercise.description }}
+                                    </div>
+                                </li>
+                            {% endfor %}
+                        </ul>
+                    </div>
                 {% endfor %}
-        {% else %}
-            <p class="text-center text-muted mt-4">No workout details available for this category.</p>
-        {% endif %}
+            {% else %}
+                <p class="text-center text-muted mb-0">No workout details available for this category.</p>
+            {% endif %}
 
-        <div class="text-center mt-4">
-            <a href="/" class="btn btn-brand-outline">Back to Home</a>
+            <div class="surface-footer">
+                <a href="/" class="btn btn-brand-outline">
+                    Back to Home
+                </a>
+            </div>
         </div>
     </div>
 </div>
@@ -103,7 +124,5 @@ document.addEventListener('click', function (e) {
 });
 </script>
 {% endblock %}
-
-
 
 

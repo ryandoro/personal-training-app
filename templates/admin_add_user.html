@@ -5,49 +5,88 @@ Add New User
 {% endblock %}
 
 {% block content %}
-<div class="container">
-  <div class="card w-100 shadow-sm p-4 border border-2 rounded-3 mt-4 mb-4" style="border-color: #ced4da;">
-    <div class="card-body">
-      {% if invite_url %}
-      <div class="alert alert-info mb-4" role="alert">
-        Invite link created:
-        <input type="text" class="form-control mt-2" value="{{ invite_url }}" readonly onclick="this.select()">
-        <div class="form-text">Share this link directly. It expires in {{ invite_expires_in or '48 hours' }}.</div>
+<div class="experience-container experience-container--wide">
+  <div class="surface-card">
+    <div class="surface-hero surface-hero--dashboard text-center">
+      <div class="d-flex flex-wrap justify-content-center gap-2 w-100 mb-3 surface-hero__actions">
+        <a href="{{ url_for('admin_users') }}"
+           class="btn btn-outline-secondary hero-action bg-white bg-opacity-10 text-white border-white">
+          <i class="bi bi-arrow-left me-1"></i>Back to Users
+        </a>
       </div>
-      {% endif %}
-      
-      <h2 class="text-center text-white mb-4 p-3 rounded-3" style="background-color: #1EA4E6;">Add New User</h2>
+      <div class="d-flex flex-column align-items-center gap-2 w-100">
+        <div class="surface-hero__icon">
+          <i class="bi bi-person-plus-fill"></i>
+        </div>
+        <h2 class="surface-hero__title mb-1">Add New User</h2>
+        <p class="surface-hero__subtitle">
+          Invite teammates, trainers, or members and share the onboarding link instantly.
+        </p>
+      </div>
+    </div>
 
-      <form method="POST" action="{{ url_for('admin_invite_user') }}" id="inviteForm">
+    <div class="surface-body surface-body--dense">
+      {% if invite_url %}
+        <div class="alert alert-info mb-0" role="alert">
+          Invite link created:
+          <input type="text" class="form-control mt-2" value="{{ invite_url }}" readonly onclick="this.select()">
+          <div class="form-text">Share this link directly. It expires in {{ invite_expires_in or '48 hours' }}.</div>
+        </div>
+      {% endif %}
+
+      <form method="POST"
+            action="{{ url_for('admin_invite_user') }}"
+            id="inviteForm"
+            class="surface-section surface-section--flat">
         {# If you use CSRF: <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"> #}
 
+        <div class="surface-section__header">
+          <div class="surface-section__icon">
+            <i class="bi bi-envelope-paper"></i>
+          </div>
+          <div>
+            <h5 class="surface-section__title mb-1">Invite Details</h5>
+            <p class="surface-section__subtitle mb-0">
+              Provide the basics so FitBaseAI can prep their welcome email.
+            </p>
+          </div>
+        </div>
+
         <div class="row g-3">
-          <!-- First Name -->
           <div class="col-md-6">
-            <label for="name" class="form-label">First Name</label>
-            <input type="text" class="form-control" id="name" name="name"
-                   value="{{ request.form.get('name','') }}">
+            <label for="name" class="form-label fw-semibold">First Name</label>
+            <input type="text"
+                   class="form-control"
+                   id="name"
+                   name="name"
+                   value="{{ request.form.get('name','') }}"
+                   placeholder="First Name">
           </div>
 
-          <!-- Last Name -->
           <div class="col-md-6">
-            <label for="last_name" class="form-label">Last Name</label>
-            <input type="text" class="form-control" id="last_name" name="last_name"
-                   value="{{ request.form.get('last_name','') }}">
+            <label for="last_name" class="form-label fw-semibold">Last Name</label>
+            <input type="text"
+                   class="form-control"
+                   id="last_name"
+                   name="last_name"
+                   value="{{ request.form.get('last_name','') }}"
+                   placeholder="Last Name">
           </div>
 
-          <!-- Email (required) -->
           <div class="col-md-6">
-            <label for="email" class="form-label">Email <span class="text-danger">*</span></label>
-            <input type="email" class="form-control" id="email" name="email" required
+            <label for="email" class="form-label fw-semibold">Email <span class="text-danger">*</span></label>
+            <input type="email"
+                   class="form-control"
+                   id="email"
+                   name="email"
+                   required
                    value="{{ request.form.get('email','') }}"
                    placeholder="name@example.com">
             <div class="form-text">We’ll send the invite to this address.</div>
           </div>
 
-          <!-- Role -->
           <div class="col-md-6">
-            <label for="role" class="form-label">Role</label>
+            <label for="role" class="form-label fw-semibold">Role</label>
             <select class="form-select" id="role" name="role">
               {% set role_val = request.form.get('role','user') %}
               <option value="user" {{ 'selected' if role_val == 'user' else '' }}>User</option>
@@ -56,9 +95,8 @@ Add New User
             </select>
           </div>
 
-          <!-- Subscription -->
           <div class="col-md-6">
-            <label for="subscription_type" class="form-label">Subscription</label>
+            <label for="subscription_type" class="form-label fw-semibold">Subscription</label>
             {% set sub_val = request.form.get('subscription_type','free') %}
             <select class="form-select" id="subscription_type" name="subscription_type">
               <option value="free" {{ 'selected' if sub_val == 'free' else '' }}>Free</option>
@@ -67,27 +105,25 @@ Add New User
             </select>
           </div>
 
-          <!-- Optional note to user (goes in invite email) -->
           <div class="col-12">
-            <label for="admin_note" class="form-label">Note to include in invite (optional)</label>
-            <textarea class="form-control" id="admin_note" name="admin_note" rows="2"
+            <label for="admin_note" class="form-label fw-semibold">Optional note to include</label>
+            <textarea class="form-control"
+                      id="admin_note"
+                      name="admin_note"
+                      rows="3"
                       placeholder="E.g., Welcome! I set you up with a Trainer role so you can start building programs.">{{ request.form.get('admin_note','') }}</textarea>
           </div>
         </div>
 
         <input type="hidden" name="action" id="inviteAction" value="copy_link">
 
-        <div class="d-flex flex-wrap gap-2 justify-content-between mt-4">
+        <div class="surface-actions surface-actions--between surface-actions--stacked mt-4">
           <a href="{{ url_for('admin_users') }}" class="btn btn-outline-secondary">Back</a>
-
-          <div class="d-flex flex-wrap gap-2">
-            <!-- Create user and send the invite email immediately -->
-            <button type="submit" data-action="send_invite" class="btn btn-primary">
+          <div class="surface-actions__button-group d-flex flex-wrap gap-2">
+            <button type="submit" data-action="send_invite" class="btn btn-brand">
               Create &amp; Send Invite
             </button>
-
-            <!-- Create user and return an invite URL (no email sent) -->
-            <button type="submit" data-action="copy_link" class="btn btn-outline-primary">
+            <button type="submit" data-action="copy_link" class="btn btn-brand-outline">
               Create &amp; Copy Invite Link
             </button>
           </div>
@@ -101,23 +137,21 @@ Add New User
   document.addEventListener('DOMContentLoaded', () => {
     const form = document.getElementById('inviteForm');
     const actionField = document.getElementById('inviteAction');
-  
+
     form.addEventListener('submit', (e) => {
       if (!form.checkValidity()) return;
-  
-      // Ensure server gets intended action
+
       if (e.submitter && e.submitter.dataset.action) {
         actionField.value = e.submitter.dataset.action;
       }
-  
-      setTimeout(() => { 
-        e.submitter.innerText = 'Working…'; 
-        e.submitter.disabled = true; 
+
+      setTimeout(() => {
+        e.submitter.innerText = 'Working…';
+        e.submitter.disabled = true;
       }, 0);
 
-      // Disable the other button (avoid dropping submitter’s value)
       const buttons = form.querySelectorAll('button[type="submit"]');
-      buttons.forEach(b => {
+      buttons.forEach((b) => {
         if (b !== e.submitter) {
           b.disabled = true;
           b.innerText = 'Working…';
@@ -125,5 +159,5 @@ Add New User
       });
     });
   });
-  </script>
+</script>
 {% endblock %}
