@@ -7,37 +7,41 @@
 {% block content %}
 <div class="index-hero">
     <div class="index-card mb-0" style="background: rgba(255, 255, 255, 0.75); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);">
-        <header class="index-header text-center">
-            <div class="collab-branding">
-                <span class="hero-pill">FitBase<span class="text-orange">AI</span></span>
-            </div>
-            {% if name %}
-                <h1 class="display-5 fw-bold">Welcome back, {{ name }}!</h1>
-            {% else %}
-                <h1 class="display-5 fw-bold">Welcome!</h1>
-            {% endif %}
-            <p class="lead text-muted fst-italic">Train aware. Live ready.</p>
-        </header>
+        <div class="index-hero-panel">
+            <header class="index-header text-center">
+                <div class="collab-branding">
+                    <span class="hero-pill">FitBase<span class="text-orange">AI</span></span>
+                </div>
+                {% if name %}
+                    <h1 class="display-5 fw-bold">Welcome back, {{ name }}!</h1>
+                {% else %}
+                    <h1 class="display-5 fw-bold">Welcome!</h1>
+                {% endif %}
+                <p class="lead text-muted fst-italic">Train aware. Live ready.</p>
+            </header>
 
-        <section class="index-intro">
-            <p>
-                Generate custom workouts, track your progress, and see your goals come to life. Let’s keep moving forward together!
-            </p>
-            {% if not name %}
-                <p class="mt-2">
-                    To get started, head over to the <a href="{{ url_for('training') }}" class="link-blue fw-semibold">training page</a> and fill out your fitness questionnaire.
+            <section class="index-intro">
+                <p>
+                    Generate custom workouts, track your progress, and see your goals come to life. Let’s keep moving forward together!
                 </p>
-            {% endif %}
-        </section>
+                {% if not name %}
+                    <p class="mt-2">
+                        To get started, head over to the <a href="{{ url_for('training') }}" class="link-blue fw-semibold">training page</a> and fill out your fitness questionnaire.
+                    </p>
+                {% endif %}
+            </section>
+        </div>
 
         <section class="index-stats">
             <h2 class="section-title text-uppercase">Your Stats</h2>
             <div class="stats-grid">
                 <article class="stat-card">
+                    <span class="stat-icon stat-icon--workouts"><i class="bi bi-activity"></i></span>
                     <span class="stat-label">Workouts Completed</span>
                     <span class="stat-value">{{ workouts_completed }}</span>
                 </article>
                 <article class="stat-card">
+                    <span class="stat-icon stat-icon--recent"><i class="bi bi-clock-history"></i></span>
                     <span class="stat-label">Last Workout Completed</span>
                     {% if last_workout_completed != "No workouts completed yet" %}
                         <a class="stat-link" href="{{ url_for('workout_details', category=last_workout_completed) }}">
@@ -49,6 +53,7 @@
                     {% endif %}
                 </article>
                 <article class="stat-card goals-card">
+                    <span class="stat-icon stat-icon--goals"><i class="bi bi-bullseye"></i></span>
                     {% set goal_list = fitness_goals.split(',') if fitness_goals else [] %}
                     <span class="stat-label">Current Goal{{ goal_list | length > 1 and 's' or '' }}</span>
                     {% if goal_list %}

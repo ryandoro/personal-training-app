@@ -592,12 +592,14 @@
 
 
         <!-- Choose Your Workout Card -->
-        <div class="card mt-4" style="box-shadow: 0 0 16px rgba(247, 147, 26, 0.4);">
-            <h3 class="text-center text-white fw-bold p-3 rounded-3 border" style="text-shadow: 0 0 1.5px black; box-shadow: 0 0 12px lightslategray; background: #1EA4E6;">Choose Your Workout</h3>
+        <div class="card mt-4 workout-choice-card">
+            <div class="workout-choice-header">
+                <h3 class="workout-choice-title mb-0">Choose Your Workout</h3>
+            </div>
             <div class="row justify-content-center">
                 <!-- Duration pills -->
                 <div class="mb-3">
-                    <p class="form-label fw-bold text-primary d-block mb-2">Workout Duration</p>
+                    <p class="form-label workout-subheading">Workout Duration</p>
                     {% set wd = workout_duration or 60 %}
                     <div id="duration-pills"
                         class="d-flex flex-wrap gap-2 justify-content-center">
@@ -619,7 +621,7 @@
   
                 <!-- Category select-->
                 <div class="mb-3">
-                    <label for="workout-category-select" class="form-label fw-bold text-primary">Workout Categories</label>
+                    <label for="workout-category-select" class="form-label workout-subheading">Workout Categories</label>
                     <select id="workout-category-select" class="form-select text-center shadow-sm bitcoin-workout">
                         <option value="">Select a Workout Category</option>
                         {% for category, workouts in grouped_workouts.items() %}
@@ -661,8 +663,7 @@
                 <input type="hidden" id="home-equipment-input" data-options='{{ home_equipment_options | tojson }}' value="[]">
                 <div class="text-center mb-3">
                     <button id="generate-workout-btn" type="button"
-                        class="btn btn-primary fw-bold btn-lg border rounded-3 px-4"
-                        style="text-shadow: 0 0 1px rgba(0,0,0,0.25); box-shadow: 0 0 12px rgba(30,164,230,0.45);"
+                        class="btn btn-primary fw-bold btn-lg border rounded-3 px-4 generate-workout-btn"
                         disabled>
                         Generate Workout
                     </button>

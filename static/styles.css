@@ -829,11 +829,12 @@ iframe.fullscreen-sim {
 }
 
 .index-card {
-  max-width: 1040px;
+  max-width: 1080px;
   position: relative;
   overflow: hidden;
-  border: 1px solid rgba(30, 164, 230, 0.28);
-  box-shadow: 0 28px 90px rgba(12, 50, 87, 0.2);
+  border: 1px solid rgba(30, 164, 230, 0.26);
+  box-shadow: 0 30px 110px rgba(12, 50, 87, 0.22);
+  background: radial-gradient(circle at 18% 20%, rgba(255, 255, 255, 0.9), rgba(30, 164, 230, 0.12)), linear-gradient(145deg, rgba(246, 251, 255, 0.96), rgba(176, 214, 240, 0.65));
 }
 
 .index-card::before {
@@ -841,8 +842,9 @@ iframe.fullscreen-sim {
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(circle at 14% 12%, rgba(30, 164, 230, 0.18), transparent 32%),
-    radial-gradient(circle at 82% 0%, rgba(247, 147, 26, 0.2), transparent 30%);
+    radial-gradient(circle at 14% 12%, rgba(30, 164, 230, 0.18), transparent 35%),
+    radial-gradient(circle at 82% 5%, rgba(247, 147, 26, 0.16), transparent 32%),
+    radial-gradient(circle at 84% 86%, rgba(30, 164, 230, 0.14), transparent 32%);
   pointer-events: none;
 }
 
@@ -850,13 +852,38 @@ iframe.fullscreen-sim {
   content: "";
   position: absolute;
   inset: 0;
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0));
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0));
   pointer-events: none;
 }
 
 .index-card > * {
   position: relative;
   z-index: 1;
+}
+
+.index-hero-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1.8rem 1.6rem;
+  border-radius: 20px;
+  background: linear-gradient(120deg, rgba(255, 255, 255, 0.96), rgba(30, 164, 230, 0.16));
+  border: 1px solid rgba(30, 164, 230, 0.18);
+  box-shadow: 0 24px 70px rgba(12, 50, 87, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.58);
+}
+
+.index-hero-icon {
+  width: 70px;
+  height: 70px;
+  border-radius: 20px;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(145deg, rgba(176, 214, 240, 0.92), rgba(30, 164, 230, 0.32));
+  color: #1a2333;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55), 0 14px 32px rgba(12, 50, 87, 0.22);
+  border: 1px solid rgba(30, 164, 230, 0.28);
+  font-size: 1.6rem;
 }
 
 .index-header {
@@ -1304,6 +1331,17 @@ iframe.fullscreen-sim {
   color: #1EA4E6;
   font-weight: 700;
   text-align: center;
+  position: relative;
+}
+
+.section-title::after {
+  content: "";
+  display: block;
+  width: 110px;
+  height: 2px;
+  margin: 0.4rem auto 0;
+  background: rgba(30, 164, 230, 0.45);
+  border-radius: 999px;
 }
 
 .section-title-muted {
@@ -1317,16 +1355,30 @@ iframe.fullscreen-sim {
 }
 
 .stat-card {
-  background: linear-gradient(145deg, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0.86));
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.96), rgba(176, 214, 240, 0.35));
   border-radius: 18px;
-  border: 1px solid rgba(30, 164, 230, 0.16);
-  box-shadow: 0 20px 55px rgba(12, 50, 87, 0.16);
+  border: 1px solid rgba(30, 164, 230, 0.2);
+  box-shadow: 0 22px 60px rgba(12, 50, 87, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.55);
   padding: 1.5rem 1.6rem;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 0.65rem;
   text-align: center;
+}
+
+.stat-icon {
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  background: linear-gradient(135deg, rgba(30, 164, 230, 0.2), rgba(247, 147, 26, 0.24));
+  color: #1b2738;
+  border: 1px solid rgba(30, 164, 230, 0.24);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55), 0 10px 24px rgba(12, 50, 87, 0.18);
 }
 
 .badge {
@@ -1393,9 +1445,9 @@ iframe.fullscreen-sim {
 .goal-chip {
   padding: 0.4rem 1rem;
   border-radius: 999px;
-  background: rgba(247, 147, 26, 0.12);
-  border: 1px solid rgba(247, 147, 26, 0.4);
-  color: #f7931a;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.95), rgba(247, 147, 26, 0.18));
+  border: 1px solid rgba(247, 147, 26, 0.35);
+  color: #c46800;
   font-weight: 600;
   font-size: 0.9rem;
 }
@@ -1405,9 +1457,9 @@ iframe.fullscreen-sim {
   padding: 0.4rem 1.1rem;
   border-radius: 999px;
   border: 1px solid rgba(30, 164, 230, 0.55);
-  background: rgba(30, 164, 230, 0.08);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.95), rgba(30, 164, 230, 0.14));
   color: #1EA4E6;
-  font-weight: 600;
+  font-weight: 700;
   transition: all 0.2s ease;
 }
 
@@ -1415,6 +1467,116 @@ iframe.fullscreen-sim {
   background: #1EA4E6;
   color: white;
   box-shadow: 0 0 0 0.2rem rgba(30, 164, 230, 0.18);
+}
+
+.workout-choice-card {
+  border-radius: 22px;
+  border: 1px solid rgba(30, 164, 230, 0.28);
+  background: linear-gradient(150deg, rgba(255, 255, 255, 0.95), rgba(176, 214, 240, 0.38));
+  box-shadow: 0 28px 70px rgba(12, 50, 87, 0.2);
+  overflow: hidden;
+  position: relative;
+}
+
+.workout-choice-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 15% 10%, rgba(30, 164, 230, 0.18), transparent 35%),
+    radial-gradient(circle at 85% 15%, rgba(247, 147, 26, 0.14), transparent 32%);
+  pointer-events: none;
+}
+
+.workout-choice-card > * {
+  position: relative;
+  z-index: 1;
+}
+
+.workout-choice-header {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  margin: 0.35rem auto 1.05rem;
+  padding: 0.95rem 1.4rem;
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.94), rgba(30, 164, 230, 0.16));
+  border: 1px solid rgba(30, 164, 230, 0.22);
+  box-shadow: 0 18px 45px rgba(12, 50, 87, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.52);
+}
+
+.workout-choice-title {
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  margin: 0;
+  color: #0f1d2e;
+  text-shadow: 0 2px 8px rgba(12, 50, 87, 0.18);
+}
+
+.workout-choice-icon {
+  width: 50px;
+  height: 50px;
+  border-radius: 16px;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(145deg, rgba(176, 214, 240, 0.92), rgba(30, 164, 230, 0.2));
+  color: #1b2738;
+  border: 1px solid rgba(30, 164, 230, 0.24);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55), 0 10px 24px rgba(12, 50, 87, 0.16);
+  font-size: 1.25rem;
+}
+
+.generate-workout-btn {
+  background: linear-gradient(135deg, #1EA4E6, #6fc3ff);
+  border: 1px solid rgba(30, 164, 230, 0.6);
+  color: #ffffff;
+  text-shadow: 0 1px 2px rgba(12, 50, 87, 0.25);
+  box-shadow: 0 16px 38px rgba(12, 50, 87, 0.28);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.generate-workout-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 20px 48px rgba(12, 50, 87, 0.32);
+}
+
+.generate-workout-btn:active:not(:disabled) {
+  transform: translateY(0px) scale(0.99);
+  box-shadow: 0 10px 28px rgba(12, 50, 87, 0.24);
+}
+
+.workout-subheading {
+  display: block;
+  text-align: center;
+  font-size: 1rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: #1EA4E6;
+  font-weight: 800;
+  margin-bottom: 0.6rem;
+  position: relative;
+}
+
+.workout-subheading::after {
+  content: "";
+  display: block;
+  width: 130px;
+  height: 2px;
+  margin: 0.35rem auto 0;
+  background: rgba(30, 164, 230, 0.45);
+  border-radius: 999px;
+}
+
+.generate-status {
+  color: #0f1d2e;
+  font-weight: 700;
+  padding: 0.35rem 0.75rem;
+  background: rgba(30, 164, 230, 0.08);
+  border: 1px solid rgba(30, 164, 230, 0.2);
+  border-radius: 12px;
+  display: inline-block;
+  box-shadow: 0 8px 18px rgba(12, 50, 87, 0.12);
 }
 
 .index-cta {
@@ -1429,15 +1591,17 @@ iframe.fullscreen-sim {
 
 .btn-ignite {
   border-radius: 999px;
-  padding: 0.7rem 2.5rem;
-  background: linear-gradient(135deg, #f7931a, #ffb347);
-  background-size: 200% 200%;
-  border: 1px solid #404043;
-  color: #404043; /* default dark gray text */
-  font-weight: 700;
+  padding: 0.72rem 2.65rem;
+  background: linear-gradient(120deg, #1EA4E6 0%, #6fc3ff 50%, #f7a63a 100%);
+  background-size: 220% 220%;
+  background-position: left center;
+  background-color: #1EA4E6; /* solid fallback for mobile */
+  border: 1px solid rgba(30, 164, 230, 0.4);
+  color: #0f1d2e; /* deep text for contrast */
+  font-weight: 800;
   letter-spacing: 0.05em;
-  box-shadow: 0 7.5px 15px rgba(247, 147, 26, 0.25);
-  transition: color 0.15s ease, transform 0.25s ease, box-shadow 0.25s ease;
+  box-shadow: 0 16px 40px rgba(15, 64, 110, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.55);
+  transition: transform 0.18s ease, box-shadow 0.18s ease, background-position 0.18s ease;
   cursor: pointer;
   text-decoration: none;
   display: inline-block;
@@ -1450,25 +1614,42 @@ iframe.fullscreen-sim {
   appearance: none;
   -webkit-user-select: none;
   user-select: none;
-  -webkit-text-fill-color: #404043 !important; /* lock text to dark gray */
+  -webkit-text-fill-color: #0f1d2e !important; /* lock text to deep tone */
   outline: none !important;
+  touch-action: manipulation;
 }
 
 .btn-ignite:hover {
-  transform: translateY(-2px) scale(1.05);
-  box-shadow: 0 20px 45px rgba(247, 147, 26, 0.4);
+  transform: translateY(-2px) scale(1.04);
+  box-shadow: 0 22px 55px rgba(15, 64, 110, 0.4);
   background-position: right center;
 }
 
 .btn-ignite:active,
 .btn-ignite.focus-ring {
-  color: #fff !important;                     /* switch to white */
-  -webkit-text-fill-color: #fff !important;   /* force Safari text fill */
-  border: none !important;
-  transform: translateY(1px) scale(0.97);
-  box-shadow: 0 0 12px 2px rgba(247, 147, 26, 0.6);
-  outline: 3px solid #ffb347 !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  border: 1px solid rgba(247, 147, 26, 0.65) !important;
+  background: linear-gradient(120deg, #f7a63a 0%, #f7a63a 60%, #ffb347 100%);
+  background-position: right center;
+  transform: translateY(1px) scale(0.98);
+  box-shadow: 0 0 18px 3px rgba(247, 147, 26, 0.48), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  outline: 3px solid rgba(247, 147, 26, 0.55) !important;
   outline-offset: 3px;
+  transition: none; /* instant feedback on touch/click */
+}
+
+@media (hover: none) {
+  .btn-ignite {
+    transition: none;
+    background-position: left center;
+  }
+
+  .btn-ignite:active,
+  .btn-ignite.focus-ring {
+    transition: none;
+    transform: translateY(0px) scale(0.99);
+  }
 }
 
 
@@ -1778,7 +1959,7 @@ iframe.fullscreen-sim {
 }
 
 .duration-pill.active {
-  background-color: #f7931a;   /* Bitcoin Orange */
+  background: linear-gradient(135deg, #f7931a, #ffb347) !important;   /* Bitcoin Orange */
   color: #fff;                 /* white text for contrast */
 }
 
@@ -1788,21 +1969,42 @@ iframe.fullscreen-sim {
 }
 
 .bitcoin-workout {
-  color: #333;
-  border: 1px solid #f7931a;
-  background-color: #f1f1f1;
-  transition: all 0.3s ease;
+  --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='12' viewBox='0 0 18 12'%3E%3Cpolyline points='3 4 9 9 15 4' fill='none' stroke='%230f1d2e' stroke-width='2.1' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  color: #1b5678;
+  border: 1px solid rgba(30, 164, 230, 0.38);
+  background: none;
+  background-image:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(223, 240, 250, 0.78)),
+    var(--select-arrow);
+  background-repeat: no-repeat, no-repeat;
+  background-position: center center, calc(100% - 0.85rem) center;
+  background-size: 100% 100%, 18px;
+  box-shadow: 0 10px 22px rgba(12, 50, 87, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.65);
+  transition: all 0.25s ease;
+  -webkit-appearance: none;
+  appearance: none;
+  padding-right: 3rem;
+  text-align-last: center;
+  -moz-text-align-last: center;
 }
 
 .bitcoin-workout:hover {
-  background-color: #f7931a;
+  border-color: rgba(30, 164, 230, 0.6);
+  color: #0f1d2e;
+  box-shadow: 0 12px 26px rgba(12, 50, 87, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.65);
 }
 
 .select-orange {
-  border-color: white !important;
-  background-color: #f7931a;
-  color: white !important;
-  box-shadow: 0 0 0 0.2rem rgba(247,147,26,0.25);
+  border-color: rgba(247, 147, 26, 0.8) !important;
+  background: none;
+  background-image:
+    linear-gradient(135deg, #f7931a, #ffb347),
+    var(--select-arrow);
+  background-repeat: no-repeat, no-repeat;
+  background-position: center center, calc(100% - 0.85rem) center;
+  background-size: 100% 100%, 18px;
+  color: #ffffff !important;
+  box-shadow: 0 0 0 0.18rem rgba(247, 147, 26, 0.22) !important;
 }
 
 /* 2 columns on mobile, inline on wider screens */
