@@ -27,9 +27,10 @@
 
         <div class="admin-dashboard-body">
 
-            <div class="admin-dashboard-toolbar d-flex flex-column flex-lg-row align-items-stretch gap-3">
+            <div id="admin-search-section"
+                 class="admin-dashboard-toolbar d-flex flex-column flex-lg-row align-items-stretch gap-3">
                 <form method="GET"
-                      action="{{ url_for('admin_users') }}"
+                      action="{{ url_for('admin_users') }}#admin-search-section"
                       class="admin-search-form flex-grow-1">
                     <label for="admin-dashboard-search" class="visually-hidden">Search Users</label>
                     <div class="input-group admin-search-group">
@@ -145,4 +146,32 @@
         </div>
     </div>
 </div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const params = new URLSearchParams(window.location.search);
+        const searchValue = params.get('search') || '';
+        const searchSection = document.getElementById('admin-search-section');
+        const searchInput = document.getElementById('admin-dashboard-search');
+
+        if (searchValue.trim()) {
+            if (searchSection) {
+                searchSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+            if (searchInput) {
+                searchInput.focus({ preventScroll: true });
+            }
+
+            // Strip search from URL so refresh restores the full list.
+            params.delete('search');
+            const hash = window.location.hash || '#admin-search-section';
+            const newQuery = params.toString();
+            history.replaceState(
+                {},
+                document.title,
+                `${window.location.pathname}${newQuery ? `?${newQuery}` : ''}${hash}`
+            );
+        }
+    });
+</script>
 {% endblock %}

@@ -896,6 +896,10 @@ iframe.fullscreen-sim {
   .surface-actions--stacked .surface-actions__button-group .btn {
     flex: 1 1 100%;
   }
+
+  .surface-actions--stacked.surface-actions--mobile-back-after {
+    flex-direction: column-reverse;
+  }
 }
 
 .surface-footer {
@@ -2770,6 +2774,49 @@ iframe.fullscreen-sim {
   margin-top: 1rem;
 }
 
+.trainer-hero-inline {
+  flex-wrap: nowrap !important;
+  gap: 0.5rem;
+}
+
+.trainer-hero-inline span {
+  font-size: 0.95rem;
+}
+
+.trainer-agenda-btn {
+  background: #f9a63a;
+  border: 1px solid #f79b1f;
+  color: #fff;
+  padding: 0.35rem 0.75rem;
+  border-radius: 10px;
+  line-height: 1.1;
+  white-space: nowrap;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.12);
+}
+
+.trainer-agenda-btn:hover,
+.trainer-agenda-btn:focus {
+  background: #f7951d;
+  border-color: #f79b1f;
+  color: #fff;
+}
+
+@media (max-width: 576px) {
+  .trainer-hero-inline {
+    justify-content: center;
+    gap: 0.35rem;
+  }
+
+  .trainer-hero-inline span {
+    font-size: 0.9rem;
+  }
+
+  .trainer-agenda-btn {
+    padding: 0.3rem 0.65rem;
+    font-size: 0.9rem;
+  }
+}
+
 .dashboard-snapshot {
   display: flex;
   align-items: center;
@@ -2929,6 +2976,10 @@ iframe.fullscreen-sim {
 .trainer-dashboard-body,
 .admin-dashboard-body {
   padding: clamp(1.75rem, 3vw, 2.75rem);
+}
+
+.trainer-dashboard-body {
+  padding-top: clamp(1rem, 2vw, 1.8rem);
 }
 
 .trainer-dashboard-toolbar,

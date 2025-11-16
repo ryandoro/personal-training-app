@@ -1,0 +1,379 @@
+{% extends "layout.html" %}
+
+{% block title %}
+    Trainer Agenda
+{% endblock %}
+
+{% block content %}
+<div class="experience-container experience-container--wide agenda-experience">
+    <div class="surface-card agenda-surface-card">
+        <div class="surface-hero agenda-hero">
+            <div class="agenda-hero__nav">
+                <a href="{{ url_for('trainer_dashboard') }}#trainer-calendar-nav" class="btn btn-light btn-sm text-primary fw-semibold">
+                    <i class="bi bi-arrow-left me-1"></i>Back to Schedule
+                </a>
+                <a href="{{ url_for('trainer_dashboard') }}" class="btn btn-outline-light btn-sm text-white">
+                    <i class="bi bi-grid me-1"></i>Trainer Dashboard
+                </a>
+            </div>
+            <div class="surface-hero__primary">
+                <h2 class="surface-hero__title mb-1">Trainer Agenda</h2>
+                <div class="agenda-hero__stats mt-3">
+                    <div class="agenda-stat">
+                        <span class="agenda-stat__label">Trainer</span>
+                        <span class="agenda-stat__value">{{ (trainer.name or trainer.username) }} {{ trainer.last_name or '' }}</span>
+                    </div>
+                    <div class="agenda-stat">
+                        <span class="agenda-stat__label">Total Sessions</span>
+                        <span class="agenda-stat__value">{{ total_sessions }}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {% set is_custom_view = selected_view == 'custom' %}
+        {% set view_query_param = selected_view if selected_view != 'upcoming' else None %}
+        {% set start_query_param = start_date_input if is_custom_view and start_date_input else None %}
+        {% set end_query_param = end_date_input if is_custom_view and end_date_input else None %}
+
+        <div class="surface-body">
+            <div class="surface-section surface-section--flat agenda-card agenda-card-panel">
+                <div class="agenda-filters-grid">
+                    <div class="agenda-filters-grid__quick">
+                        <div class="agenda-filter-bar">
+                            <div class="agenda-quick-links d-flex flex-wrap gap-2 align-items-center">
+                                <span class="text-uppercase small text-muted fw-semibold me-1 agenda-quick-label text-center text-lg-start">Quick View:</span>
+                                {% for filter in quick_filters %}
+                                    <a class="btn btn-outline-primary btn-sm {% if selected_view == filter.key %}active{% endif %}"
+                                       href="{{ url_for('trainer_agenda', view=filter.key, per_page=per_page, page=1) }}#agendaTable"
+                                       {% if selected_view == filter.key %}aria-current="true"{% endif %}>
+                                        {{ filter.label }}
+                                    </a>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </div>
+
+                <div class="agenda-filters-grid__date">
+                    <form method="get"
+                          action="{{ url_for('trainer_agenda') }}#agendaTable"
+                          class="agenda-range-form d-flex flex-column gap-4">
+                            <input type="hidden" name="view" value="custom">
+                            <input type="hidden" name="per_page" value="{{ per_page }}">
+                            <input type="hidden" name="page" value="1">
+
+                            <div>
+                                <div class="text-uppercase small text-muted fw-semibold mb-2 text-center text-lg-start">Date Range</div>
+                                <div class="d-flex flex-wrap align-items-center gap-2 agenda-date-range">
+                                    <label class="small text-muted mb-0 text-nowrap" for="agendaStartDate">From</label>
+                                    <input type="date"
+                                           id="agendaStartDate"
+                                           class="form-control form-control-sm"
+                                           name="start_date"
+                                           value="{{ start_date_input }}">
+                                    <label class="small text-muted mb-0 text-nowrap" for="agendaEndDate">To</label>
+                                    <input type="date"
+                                           id="agendaEndDate"
+                                           class="form-control form-control-sm"
+                                           name="end_date"
+                                           value="{{ end_date_input }}">
+                                    <div class="agenda-date-range__actions d-flex align-items-center gap-2 flex-wrap justify-content-center justify-content-lg-start">
+                                        <button type="submit" class="btn btn-outline-primary btn-sm">Apply</button>
+                                        <a class="btn btn-link btn-sm text-decoration-none"
+                                           href="{{ url_for('trainer_agenda') }}#agendaTable">
+                                            Clear
+                                        </a>
+                                    </div>
+                                </div>
+                        {% if custom_date_error %}
+                            <div class="text-danger small mt-2">{{ custom_date_error_message }}</div>
+                        {% endif %}
+                    </div>
+                </form>
+            </div>
+
+            {% if events %}
+                <div class="agenda-filters-grid__bulk">
+                    <div class="agenda-actions border rounded-4 bg-white bg-opacity-75 p-3 p-md-4 shadow-sm text-center text-lg-start">
+                        <div class="text-uppercase small text-muted fw-semibold">Bulk Actions</div>
+                        <div class="agenda-actions__primary">
+                            <select class="form-select form-select-sm"
+                                    id="bulkActionSelect"
+                                    name="bulk_action"
+                                    form="trainerAgendaBulkForm">
+                                <option value="" {% if not bulk_action %}selected{% endif %}>Select an action</option>
+                                <option value="set_booked" {% if bulk_action == 'set_booked' %}selected{% endif %}>Mark as booked</option>
+                                <option value="set_completed" {% if bulk_action == 'set_completed' %}selected{% endif %}>Mark as completed</option>
+                                <option value="set_cancelled" {% if bulk_action == 'set_cancelled' %}selected{% endif %}>Mark as cancelled</option>
+                                <option value="delete" {% if bulk_action == 'delete' %}selected{% endif %}>Delete sessions</option>
+                            </select>
+                            <button type="submit" class="btn btn-primary btn-sm" form="trainerAgendaBulkForm">Apply</button>
+                        </div>
+                    </div>
+                </div>
+            {% endif %}
+        </div>
+
+        <div class="agenda-section">
+                    <div class="agenda-section__header d-flex flex-wrap align-items-center justify-content-between gap-3"></div>
+
+                    <form method="post"
+                          id="trainerAgendaBulkForm"
+                          action="{{ url_for('trainer_agenda',
+                                             view=selected_view,
+                                             per_page=per_page,
+                                             page=page,
+                                             start_date=start_query_param,
+                                             end_date=end_query_param) }}#agendaTable"
+                          class="d-flex flex-column gap-4">
+                    <div class="table-responsive agenda-table-wrapper" id="agendaTable">
+                        <table class="table table-hover align-middle agenda-table">
+                            <thead>
+                                <tr class="text-uppercase small text-muted">
+                                    <th>
+                                        <div class="form-check mb-0">
+                                            <input class="form-check-input" type="checkbox" id="selectAllSessions">
+                                        </div>
+                                    </th>
+                                    <th>Client</th>
+                                    <th>Status</th>
+                                    <th>Date</th>
+                                    <th>Start Time</th>
+                                    <th>End Time</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% if events %}
+                                    {% for event in events %}
+                                        <tr>
+                                            <td data-label="Select">
+                                                <input type="checkbox"
+                                                       class="form-check-input session-checkbox"
+                                                       name="session_id"
+                                                       value="{{ event.id }}"
+                                                       {% if event.id in selected_ids %}checked{% endif %}>
+                                            </td>
+                                            <td data-label="Client">
+                                                {% if event.client_id %}
+                                                    <a href="{{ url_for('client_profile', client_id=event.client_id) }}"
+                                                       class="agenda-client-link text-decoration-none fw-semibold">
+                                                        {{ (event.client_name or event.client_username) }} {{ event.client_last_name or '' }}
+                                                    </a>
+                                                {% else %}
+                                                    <span class="text-muted">Unknown</span>
+                                                {% endif %}
+                                            </td>
+                                            <td data-label="Status">
+                                                {% set status_icon_classes = 'bi bi-clipboard2-check agenda-status__icon--booked' %}
+                                                {% if event.status == 'completed' %}
+                                                    {% set status_icon_classes = 'bi bi-check-circle-fill agenda-status__icon--completed' %}
+                                                {% elif event.status == 'cancelled' %}
+                                                    {% set status_icon_classes = 'bi bi-x-circle-fill agenda-status__icon--cancelled' %}
+                                                {% endif %}
+                                                <span class="agenda-status agenda-status--{{ event.status }}" aria-label="{{ event.status }}" title="{{ event.status }}">
+                                                    <span class="agenda-status__text">{{ event.status }}</span>
+                                                    <span class="agenda-status__icon" aria-hidden="true">
+                                                        <i class="{{ status_icon_classes }}"></i>
+                                                    </span>
+                                                </span>
+                                            </td>
+                                            <td class="agenda-date"
+                                                data-label="Date"
+                                                data-date-iso="{{ event.start_time_iso or '' }}">{{ event.date }}</td>
+                                            <td class="agenda-time agenda-time--start"
+                                                data-label="Start Time"
+                                                data-time-iso="{{ event.start_time_iso or '' }}">{{ event.start_time }}</td>
+                                            <td class="agenda-time agenda-time--end"
+                                                data-label="End Time"
+                                                data-time-iso="{{ event.end_time_iso or '' }}">{{ event.end_time }}</td>
+                                        </tr>
+                                    {% endfor %}
+                                {% else %}
+                                    <tr>
+                                        <td colspan="6" class="text-muted py-4">No sessions match this view yet.</td>
+                                    </tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="card-footer bg-white d-flex flex-wrap align-items-center justify-content-between gap-3 border-0 px-0">
+                        <div class="small text-muted">
+                            {% if filtered_total %}
+                                Showing {{ page_start_index }}&ndash;{{ page_end_index }} of {{ filtered_total }} session{{ '' if filtered_total == 1 else 's' }}.
+                            {% else %}
+                                Showing 0 sessions.
+                            {% endif %}
+                        </div>
+                        <div class="d-flex flex-wrap align-items-center gap-3 ms-auto">
+                            {% if total_pages > 1 %}
+                                <nav aria-label="Session pagination">
+                                    <ul class="pagination pagination-sm mb-0">
+                                        <li class="page-item {% if page == 1 %}disabled{% endif %}">
+                                            {% if page == 1 %}
+                                                <span class="page-link">Previous</span>
+                                            {% else %}
+                                                <a class="page-link"
+                                                   href="{{ url_for('trainer_agenda',
+                                                                    page=page-1,
+                                                                    per_page=per_page,
+                                                                    view=view_query_param,
+                                                                    start_date=start_query_param,
+                                                                    end_date=end_query_param) }}#agendaTable">
+                                                    Previous
+                                                </a>
+                                            {% endif %}
+                                        </li>
+                                        {% for number in page_numbers %}
+                                            <li class="page-item {% if page == number %}active{% endif %}">
+                                                {% if page == number %}
+                                                    <span class="page-link">{{ number }}</span>
+                                                {% else %}
+                                                    <a class="page-link"
+                                                       href="{{ url_for('trainer_agenda',
+                                                                        page=number,
+                                                                        per_page=per_page,
+                                                                        view=view_query_param,
+                                                                        start_date=start_query_param,
+                                                                        end_date=end_query_param) }}#agendaTable">
+                                                        {{ number }}
+                                                    </a>
+                                                {% endif %}
+                                            </li>
+                                        {% endfor %}
+                                        <li class="page-item {% if page == total_pages %}disabled{% endif %}">
+                                            {% if page == total_pages %}
+                                                <span class="page-link">Next</span>
+                                            {% else %}
+                                                <a class="page-link"
+                                                   href="{{ url_for('trainer_agenda',
+                                                                    page=page+1,
+                                                                    per_page=per_page,
+                                                                    view=view_query_param,
+                                                                    start_date=start_query_param,
+                                                                    end_date=end_query_param) }}#agendaTable">
+                                                    Next
+                                                </a>
+                                            {% endif %}
+                                        </li>
+                                    </ul>
+                                </nav>
+                            {% endif %}
+                            <div class="agenda-per-page d-flex align-items-center gap-2 ms-auto">
+                                <label for="perPageSelect" class="small text-muted mb-0 text-nowrap">Sessions per page</label>
+                                <select class="form-select form-select-sm" id="perPageSelect" name="per_page">
+                                    {% for option in per_page_options %}
+                                        <option value="{{ option }}" {% if per_page == option %}selected{% endif %}>{{ option }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const selectAll = document.getElementById('selectAllSessions');
+    const bulkActionForm = document.getElementById('trainerAgendaBulkForm');
+    const bulkActionSelect = document.getElementById('bulkActionSelect');
+    const timeOptions = { hour: 'numeric', minute: '2-digit' };
+    const dateOptions = { month: 'short', day: 'numeric', year: 'numeric' };
+
+    function renderAgendaDates() {
+        document.querySelectorAll('.agenda-date[data-date-iso]').forEach(cell => {
+            const iso = cell.dataset.dateIso;
+            if (!iso) return;
+            const parsed = new Date(iso);
+            if (Number.isNaN(parsed.getTime())) return;
+            cell.textContent = parsed.toLocaleDateString(undefined, dateOptions);
+        });
+    }
+
+    function renderAgendaTimes() {
+        document.querySelectorAll('.agenda-time[data-time-iso]').forEach(cell => {
+            const iso = cell.dataset.timeIso;
+            if (!iso) return;
+            const parsed = new Date(iso);
+            if (Number.isNaN(parsed.getTime())) return;
+            cell.textContent = parsed.toLocaleTimeString(undefined, timeOptions);
+        });
+    }
+
+    function getSessionCheckboxes() {
+        return Array.from(document.querySelectorAll('.session-checkbox'));
+    }
+
+    renderAgendaDates();
+    renderAgendaTimes();
+
+    const perPageSelect = document.getElementById('perPageSelect');
+    if (perPageSelect) {
+        perPageSelect.addEventListener('change', () => {
+            const params = new URLSearchParams(window.location.search);
+            params.set('per_page', perPageSelect.value);
+            params.set('page', '1');
+            const query = params.toString();
+            const basePath = window.location.pathname;
+            const target = query ? `${basePath}?${query}` : basePath;
+            window.location.href = `${target}#agendaTable`;
+        });
+    }
+
+    if (bulkActionForm && bulkActionSelect) {
+        bulkActionForm.addEventListener('submit', (event) => {
+            if (!bulkActionSelect.value) {
+                event.preventDefault();
+                bulkActionSelect.focus();
+                return;
+            }
+            const checkboxes = getSessionCheckboxes();
+            if (!checkboxes.some(cb => cb.checked)) {
+                event.preventDefault();
+                alert('Select at least one session before applying a bulk action.');
+                return;
+            }
+            if (bulkActionSelect.value === 'delete') {
+                const confirmed = window.confirm('Delete the selected sessions? This cannot be undone.');
+                if (!confirmed) {
+                    event.preventDefault();
+                }
+            }
+        });
+    }
+
+    if (!selectAll) return;
+
+    function updateMasterState() {
+        const checkboxes = getSessionCheckboxes();
+        if (!checkboxes.length) {
+            selectAll.checked = false;
+            selectAll.indeterminate = false;
+            return;
+        }
+        const checkedCount = checkboxes.filter(cb => cb.checked).length;
+        selectAll.checked = checkedCount === checkboxes.length;
+        selectAll.indeterminate = checkedCount > 0 && checkedCount < checkboxes.length;
+    }
+
+    selectAll.addEventListener('change', () => {
+        const checkboxes = getSessionCheckboxes();
+        checkboxes.forEach(cb => {
+            cb.checked = selectAll.checked;
+        });
+    });
+
+    document.addEventListener('change', (event) => {
+        if (event.target?.classList?.contains('session-checkbox')) {
+            updateMasterState();
+        }
+    });
+
+    updateMasterState();
+});
+</script>
+{% endblock %}

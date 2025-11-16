@@ -870,9 +870,16 @@ def trainer_dashboard():
         return redirect(url_for('home'))
 
     search_term = (request.args.get('search') or '').strip()
+    total_clients = 0
 
     with get_connection() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            cursor.execute(
+                "SELECT COUNT(*) AS total_count FROM users WHERE trainer_id = %s",
+                (user_id,),
+            )
+            total_clients = (cursor.fetchone() or {}).get('total_count') or 0
+
             base_query = [
                 """
                 SELECT u.id, u.username, u.name, u.last_name, u.email, u.fitness_goals,
@@ -953,7 +960,7 @@ def trainer_dashboard():
             sessions_completed = cursor.fetchone()[0]
 
     trainer_stats = {
-        'total_clients': len(clients),
+        'total_clients': total_clients,
         'sessions_completed': sessions_completed,
     }
 
@@ -2111,6 +2118,75 @@ def _fetch_client_sessions(
     return total_all, filtered_total, rows
 
 
+def _fetch_trainer_sessions(
+    cursor,
+    trainer_id: int,
+    limit: int | None,
+    offset: int,
+    start_time_from: datetime | None = None,
+    start_time_to: datetime | None = None,
+):
+    base_conditions = ["ts.trainer_id = %s"]
+    base_params = [trainer_id]
+
+    cursor.execute(
+        f"""
+        SELECT COUNT(*) AS total
+          FROM trainer_schedule ts
+         WHERE {' AND '.join(base_conditions)}
+        """,
+        base_params,
+    )
+    total_all_row = cursor.fetchone() or {}
+    total_all = int(total_all_row.get('total') or 0)
+
+    filtered_conditions = list(base_conditions)
+    filtered_params = list(base_params)
+    if start_time_from:
+        filtered_conditions.append("start_time >= %s")
+        filtered_params.append(start_time_from)
+    if start_time_to:
+        filtered_conditions.append("start_time < %s")
+        filtered_params.append(start_time_to)
+    where_clause = ' AND '.join(filtered_conditions)
+
+    cursor.execute(
+        f"""
+        SELECT COUNT(*) AS total
+          FROM trainer_schedule ts
+         WHERE {where_clause}
+        """,
+        filtered_params,
+    )
+    filtered_row = cursor.fetchone() or {}
+    filtered_total = int(filtered_row.get('total') or 0)
+
+    query = f"""
+        SELECT ts.id,
+               ts.client_id,
+               ts.start_time,
+               ts.end_time,
+               ts.status,
+               ts.created_at,
+               c.name AS client_name,
+               c.last_name AS client_last_name,
+               c.username AS client_username
+          FROM trainer_schedule ts
+          JOIN users c ON c.id = ts.client_id
+         WHERE {where_clause}
+         ORDER BY ts.start_time ASC
+    """
+
+    data_params = list(filtered_params)
+    if limit is not None:
+        query += " LIMIT %s OFFSET %s"
+        data_params.extend([limit, offset])
+
+    cursor.execute(query, data_params)
+    rows = cursor.fetchall() or []
+    return total_all, filtered_total, rows
+
+
 @app.route('/trainer/clients/<int:client_id>/agenda', methods=['GET', 'POST'])
 @login_required
 def trainer_client_agenda(client_id):
@@ -2421,6 +2497,352 @@ def trainer_client_agenda(client_id):
         'client_agenda.html',
         trainer=trainer,
         client=client,
+        events=agenda_events,
+        total_sessions=total_all,
+        filtered_total=total_filtered,
+        page=page,
+        total_pages=total_pages,
+        per_page=per_page,
+        per_page_options=per_page_selections,
+        page_numbers=page_numbers,
+        page_start_index=page_start_index,
+        page_end_index=page_end_index,
+        selected_view=selected_view,
+        start_date_input=start_date_input,
+        end_date_input=end_date_input,
+        custom_date_error=custom_date_error,
+        custom_date_error_message=custom_error_message,
+        quick_filters=quick_filters,
+        selected_ids=selected_ids if request.method == 'POST' and not action_performed else [],
+        bulk_action=bulk_action if request.method == 'POST' else '',
+    )
+
+
+@app.route('/trainer/agenda', methods=['GET', 'POST'])
+@login_required
+def trainer_agenda():
+    trainer_id = session['user_id']
+    trainer = _require_trainer(trainer_id)
+    if not trainer:
+        flash("Trainer access required.", "danger")
+        return redirect(url_for('home'))
+
+    per_page_selections = (10, 30, 50, 100)
+    per_page = session.get('trainer_agenda_per_page')
+    if per_page not in per_page_selections:
+        per_page = per_page_selections[0]
+    per_page_arg = request.args.get('per_page')
+    if per_page_arg is not None:
+        try:
+            per_page_candidate = int(per_page_arg)
+        except (TypeError, ValueError):
+            per_page_candidate = None
+        if per_page_candidate in per_page_selections:
+            per_page = per_page_candidate
+    if not isinstance(per_page, int) or per_page <= 0:
+        per_page = per_page_selections[0]
+    if session.get('trainer_agenda_per_page') != per_page:
+        session['trainer_agenda_per_page'] = per_page
+
+    try:
+        page = int(request.args.get('page', 1))
+    except (TypeError, ValueError):
+        page = 1
+    page = max(page, 1)
+    offset = (page - 1) * per_page
+
+    allowed_views = {'upcoming', 'all', 'today', 'week', 'month', 'custom'}
+    selected_view = (request.args.get('view') or 'upcoming').lower()
+    if selected_view not in allowed_views:
+        selected_view = 'upcoming'
+
+    start_date_raw = request.args.get('start_date') or ''
+    end_date_raw = request.args.get('end_date') or ''
+    if selected_view != 'custom' and (start_date_raw or end_date_raw):
+        selected_view = 'custom'
+
+    now_local = datetime.now().astimezone()
+    tz_info = now_local.tzinfo or timezone.utc
+    today_local = now_local.date()
+
+    def _start_of_day(target_date: date | None):
+        if not target_date:
+            return None
+        return datetime.combine(target_date, datetime.min.time(), tzinfo=tz_info)
+
+    def _start_of_next_day(target_date: date | None):
+        if not target_date:
+            return None
+        return _start_of_day(target_date + timedelta(days=1))
+
+    def _parse_date(value: str):
+        if not value:
+            return None
+        try:
+            return datetime.strptime(value, '%Y-%m-%d').date()
+        except (TypeError, ValueError):
+            return None
+
+    start_date_value = _parse_date(start_date_raw)
+    end_date_value = _parse_date(end_date_raw)
+    custom_date_error = False
+    custom_error_message = ''
+    if start_date_raw and not start_date_value:
+        custom_date_error = True
+        custom_error_message = 'Enter a valid start date.'
+    if end_date_raw and not end_date_value:
+        custom_date_error = True
+        custom_error_message = 'Enter a valid end date.'
+    if start_date_value and end_date_value and start_date_value > end_date_value:
+        custom_date_error = True
+        custom_error_message = 'Start date must be before the end date.'
+
+    filter_start = None
+    filter_end = None
+    if selected_view == 'today':
+        filter_start = _start_of_day(today_local)
+        filter_end = _start_of_next_day(today_local)
+    elif selected_view == 'week':
+        week_start = today_local - timedelta(days=today_local.weekday())
+        filter_start = _start_of_day(week_start)
+        filter_end = _start_of_day(week_start + timedelta(days=7))
+    elif selected_view == 'month':
+        month_start = today_local.replace(day=1)
+        if month_start.month == 12:
+            next_month = date(month_start.year + 1, 1, 1)
+        else:
+            next_month = date(month_start.year, month_start.month + 1, 1)
+        filter_start = _start_of_day(month_start)
+        filter_end = _start_of_day(next_month)
+    elif selected_view == 'all':
+        filter_start = None
+        filter_end = None
+    elif selected_view == 'custom':
+        if not custom_date_error:
+            if start_date_value:
+                filter_start = _start_of_day(start_date_value)
+            if end_date_value:
+                filter_end = _start_of_next_day(end_date_value)
+    else:  # upcoming default
+        filter_start = _start_of_day(today_local)
+        filter_end = None
+
+    bulk_action = (request.form.get('bulk_action') or '').strip()
+    selected_ids_raw = request.form.getlist('session_id')
+    selected_ids: list[int] = []
+    for value in selected_ids_raw:
+        try:
+            selected_ids.append(int(value))
+        except (TypeError, ValueError):
+            continue
+
+    action_performed = False
+
+    with get_connection() as conn:
+        if request.method == 'POST':
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                if not selected_ids:
+                    flash("Select at least one session before performing a bulk action.", "warning")
+                elif bulk_action not in {'set_booked', 'set_completed', 'set_cancelled', 'delete'}:
+                    flash("Choose a valid bulk action.", "warning")
+                else:
+                    cursor.execute(
+                        """
+                        SELECT id, status, client_id
+                          FROM trainer_schedule
+                         WHERE trainer_id = %s
+                           AND id = ANY(%s)
+                        """,
+                        (trainer_id, selected_ids),
+                    )
+                    events = cursor.fetchall() or []
+                    if not events:
+                        flash("No sessions matched your selection.", "warning")
+                    else:
+                        client_deltas: dict[int, int] = {}
+                        client_ids: set[int] = set()
+                        if bulk_action == 'delete':
+                            booked_count_map: dict[int, int] = {}
+                            for ev in events:
+                                status = (ev.get('status') or 'booked').lower()
+                                cid = ev.get('client_id')
+                                if cid is None:
+                                    continue
+                                client_ids.add(cid)
+                                if status == 'booked':
+                                    booked_count_map[cid] = booked_count_map.get(cid, 0) + 1
+                            cursor.execute(
+                                "DELETE FROM trainer_schedule WHERE trainer_id = %s AND id = ANY(%s)",
+                                (trainer_id, selected_ids),
+                            )
+                            for cid, delta in booked_count_map.items():
+                                _adjust_sessions_booked(cursor, cid, -delta)
+                            conn.commit()
+                            flash(f"Removed {len(events)} session(s).", "success")
+                            action_performed = True
+                        else:
+                            desired_status = {
+                                'set_booked': 'booked',
+                                'set_completed': 'completed',
+                                'set_cancelled': 'cancelled',
+                            }[bulk_action]
+
+                            for ev in events:
+                                cid = ev.get('client_id')
+                                if cid is None:
+                                    continue
+                                client_ids.add(cid)
+                                current_status = (ev.get('status') or 'booked').lower()
+                                if current_status == desired_status:
+                                    continue
+                                if current_status == 'booked' and desired_status != 'booked':
+                                    client_deltas[cid] = client_deltas.get(cid, 0) - 1
+                                elif current_status != 'booked' and desired_status == 'booked':
+                                    client_deltas[cid] = client_deltas.get(cid, 0) + 1
+
+                            positive_client_ids = [cid for cid, delta in client_deltas.items() if delta > 0]
+                            if positive_client_ids:
+                                cursor.execute(
+                                    """
+                                    SELECT id, sessions_remaining, sessions_booked
+                                      FROM users
+                                     WHERE id = ANY(%s)
+                                    """,
+                                    (positive_client_ids,),
+                                )
+                                counts_map = {row['id']: row for row in cursor.fetchall() or []}
+                                over_limit_clients = []
+                                for cid in positive_client_ids:
+                                    row = counts_map.get(cid) or {}
+                                    remaining = row.get('sessions_remaining')
+                                    booked_now = row.get('sessions_booked') or 0
+                                    delta = client_deltas.get(cid, 0)
+                                    if remaining is not None and booked_now + delta > remaining:
+                                        over_limit_clients.append(cid)
+                                if over_limit_clients:
+                                    flash("Not enough sessions remaining to mark those bookings as scheduled.", "danger")
+                                else:
+                                    cursor.execute(
+                                        """
+                                        UPDATE trainer_schedule
+                                           SET status = %s
+                                         WHERE trainer_id = %s
+                                           AND id = ANY(%s)
+                                        """,
+                                        (desired_status, trainer_id, selected_ids),
+                                    )
+                                    for cid, delta in client_deltas.items():
+                                        if delta:
+                                            _adjust_sessions_booked(cursor, cid, delta)
+                                    conn.commit()
+                                    flash(f"Updated {len(events)} session(s) to {desired_status}.", "success")
+                                    action_performed = True
+                            else:
+                                cursor.execute(
+                                    """
+                                    UPDATE trainer_schedule
+                                       SET status = %s
+                                     WHERE trainer_id = %s
+                                       AND id = ANY(%s)
+                                    """,
+                                    (desired_status, trainer_id, selected_ids),
+                                )
+                                conn.commit()
+                                flash(f"Updated {len(events)} session(s) to {desired_status}.", "success")
+                                action_performed = True
+
+        if action_performed:
+            return redirect(request.url)
+
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            total_all, total_filtered, sessions = _fetch_trainer_sessions(
+                cursor,
+                trainer_id,
+                per_page,
+                offset,
+                filter_start,
+                filter_end,
+            )
+
+    total_pages = 1
+    if total_filtered and per_page:
+        total_pages = (total_filtered + per_page - 1) // per_page
+    total_pages = max(total_pages, 1)
+    if page > total_pages:
+        args = request.args.to_dict(flat=True)
+        args['page'] = total_pages
+        return redirect(url_for('trainer_agenda', **args))
+
+    def _format_local_time(dt):
+        try:
+            localized = dt.astimezone()
+            return localized.strftime('%I:%M %p').lstrip('0')
+        except Exception:
+            return fmt_utc(dt)
+
+    agenda_events = []
+    for row in sessions:
+        start_dt = row.get('start_time')
+        end_dt = row.get('end_time')
+        start_iso = start_dt.isoformat() if start_dt else None
+        end_iso = end_dt.isoformat() if end_dt else None
+        date_display = '—'
+        start_time_display = '—'
+        end_time_display = '—'
+        if start_dt:
+            try:
+                start_local = start_dt.astimezone()
+                date_display = start_local.strftime('%b %d, %Y')
+                start_time_display = _format_local_time(start_dt)
+            except Exception:
+                start_time_display = fmt_utc(start_dt)
+        if end_dt:
+            end_time_display = _format_local_time(end_dt)
+        agenda_events.append({
+            'id': row['id'],
+            'client_id': row.get('client_id'),
+            'client_name': row.get('client_name'),
+            'client_last_name': row.get('client_last_name'),
+            'client_username': row.get('client_username'),
+            'status': (row.get('status') or 'booked').lower(),
+            'date': date_display,
+            'start_time': start_time_display,
+            'end_time': end_time_display,
+            'start_time_iso': start_iso,
+            'end_time_iso': end_iso,
+        })
+
+    if total_filtered:
+        page_start_index = offset + 1 if agenda_events else 0
+        page_end_index = offset + len(agenda_events)
+    else:
+        page_start_index = 0
+        page_end_index = 0
+
+    window_radius = 2
+    start_page = max(1, page - window_radius)
+    end_page = min(total_pages, page + window_radius)
+    if end_page - start_page < window_radius * 2:
+        if start_page == 1:
+            end_page = min(total_pages, start_page + window_radius * 2)
+        elif end_page == total_pages:
+            start_page = max(1, end_page - window_radius * 2)
+    page_numbers = list(range(start_page, end_page + 1))
+
+    quick_filters = [
+        {'key': 'upcoming', 'label': 'Upcoming'},
+        {'key': 'today', 'label': 'Today'},
+        {'key': 'week', 'label': 'This Week'},
+        {'key': 'month', 'label': 'This Month'},
+        {'key': 'all', 'label': 'All'},
+    ]
+
+    start_date_input = start_date_value.isoformat() if start_date_value else (start_date_raw or '')
+    end_date_input = end_date_value.isoformat() if end_date_value else (end_date_raw or '')
+
+    return render_template(
+        'trainer_agenda.html',
+        trainer=trainer,
         events=agenda_events,
         total_sessions=total_all,
         filtered_total=total_filtered,
