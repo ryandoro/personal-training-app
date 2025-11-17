@@ -41,7 +41,8 @@ from helpers import (
 )
 from collections import OrderedDict
 from dotenv import load_dotenv
-from datetime import datetime, date, timedelta, timezone
+from datetime import datetime, date, timedelta, timezone, time
+from zoneinfo import ZoneInfo
 from mail import send_email, send_password_reset_email, send_invite_email, send_verification_email
 from urllib.parse import urlencode 
 
@@ -1215,6 +1216,83 @@ def _validate_time_window(start_dt: datetime, end_dt: datetime) -> None:
         raise ValueError("Duration must be a multiple of 15 minutes.")
 
 
+def _resolve_local_zone(candidate_tz=None):
+    """
+    Try to resolve a timezone with DST rules. Prefer:
+    1) A supplied zoneinfo key (e.g., America/New_York).
+    2) TZ environment variable.
+    3) The system local timezone (even if it has no key).
+    4) Fall back to the candidate (e.g., UTC) or UTC.
+    """
+    # If the candidate is a ZoneInfo with a key, keep it.
+    if candidate_tz and getattr(candidate_tz, 'key', None):
+        return candidate_tz
+
+    # If the candidate is a fixed-offset UTC, we still want a local zone if available.
+    tz_env = os.environ.get("TZ")
+    if tz_env:
+        try:
+            return ZoneInfo(tz_env)
+        except Exception:
+            pass
+
+    system_tz = datetime.now().astimezone().tzinfo
+    if system_tz:
+        if getattr(system_tz, 'key', None):
+            return system_tz
+        # Even if there's no key, most system tzinfo objects know DST rules.
+        return system_tz
+
+    return candidate_tz or timezone.utc
+
+
+def _shift_weekly_preserving_local(
+    start_dt: datetime,
+    end_dt: datetime,
+    week_offset: int,
+    tz_hint=None,
+) -> tuple[datetime, datetime]:
+    """
+    Roll a start/end window forward by N weeks while keeping the same local wall time.
+    This avoids DST jumps that occur when adding timedeltas in UTC.
+    """
+    def _ensure_aware(dt: datetime) -> datetime:
+        if dt.tzinfo is None:
+            return dt.replace(tzinfo=timezone.utc)
+        return dt
+
+    start_dt = _ensure_aware(start_dt)
+    end_dt = _ensure_aware(end_dt)
+
+    tz_to_use = _resolve_local_zone(tz_hint or start_dt.tzinfo)
+
+    start_local = start_dt.astimezone(tz_to_use)
+    end_local = end_dt.astimezone(tz_to_use)
+
+    target_start_date = start_local.date() + timedelta(weeks=week_offset)
+    target_end_date = end_local.date() + timedelta(weeks=week_offset)
+
+    start_clock = time(
+        start_local.hour,
+        start_local.minute,
+        start_local.second,
+        start_local.microsecond,
+        tzinfo=tz_to_use,
+    )
+    end_clock = time(
+        end_local.hour,
+        end_local.minute,
+        end_local.second,
+        end_local.microsecond,
+        tzinfo=tz_to_use,
+    )
+
+    shifted_start_local = datetime.combine(target_start_date, start_clock)
+    shifted_end_local = datetime.combine(target_end_date, end_clock)
+
+    return shifted_start_local.astimezone(timezone.utc), shifted_end_local.astimezone(timezone.utc)
+
+
 def _ensure_trainer_client_link(cursor, trainer_id: int, client_id: int, trainer_role: str):
     cursor.execute(
         "SELECT trainer_id, sessions_remaining, sessions_booked FROM users WHERE id = %s",
@@ -1988,6 +2066,13 @@ def trainer_time_off_repeat(block_id):
 
     payload = request.get_json(silent=True) or {}
     weeks_raw = payload.get('weeks') or 1
+    tz_hint = None
+    tz_name = payload.get('timezone')
+    if isinstance(tz_name, str) and tz_name.strip():
+        try:
+            tz_hint = ZoneInfo(tz_name.strip())
+        except Exception:
+            tz_hint = None
     try:
         weeks_requested = int(weeks_raw)
     except (TypeError, ValueError):
@@ -2021,8 +2106,12 @@ def trainer_time_off_repeat(block_id):
         skipped_conflicts: list[dict[str, object]] = []
 
         for offset in range(1, weeks_requested + 1):
-            new_start = base_start + timedelta(weeks=offset)
-            new_end = base_end + timedelta(weeks=offset)
+            new_start, new_end = _shift_weekly_preserving_local(
+                base_start,
+                base_end,
+                offset,
+                tz_hint=tz_hint or base_start.tzinfo,
+            )
             with conn.cursor() as cursor:
                 conflict, message = _time_off_conflicts(cursor, trainer_id, new_start, new_end)
             if conflict:
@@ -2874,6 +2963,13 @@ def trainer_schedule_repeat(event_id):
 
     payload = request.get_json(silent=True) or {}
     weeks_raw = payload.get('weeks') or 1
+    tz_hint = None
+    tz_name = payload.get('timezone')
+    if isinstance(tz_name, str) and tz_name.strip():
+        try:
+            tz_hint = ZoneInfo(tz_name.strip())
+        except Exception:
+            tz_hint = None
     try:
         weeks_requested = int(weeks_raw)
     except (TypeError, ValueError):
@@ -2945,8 +3041,12 @@ def trainer_schedule_repeat(event_id):
         for offset in range(1, weeks_requested + 1):
             if quota is not None and len(created_ids) >= quota:
                 break
-            new_start = base_start + timedelta(weeks=offset)
-            new_end = base_end + timedelta(weeks=offset)
+            new_start, new_end = _shift_weekly_preserving_local(
+                base_start,
+                base_end,
+                offset,
+                tz_hint=tz_hint or base_start.tzinfo,
+            )
 
             with conn.cursor() as cursor:
                 conflict, message = _schedule_conflicts(cursor, trainer_id, client_id, new_start, new_end)

@@ -299,12 +299,17 @@
 <div id="eventModal" class="calendar-modal" hidden>
     <div class="calendar-modal-content event-session-modal">
         <div class="event-session-modal__header">
-            <div>
+            <div class="event-session-modal__summary ms-4">
                 <span class="event-session-modal__status" id="eventModalStatus">Booked</span>
                 <h4 class="event-session-modal__title" id="eventModalTitle">Session Details</h4>
                 <div class="event-session-modal__time" id="eventModalTime"></div>
             </div>
-            <button type="button" class="btn-close btn-close-white" id="eventModalClose" aria-label="Close"></button>
+            <div class="event-session-modal__header-actions">
+                <button type="button" class="btn-close btn-close-white mt-1" id="eventModalClose" aria-label="Close"></button>
+                <a href="#" class="btn btn-outline-light btn-sm mt-4 me-4 event-session-modal__agenda-btn" id="eventViewAgenda" hidden>
+                    <i class="bi bi-calendar-week me-1"></i>Agenda
+                </a>
+            </div>
         </div>
         <div class="event-session-modal__body">
             <button type="button" class="btn btn-outline-primary w-100" id="eventViewProfile">
@@ -373,11 +378,11 @@
                     </form>
                 </div>
             </div>
-        </div>
-        <div class="event-session-modal__footer">
-            <button type="button" class="btn btn-danger w-100" id="eventDeleteSession">
-                <i class="bi bi-trash me-1"></i>Delete Session
-            </button>
+            <div class="event-session-modal__footer">
+                <button type="button" class="btn btn-danger w-100 mt-3" id="eventDeleteSession">
+                    <i class="bi bi-trash me-1"></i>Delete Session
+                </button>
+            </div>
         </div>
     </div>
 </div>
@@ -457,6 +462,7 @@
     const eventModalTitle = document.getElementById('eventModalTitle');
     const eventModalTime = document.getElementById('eventModalTime');
     const eventModalStatus = document.getElementById('eventModalStatus');
+    const eventViewAgendaBtn = document.getElementById('eventViewAgenda');
     const eventViewProfileBtn = document.getElementById('eventViewProfile');
     const eventRepeatForm = document.getElementById('eventRepeatForm');
     const eventRepeatWeeksInput = document.getElementById('eventRepeatWeeks');
@@ -486,7 +492,12 @@
     const eventNoteSave = document.getElementById('eventNoteSave');
     const eventNoteStatus = document.getElementById('eventNoteStatus');
     const eventNoteWrapper = document.querySelector('.event-session-modal__noteform-wrapper');
-    const clientProfileBase = "{{ url_for('client_profile', client_id=0)[:-1] }}";
+    const clientProfileTemplate = "{{ url_for('client_profile', client_id=0) }}";
+    const clientAgendaTemplate = "{{ url_for('trainer_client_agenda', client_id=0) }}";
+    const buildClientUrl = (template, clientId) => {
+        const safeId = encodeURIComponent(clientId);
+        return template.replace(/\/0(\/?)/, `/${safeId}$1`);
+    };
     const eventRepeatSubmitDefault = eventRepeatSubmit ? eventRepeatSubmit.innerHTML : '';
     const eventStatusUpdateDefault = eventStatusUpdate ? eventStatusUpdate.innerHTML : '';
     const eventDeleteDefault = eventDeleteSession ? eventDeleteSession.innerHTML : '';
@@ -1019,7 +1030,8 @@
         }
         if (eventModalTime) {
             const dateStr = start.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
-            eventModalTime.textContent = `${dateStr} · ${formatTime(start)} – ${formatTime(end)}`;
+            const timeRange = `${formatTime(start)} – ${formatTime(end)}`;
+            eventModalTime.innerHTML = `${dateStr}<br><span class="event-session-modal__time-range">${timeRange}</span>`;
         }
         const badgeStatus = eventType === 'time_off' ? 'time_off' : status;
         applyStatusBadge(badgeStatus);
@@ -1079,6 +1091,16 @@
             timeOffModalSaveButton.disabled = eventType !== 'time_off';
             timeOffModalSaveButton.innerHTML = timeOffModalSaveDefault;
         }
+        if (eventViewAgendaBtn) {
+            const targetId = modalData.client_id;
+            if (eventType === 'time_off' || !targetId) {
+                eventViewAgendaBtn.hidden = true;
+                eventViewAgendaBtn.removeAttribute('href');
+            } else {
+                eventViewAgendaBtn.hidden = false;
+                eventViewAgendaBtn.href = buildClientUrl(clientAgendaTemplate, targetId);
+            }
+        }
         if (eventViewProfileBtn) {
             if (eventType === 'time_off') {
                 eventViewProfileBtn.hidden = true;
@@ -1087,7 +1109,7 @@
                 eventViewProfileBtn.hidden = false;
                 eventViewProfileBtn.onclick = () => {
                     const targetId = modalData.client_id;
-                    window.location.href = `${clientProfileBase}${targetId}`;
+                    window.location.href = buildClientUrl(clientProfileTemplate, targetId);
                 };
             }
         }
@@ -1945,6 +1967,9 @@
         eventRepeatSubmit.disabled = true;
         eventRepeatSubmit.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Repeating...';
 
+        const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || null;
+        const timezoneOffsetMinutes = new Date().getTimezoneOffset();
+
         const endpoint = isTimeOff
             ? `/trainer/time-off/${state.modalEvent.id}/repeat`
             : `/trainer/schedule/${state.modalEvent.id}/repeat`;
@@ -1952,7 +1977,11 @@
         fetch(endpoint, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ weeks: weeksValue })
+            body: JSON.stringify({
+                weeks: weeksValue,
+                timezone,
+                timezone_offset_minutes: timezoneOffsetMinutes
+            })
         })
             .then(res => res.json())
             .then(data => {

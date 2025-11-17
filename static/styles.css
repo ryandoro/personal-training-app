@@ -2873,6 +2873,9 @@ iframe.fullscreen-sim {
   color: #6c757d;
   font-weight: 600;
   pointer-events: none;
+  z-index: 6;
+  text-align: center;
+  padding: 0 1rem;
 }
 
 .calendar-controls {
@@ -3908,6 +3911,39 @@ iframe.fullscreen-sim {
   justify-content: space-between;
   align-items: flex-start;
   gap: 1.25rem;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  position: relative;
+}
+
+.event-session-modal__summary {
+  margin-left: 6px;
+}
+
+.event-session-modal__header-actions {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.65rem;
+  flex-direction: column;
+  position: absolute;
+  top: 0.6rem;
+  right: 0.95rem;
+}
+
+.event-session-modal__header-actions .btn {
+  border-radius: 999px;
+  padding: 0.45rem 1rem;
+  font-weight: 700;
+}
+
+.event-session-modal__agenda-btn {
+  padding-top: 0.55rem !important;
+  padding-bottom: 0.55rem !important;
+}
+
+.event-session-modal__header .btn-close {
+  position: static;
 }
 
 .event-session-modal__status {
@@ -3969,6 +4005,12 @@ iframe.fullscreen-sim {
 .event-session-modal__time {
   font-size: 0.9rem;
   opacity: 0.9;
+  text-align: center;
+}
+
+.event-session-modal__time-range {
+  white-space: nowrap;
+  display: inline-block;
 }
 
 .event-session-modal__body {
@@ -3979,6 +4021,7 @@ iframe.fullscreen-sim {
   background: linear-gradient(180deg, rgba(30, 164, 230, 0.08) 0%, rgba(255, 255, 255, 0.7) 100%);
   flex: 1 1 auto;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .event-session-modal__section {
@@ -4231,10 +4274,15 @@ iframe.fullscreen-sim {
   .calendar-modal-content {
     width: 100%;
     max-width: 420px;
+    max-height: calc(var(--app-vh, 1vh) * 100 - 1rem);
+    overflow: hidden;
   }
   .event-session-modal {
-    max-height: calc(var(--app-vh, 1vh) * 100 - 1.5rem);
+    max-height: 100%;
   }
+.event-session-modal__body {
+  -webkit-overflow-scrolling: touch;
+}
 }
 
 @media (max-width: 992px) {
