@@ -23,13 +23,7 @@
                     {% set subcat_index = loop.index %}
                     <div class="surface-section surface-section--flat">
                         <div class="surface-section__header">
-                            <div class="surface-section__icon">
-                                <i class="bi bi-layers"></i>
-                            </div>
-                            <div>
-                                <h5 class="surface-section__title mb-1">{{ subcategory }}</h5>
-                                <p class="surface-section__subtitle mb-0">Tap any exercise to read the detailed description.</p>
-                            </div>
+                            <h5 class="surface-section__title mb-1">{{ subcategory }}</h5>
                         </div>
                         <ul class="list-group p-2 rounded-3 mb-0">
                             {% for exercise in exercises %}
@@ -124,4 +118,3 @@ document.addEventListener('click', function (e) {
 });
 </script>
 {% endblock %}
-

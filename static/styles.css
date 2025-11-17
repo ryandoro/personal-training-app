@@ -2007,6 +2007,61 @@ iframe.fullscreen-sim {
   box-shadow: 0 0 0 0.18rem rgba(247, 147, 26, 0.22) !important;
 }
 
+/* Complete Workout card */
+#complete-workout-card {
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  border-radius: 18px;
+  background: radial-gradient(circle at 20% 20%, rgba(46, 204, 113, 0.15), transparent 38%),
+              radial-gradient(circle at 80% 18%, rgba(30, 164, 230, 0.16), transparent 38%),
+              linear-gradient(145deg, rgba(255, 255, 255, 0.96), rgba(214, 243, 232, 0.9));
+  box-shadow: 0 20px 48px rgba(12, 50, 87, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.55);
+  position: relative;
+  overflow: hidden;
+}
+
+#complete-workout-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(120deg, rgba(16, 185, 129, 0.18), rgba(30, 164, 230, 0.14));
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+#complete-workout-card > * {
+  position: relative;
+  z-index: 1;
+}
+
+#complete-workout-btn {
+  border: none;
+  background: linear-gradient(135deg, #0ec97f, #0aa364);
+  color: #ffffff;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.25);
+  padding: 0.9rem 1.4rem;
+  border-radius: 14px;
+  box-shadow: 0 14px 28px rgba(14, 201, 127, 0.32), 0 0 0 1px rgba(14, 201, 127, 0.45);
+  transition: transform 0.18s ease, box-shadow 0.18s ease, filter 0.18s ease;
+}
+
+#complete-workout-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 16px 32px rgba(14, 201, 127, 0.42), 0 0 0 1px rgba(14, 201, 127, 0.55);
+  filter: brightness(1.03);
+}
+
+#complete-workout-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 10px 22px rgba(14, 201, 127, 0.28), 0 0 0 1px rgba(14, 201, 127, 0.45);
+}
+
+#progress-tracking-note {
+  color: #0f5132 !important;
+}
+
 /* 2 columns on mobile, inline on wider screens */
 #duration-pills {
   display: flex;
@@ -2083,10 +2138,12 @@ iframe.fullscreen-sim {
 
 
 .down-arrow {
-  color: #198754; /* Bootstrap green */
+  color: #0ec97f; /* match Complete Workout green */
   display: inline-block;
   animation: bounce 1s infinite;
-  filter: drop-shadow(0 0 4px #ffffff); /* constant white glow */
+  filter:
+    drop-shadow(0 0 6px rgba(14, 201, 127, 0.55))  /* soft mint glow */
+    drop-shadow(0 0 12px rgba(12, 50, 87, 0.3));   /* darker halo for contrast */
 }
 
 @keyframes bounce {
