@@ -393,16 +393,16 @@
         </div>
 
         <div class="col-12 training-container client-workout">
-            <div class="card border-0 shadow-lg mb-4" style="border-radius: 20px;">
+            <div class="card border-0 shadow-lg mb-4 workout-choice-card">
                 <div class="card-header border-0 bg-transparent text-center">
-                    <h3 class="text-center text-white fw-bold p-3 rounded-3 border mb-0" style="text-shadow: 0 0 1.5px black; box-shadow: 0 0 12px lightslategray; background: #1EA4E6;">
-                        Generate Workout for {{ client.name or client.username }}
-                    </h3>
+                    <div class="workout-choice-header">
+                        <h3 class="workout-choice-title mb-0">Generate Workout for {{ client.name or client.username }}</h3>
+                    </div>
                 </div>
                 <div class="card-body p-4">
                     {% set wd = client.workout_duration or 60 %}
-                    <div class="mb-4">
-                        <label class="form-label fw-bold text-primary d-block">Workout Duration</label>
+                    <div class="mb-4 text-center">
+                        <label class="form-label workout-subheading d-block">Workout Duration</label>
                         <div id="trainer-duration-pills"
                              data-update-url="{{ url_for('trainer_update_client_duration', client_id=client.id) }}">
                             {% for minutes in [20, 30, 45, 60] %}
@@ -419,7 +419,7 @@
                     <div class="row g-4">
                         <div class="col-12">
                             <div class="mb-3">
-                                <label for="category" class="form-label fw-bold text-primary">Workout Categories</label>
+                                <label for="category" class="form-label workout-subheading">Workout Categories</label>
                                 <select id="category" name="category" class="form-select text-center shadow-sm bitcoin-workout" required form="generate-client-workout">
                                     <option value="" disabled selected>Select a Workout Category</option>
                                     {% for category in category_options %}
@@ -462,11 +462,10 @@
                             </div>
                         </div>
                     </div>
-                    <div class="d-grid mt-3">
+                    <div class="text-center mb-3">
                         <button id="generate-client-workout-btn"
                                 type="submit"
-                                class="btn btn-primary fw-bold btn-lg border rounded-3 px-4"
-                                style="text-shadow: 0 0 1px rgba(0,0,0,0.25); box-shadow: 0 0 12px rgba(30,164,230,0.45);"
+                                class="btn btn-primary fw-bold btn-lg border rounded-3 px-4 generate-workout-btn"
                                 form="generate-client-workout">
                             Generate Workout
                         </button>
