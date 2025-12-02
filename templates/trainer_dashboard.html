@@ -5,7 +5,7 @@
 {% endblock %}
 
 {% block content %}
-<div class="trainer-dashboard-container container-fluid px-0 px-sm-3 px-lg-5">
+<div class="trainer-dashboard-container container-fluid px-0 px-sm-3 px-lg-5" id="trainer-dashboard-top">
     <div class="card w-100 border-0 shadow-lg trainer-dashboard-card mx-auto">
         {% set add_client_url = url_for('add_client') %}
         {% set show_trainer_column = trainer.role == 'admin' %}
@@ -41,7 +41,7 @@
                         Signed in as {{ trainer_display_name }}
                     </span>
                     <a href="{{ url_for('trainer_agenda') }}"
-                       class="btn btn-sm trainer-agenda-btn d-inline-flex align-items-center px-2 py-1 fw-semibold">
+                       class="btn btn-sm btn-outline-light trainer-agenda-btn d-inline-flex align-items-center px-2 py-1 fw-semibold">
                         <i class="bi bi-journal-text me-1"></i>
                         <span>My Agenda</span>
                     </a>
@@ -273,6 +273,15 @@
     </div>
 </div>
 
+<div class="trainer-dashboard-backtotop text-center mb-5">
+    <a href="#trainer-dashboard-top"
+       class="dashboard-quicklink trainer-backtotop-link d-inline-flex align-items-center gap-2"
+       aria-label="Back to top">
+        <i class="bi bi-arrow-up-circle"></i>
+        <span>Back to top</span>
+    </a>
+</div>
+
 <div id="windowModal" class="calendar-modal" hidden>
     <div class="calendar-modal-content">
         <div class="d-flex justify-content-between align-items-center mb-3">
@@ -410,6 +419,63 @@
         url.searchParams.delete('search');
         const hash = url.hash || '#trainer-search-section';
         history.replaceState({}, document.title, `${url.pathname}${url.searchParams.toString() ? `?${url.searchParams}` : ''}${hash}`);
+    });
+</script>
+
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        if (!('ontouchstart' in window)) return;
+        requestAnimationFrame(() => {
+            const body = document.body || document.documentElement;
+            if (body) {
+                body.addEventListener('touchstart', () => {}, { passive: true });
+            }
+        });
+    });
+</script>
+
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const agendaBtn = document.querySelector('.trainer-agenda-btn');
+        if (!agendaBtn) return;
+
+        let awaitingNavigation = false;
+
+        const addActive = () => agendaBtn.classList.add('trainer-agenda-btn--active');
+        const clearActive = () => {
+            awaitingNavigation = false;
+            agendaBtn.classList.remove('trainer-agenda-btn--active');
+        };
+        const conditionalClear = () => {
+            setTimeout(() => {
+                if (!awaitingNavigation) {
+                    agendaBtn.classList.remove('trainer-agenda-btn--active');
+                }
+            }, 0);
+        };
+
+        agendaBtn.addEventListener('touchstart', addActive, { passive: true });
+        ['pointerdown', 'mousedown'].forEach(evt => agendaBtn.addEventListener(evt, addActive));
+
+        ['touchend', 'pointerup', 'mouseup'].forEach(evt => agendaBtn.addEventListener(evt, conditionalClear));
+        ['touchcancel', 'pointercancel', 'mouseleave', 'blur'].forEach(evt => {
+            agendaBtn.addEventListener(evt, () => {
+                if (!awaitingNavigation) {
+                    agendaBtn.classList.remove('trainer-agenda-btn--active');
+                }
+            });
+        });
+
+        agendaBtn.addEventListener('click', () => {
+            awaitingNavigation = true;
+            addActive();
+            const unloadReset = () => {
+                awaitingNavigation = false;
+            };
+            window.addEventListener('beforeunload', unloadReset, { once: true });
+        });
+
+        window.addEventListener('pageshow', clearActive);
     });
 </script>
 
@@ -622,6 +688,7 @@
         viewStart: initialStart,
         viewEnd: initialEnd,
         viewMode: initialMode,
+        today: startOfDay(new Date()),
         events: [],
         dragging: null,
         dragPointer: null,
@@ -1213,6 +1280,19 @@
         };
     }
 
+    function startOfDay(date) {
+        const d = new Date(date);
+        d.setHours(0, 0, 0, 0);
+        return d;
+    }
+
+    function isSameDay(a, b) {
+        if (!(a instanceof Date) || !(b instanceof Date)) return false;
+        return a.getFullYear() === b.getFullYear()
+            && a.getMonth() === b.getMonth()
+            && a.getDate() === b.getDate();
+    }
+
     function toISODate(date) {
         const copy = new Date(date);
         return copy.toISOString();
@@ -1273,6 +1353,7 @@
         for (let i = 0; i < 7; i += 1) {
             const dayDate = new Date(state.weekStart);
             dayDate.setDate(dayDate.getDate() + i);
+            const todayMatch = isSameDay(dayDate, state.today);
 
             const header = document.createElement('div');
             header.className = 'calendar-day-header';
@@ -1283,11 +1364,18 @@
                 `<span class="calendar-month-label">${month}</span>`,
                 `<span class="calendar-date-label">${day}</span>`
             ].join('');
+            if (todayMatch) {
+                header.classList.add('calendar-day-header--today');
+                header.setAttribute('aria-current', 'date');
+            }
             dayHeaderEl.appendChild(header);
 
             const col = document.createElement('div');
             col.className = 'calendar-day-column';
             col.dataset.date = dayDate.toISOString();
+            if (todayMatch) {
+                col.classList.add('calendar-day-column--today');
+            }
             columnsEl.appendChild(col);
             dayColumns.push(col);
         }
@@ -1332,6 +1420,25 @@
                 column.appendChild(slot);
             }
         });
+    }
+
+    function focusTodayColumn(options = {}) {
+        const { smooth = false } = options;
+        if (!dayHeaderEl) return false;
+        const todayHeader = dayHeaderEl.querySelector('.calendar-day-header--today');
+        const scrollWrap = document.getElementById('calendar-scroll');
+        if (!todayHeader || !scrollWrap) return false;
+        const desiredLeft = todayHeader.offsetLeft - Math.max(0, (scrollWrap.clientWidth - todayHeader.offsetWidth) / 2);
+        const targetLeft = Math.max(0, desiredLeft);
+        if (typeof scrollWrap.scrollTo === 'function') {
+            scrollWrap.scrollTo({
+                left: targetLeft,
+                behavior: smooth ? 'smooth' : 'auto'
+            });
+        } else {
+            scrollWrap.scrollLeft = targetLeft;
+        }
+        return true;
     }
 
     function renderEvents() {
@@ -1405,7 +1512,7 @@
             const dragZone = eventNode.querySelector('.calendar-event-dragzone');
             if (dragZone) {
                 dragZone.addEventListener('pointerdown', (evt) => handleDragPointerDown(evt, event, column));
-                if (isTimeOff) {
+                if (isTimeOff && state.viewMode === 'full') {
                     const existingTypeIcon = dragZone.querySelector('.calendar-event-typeicon');
                     if (!existingTypeIcon) {
                         const indicator = document.createElement('i');
@@ -2489,12 +2596,18 @@
             .catch(() => showDashboardToast('Network error saving availability window.', 'danger'));
     }
 
-    function rebuildGrid() {
+    function rebuildGrid(options = {}) {
+        const { focusToday = false, smooth = false } = options;
         renderHeaders();
         renderTimes();
         renderSlots();
         const scrollWrap = document.getElementById('calendar-scroll');
-        if (scrollWrap) scrollWrap.scrollLeft = 0;
+        if (focusToday && focusTodayColumn({ smooth })) {
+            return;
+        }
+        if (scrollWrap) {
+            scrollWrap.scrollLeft = 0;
+        }
     }
 
     function applyInitialFocus() {
@@ -2524,7 +2637,7 @@
     }
 
     function init() {
-        rebuildGrid();
+        rebuildGrid({ focusToday: true });
         updateWeekLabel();
         fetchEvents();
 
@@ -2546,7 +2659,7 @@
         });
         todayBtn.addEventListener('click', () => {
             state.weekStart = startOfWeek(new Date());
-            rebuildGrid();
+            rebuildGrid({ focusToday: true, smooth: true });
             updateWeekLabel();
             fetchEvents();
         });

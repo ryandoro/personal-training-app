@@ -22,6 +22,9 @@
                             {% endif %}
                         </span>
                     </div>
+                    <a href="{{ url_for('client_self_agenda') }}" class="btn btn-light btn-sm text-primary fw-semibold mt-3">
+                        <i class="bi bi-list-check me-1"></i>My Agenda
+                    </a>
                 </div>
             </div>
         </div>
@@ -283,6 +286,8 @@
         const spacer = document.createElement('div');
         spacer.className = 'calendar-time-spacer';
         dayHeaderEl.appendChild(spacer);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
 
         for (let i = 0; i < 7; i += 1) {
             const dayDate = new Date(state.weekStart);
@@ -297,11 +302,21 @@
                 `<span class="calendar-month-label">${month}</span>`,
                 `<span class="calendar-date-label">${day}</span>`
             ].join('');
+            const dayNormalized = new Date(dayDate);
+            dayNormalized.setHours(0, 0, 0, 0);
+            const isToday = dayNormalized.getTime() === today.getTime();
+            if (isToday) {
+                header.classList.add('calendar-day-header--today');
+                header.setAttribute('aria-current', 'date');
+            }
             dayHeaderEl.appendChild(header);
 
             const col = document.createElement('div');
             col.className = 'calendar-day-column';
             col.dataset.date = dayDate.toISOString();
+            if (isToday) {
+                col.classList.add('calendar-day-column--today');
+            }
             columnsEl.appendChild(col);
             dayColumns.push(col);
         }

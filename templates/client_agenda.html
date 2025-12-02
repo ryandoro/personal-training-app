@@ -5,16 +5,28 @@
 {% endblock %}
 
 {% block content %}
+{% set view_only = view_only | default(false) %}
+{% set selected_ids = selected_ids | default([]) %}
+{% set bulk_action = bulk_action | default('') %}
 <div class="experience-container experience-container--wide agenda-experience">
     <div class="surface-card agenda-surface-card">
         <div class="surface-hero agenda-hero">
             <div class="agenda-hero__nav">
-                <a href="{{ url_for('client_profile', client_id=client.id) }}" class="btn btn-light btn-sm text-primary fw-semibold">
-                    <i class="bi bi-arrow-left me-1"></i>Back to Profile
-                </a>
-                <a href="{{ url_for('trainer_dashboard') }}" class="btn btn-outline-light btn-sm text-white">
-                    <i class="bi bi-grid me-1"></i>Trainer Dashboard
-                </a>
+                {% if view_only %}
+                    <a href="{{ url_for('client_schedule_view') }}" class="btn btn-light btn-sm text-primary fw-semibold">
+                        <i class="bi bi-arrow-left me-1"></i>Back to Calendar
+                    </a>
+                    <a href="{{ url_for('training') }}" class="btn btn-outline-light btn-sm text-white">
+                        <i class="bi bi-lightning-charge me-1"></i>Training
+                    </a>
+                {% else %}
+                    <a href="{{ url_for('client_profile', client_id=client.id) }}" class="btn btn-light btn-sm text-primary fw-semibold">
+                        <i class="bi bi-arrow-left me-1"></i>Back to Profile
+                    </a>
+                    <a href="{{ url_for('trainer_dashboard') }}" class="btn btn-outline-light btn-sm text-white">
+                        <i class="bi bi-grid me-1"></i>Trainer Dashboard
+                    </a>
+                {% endif %}
             </div>
             <div class="surface-hero__primary">
                 <h2 class="surface-hero__title mb-1">Session Agenda</h2>
@@ -44,11 +56,19 @@
                             <div class="agenda-quick-links d-flex flex-wrap gap-2 align-items-center">
                                 <span class="text-uppercase small text-muted fw-semibold me-1 agenda-quick-label text-center text-lg-start">Quick View:</span>
                                 {% for filter in quick_filters %}
-                                    <a class="btn btn-outline-primary btn-sm {% if selected_view == filter.key %}active{% endif %}"
-                                       href="{{ url_for('trainer_client_agenda', client_id=client.id, view=filter.key, per_page=per_page, page=1) }}#agendaTable"
-                                       {% if selected_view == filter.key %}aria-current="true"{% endif %}>
-                                        {{ filter.label }}
-                                    </a>
+                                    {% if view_only %}
+                                        <a class="btn btn-outline-primary btn-sm {% if selected_view == filter.key %}active{% endif %}"
+                                           href="{{ url_for('client_self_agenda', view=filter.key, per_page=per_page, page=1) }}#agendaTable"
+                                           {% if selected_view == filter.key %}aria-current="true"{% endif %}>
+                                            {{ filter.label }}
+                                        </a>
+                                    {% else %}
+                                        <a class="btn btn-outline-primary btn-sm {% if selected_view == filter.key %}active{% endif %}"
+                                           href="{{ url_for('trainer_client_agenda', client_id=client.id, view=filter.key, per_page=per_page, page=1) }}#agendaTable"
+                                           {% if selected_view == filter.key %}aria-current="true"{% endif %}>
+                                            {{ filter.label }}
+                                        </a>
+                                    {% endif %}
                                 {% endfor %}
                             </div>
                         </div>
@@ -56,7 +76,11 @@
 
                     <div class="agenda-filters-grid__date">
                         <form method="get"
-                              action="{{ url_for('trainer_client_agenda', client_id=client.id) }}#agendaTable"
+                              {% if view_only %}
+                                  action="{{ url_for('client_self_agenda') }}#agendaTable"
+                              {% else %}
+                                  action="{{ url_for('trainer_client_agenda', client_id=client.id) }}#agendaTable"
+                              {% endif %}
                               class="agenda-range-form d-flex flex-column gap-4">
                             <input type="hidden" name="view" value="custom">
                             <input type="hidden" name="per_page" value="{{ per_page }}">
@@ -79,10 +103,17 @@
                                            value="{{ end_date_input }}">
                                     <div class="agenda-date-range__actions d-flex align-items-center gap-2">
                                         <button type="submit" class="btn btn-outline-primary btn-sm">Apply</button>
-                                        <a class="btn btn-link btn-sm text-decoration-none"
-                                           href="{{ url_for('trainer_client_agenda', client_id=client.id, view='upcoming', per_page=per_page) }}#agendaTable">
-                                            Clear
-                                        </a>
+                                        {% if view_only %}
+                                            <a class="btn btn-link btn-sm text-decoration-none"
+                                               href="{{ url_for('client_self_agenda', view='upcoming', per_page=per_page) }}#agendaTable">
+                                                Clear
+                                            </a>
+                                        {% else %}
+                                            <a class="btn btn-link btn-sm text-decoration-none"
+                                               href="{{ url_for('trainer_client_agenda', client_id=client.id, view='upcoming', per_page=per_page) }}#agendaTable">
+                                                Clear
+                                            </a>
+                                        {% endif %}
                                     </div>
                                 </div>
                                 {% if custom_date_error %}
@@ -92,7 +123,7 @@
                         </form>
                     </div>
 
-                    {% if events %}
+                    {% if events and not view_only %}
                         <div class="agenda-filters-grid__bulk">
                             <div class="agenda-actions border rounded-4 bg-white bg-opacity-75 p-3 p-md-4 shadow-sm text-center text-lg-start">
                                 <div class="text-uppercase small text-muted fw-semibold">Bulk Actions</div>
@@ -114,25 +145,36 @@
                     {% endif %}
                 </div>
 
-                <form method="post"
+                <form {% if view_only %}method="get"{% else %}method="post"{% endif %}
                       id="clientAgendaBulkForm"
-                      action="{{ url_for('trainer_client_agenda',
-                                         client_id=client.id,
-                                         view=selected_view,
-                                         per_page=per_page,
-                                         page=page,
-                                         start_date=start_query_param,
-                                         end_date=end_query_param) }}#agendaTable"
+                      {% if view_only %}
+                        action="{{ url_for('client_self_agenda',
+                                           view=selected_view,
+                                           per_page=per_page,
+                                           page=page,
+                                           start_date=start_query_param,
+                                           end_date=end_query_param) }}#agendaTable"
+                      {% else %}
+                        action="{{ url_for('trainer_client_agenda',
+                                           client_id=client.id,
+                                           view=selected_view,
+                                           per_page=per_page,
+                                           page=page,
+                                           start_date=start_query_param,
+                                           end_date=end_query_param) }}#agendaTable"
+                      {% endif %}
                       class="d-flex flex-column gap-4">
                     <div class="table-responsive agenda-table-wrapper" id="agendaTable">
                         <table class="table table-hover align-middle agenda-table">
                             <thead>
                                 <tr class="text-uppercase small text-muted">
-                                    <th>
-                                        <div class="form-check mb-0">
-                                            <input class="form-check-input" type="checkbox" id="selectAllSessions">
-                                        </div>
-                                    </th>
+                                    {% if not view_only %}
+                                        <th>
+                                            <div class="form-check mb-0">
+                                                <input class="form-check-input" type="checkbox" id="selectAllSessions">
+                                            </div>
+                                        </th>
+                                    {% endif %}
                                     <th>Status</th>
                                     <th>Date</th>
                                     <th>Start Time</th>
@@ -143,13 +185,15 @@
                                 {% if events %}
                                     {% for event in events %}
                                         <tr>
-                                            <td data-label="Select">
-                                                <input type="checkbox"
-                                                       class="form-check-input session-checkbox"
-                                                       name="session_id"
-                                                       value="{{ event.id }}"
-                                                       {% if event.id in selected_ids %}checked{% endif %}>
-                                            </td>
+                                            {% if not view_only %}
+                                                <td data-label="Select">
+                                                    <input type="checkbox"
+                                                           class="form-check-input session-checkbox"
+                                                           name="session_id"
+                                                           value="{{ event.id }}"
+                                                           {% if event.id in selected_ids %}checked{% endif %}>
+                                                </td>
+                                            {% endif %}
                                             <td data-label="Status">
                                                 {% set status_icon_classes = 'bi bi-clipboard2-check agenda-status__icon--booked' %}
                                                 {% if event.status == 'completed' %}
@@ -177,7 +221,7 @@
                                     {% endfor %}
                                 {% else %}
                                     <tr>
-                                        <td colspan="5" class="text-muted py-4">No sessions match this view yet.</td>
+                                        <td colspan="{{ 5 if not view_only else 4 }}" class="text-muted py-4">No sessions match this view yet.</td>
                                     </tr>
                                 {% endif %}
                             </tbody>
@@ -200,16 +244,28 @@
                                             {% if page == 1 %}
                                                 <span class="page-link">Previous</span>
                                             {% else %}
-                                                <a class="page-link"
-                                                   href="{{ url_for('trainer_client_agenda',
-                                                                    client_id=client.id,
-                                                                    page=page-1,
-                                                                    per_page=per_page,
-                                                                    view=view_query_param,
-                                                                    start_date=start_query_param,
-                                                                    end_date=end_query_param) }}#agendaTable">
-                                                    Previous
-                                                </a>
+                                                {% if view_only %}
+                                                    <a class="page-link"
+                                                       href="{{ url_for('client_self_agenda',
+                                                                        page=page-1,
+                                                                        per_page=per_page,
+                                                                        view=view_query_param,
+                                                                        start_date=start_query_param,
+                                                                        end_date=end_query_param) }}#agendaTable">
+                                                        Previous
+                                                    </a>
+                                                {% else %}
+                                                    <a class="page-link"
+                                                       href="{{ url_for('trainer_client_agenda',
+                                                                        client_id=client.id,
+                                                                        page=page-1,
+                                                                        per_page=per_page,
+                                                                        view=view_query_param,
+                                                                        start_date=start_query_param,
+                                                                        end_date=end_query_param) }}#agendaTable">
+                                                        Previous
+                                                    </a>
+                                                {% endif %}
                                             {% endif %}
                                         </li>
                                         {% for number in page_numbers %}
@@ -217,16 +273,28 @@
                                                 {% if page == number %}
                                                     <span class="page-link">{{ number }}</span>
                                                 {% else %}
-                                                    <a class="page-link"
-                                                       href="{{ url_for('trainer_client_agenda',
-                                                                        client_id=client.id,
-                                                                        page=number,
-                                                                        per_page=per_page,
-                                                                        view=view_query_param,
-                                                                        start_date=start_query_param,
-                                                                        end_date=end_query_param) }}#agendaTable">
-                                                        {{ number }}
-                                                    </a>
+                                                    {% if view_only %}
+                                                        <a class="page-link"
+                                                           href="{{ url_for('client_self_agenda',
+                                                                            page=number,
+                                                                            per_page=per_page,
+                                                                            view=view_query_param,
+                                                                            start_date=start_query_param,
+                                                                            end_date=end_query_param) }}#agendaTable">
+                                                            {{ number }}
+                                                        </a>
+                                                    {% else %}
+                                                        <a class="page-link"
+                                                           href="{{ url_for('trainer_client_agenda',
+                                                                            client_id=client.id,
+                                                                            page=number,
+                                                                            per_page=per_page,
+                                                                            view=view_query_param,
+                                                                            start_date=start_query_param,
+                                                                            end_date=end_query_param) }}#agendaTable">
+                                                            {{ number }}
+                                                        </a>
+                                                    {% endif %}
                                                 {% endif %}
                                             </li>
                                         {% endfor %}
@@ -234,16 +302,28 @@
                                             {% if page == total_pages %}
                                                 <span class="page-link">Next</span>
                                             {% else %}
-                                                <a class="page-link"
-                                                   href="{{ url_for('trainer_client_agenda',
-                                                                    client_id=client.id,
-                                                                    page=page+1,
-                                                                    per_page=per_page,
-                                                                    view=view_query_param,
-                                                                    start_date=start_query_param,
-                                                                    end_date=end_query_param) }}#agendaTable">
-                                                    Next
-                                                </a>
+                                                {% if view_only %}
+                                                    <a class="page-link"
+                                                       href="{{ url_for('client_self_agenda',
+                                                                        page=page+1,
+                                                                        per_page=per_page,
+                                                                        view=view_query_param,
+                                                                        start_date=start_query_param,
+                                                                        end_date=end_query_param) }}#agendaTable">
+                                                        Next
+                                                    </a>
+                                                {% else %}
+                                                    <a class="page-link"
+                                                       href="{{ url_for('trainer_client_agenda',
+                                                                        client_id=client.id,
+                                                                        page=page+1,
+                                                                        per_page=per_page,
+                                                                        view=view_query_param,
+                                                                        start_date=start_query_param,
+                                                                        end_date=end_query_param) }}#agendaTable">
+                                                        Next
+                                                    </a>
+                                                {% endif %}
                                             {% endif %}
                                         </li>
                                     </ul>

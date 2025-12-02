@@ -166,29 +166,143 @@ def home():
 
     # Get the user ID from the session
     user_id = session['user_id']
+    now_utc = datetime.now(timezone.utc)
+
+    def _format_person(first_name, last_name, username):
+        parts = [part for part in (first_name, last_name) if part]
+        if parts:
+            return " ".join(parts)
+        return username
+
+    def _format_time_label(dt: datetime) -> str:
+        return dt.strftime("%I:%M %p").lstrip('0')
+
+    def _describe_session(row: dict, counterpart_label: str) -> dict | None:
+        if not row:
+            return None
+        start_dt = row.get('start_time')
+        end_dt = row.get('end_time')
+        if not start_dt or not end_dt:
+            return None
+        start_local = start_dt.astimezone()
+        end_local = end_dt.astimezone()
+        date_short = f"{start_local.strftime('%a')}, {start_local.strftime('%b')} {start_local.day}"
+        date_full = f"{start_local.strftime('%A')}, {start_local.strftime('%b')} {start_local.day}"
+        if start_local.date() == end_local.date():
+            time_label = f"{_format_time_label(start_local)} – {_format_time_label(end_local)}"
+        else:
+            time_label = (
+                f"{_format_time_label(start_local)} – "
+                f"{end_local.strftime('%a')} {_format_time_label(end_local)}"
+            )
+        timezone_label = start_local.tzname() or "local time"
+        if counterpart_label == 'Trainer':
+            counterpart_name = _format_person(
+                row.get('trainer_name'),
+                row.get('trainer_last_name'),
+                row.get('trainer_username'),
+            )
+        else:
+            counterpart_name = _format_person(
+                row.get('client_name'),
+                row.get('client_last_name'),
+                row.get('client_username'),
+            )
+        return {
+            'id': row.get('id'),
+            'date_label': date_short,
+            'full_date_label': date_full,
+            'time_label': time_label,
+            'timezone_label': timezone_label,
+            'counterpart_name': counterpart_name,
+            'counterpart_role': counterpart_label,
+            'status': (row.get('status') or 'booked').capitalize(),
+            'start_iso': start_dt.isoformat(),
+        }
+
+    client_next_session = None
+    trainer_next_session = None
 
     # Connect to the database to fetch the username
-    sessions: list[dict] = []
     with get_connection() as conn:
-        with conn.cursor() as cursor:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
             cursor.execute("""
-                SELECT name, fitness_goals, workouts_completed, last_workout_completed, form_completed 
-                FROM users 
-                WHERE id = %s
+                SELECT name,
+                       fitness_goals,
+                       workouts_completed,
+                       last_workout_completed,
+                       form_completed,
+                       role,
+                       trainer_id
+                  FROM users
+                 WHERE id = %s
             """, (user_id,))
             user = cursor.fetchone()
         
-    # Ensure the user exists
-    if user is None:
-        flash("User not found.", "danger")
-        return redirect('/logout')
+            # Ensure the user exists
+            if user is None:
+                flash("User not found.", "danger")
+                return redirect('/logout')
 
+            role = user.get('role')
+            trainer_id = user.get('trainer_id')
+
+            if role == 'user' and trainer_id:
+                cursor.execute(
+                    """
+                    SELECT ts.id,
+                           ts.start_time,
+                           ts.end_time,
+                           ts.status,
+                           t.name AS trainer_name,
+                           t.last_name AS trainer_last_name,
+                           t.username AS trainer_username
+                      FROM trainer_schedule ts
+                      JOIN users t
+                        ON t.id = ts.trainer_id
+                     WHERE ts.client_id = %s
+                       AND ts.status = 'booked'
+                       AND ts.end_time >= %s
+                     ORDER BY ts.start_time ASC
+                     LIMIT 1
+                    """,
+                    (user_id, now_utc),
+                )
+                row = cursor.fetchone()
+                if row:
+                    client_next_session = _describe_session(row, 'Trainer')
+
+            if role in {'trainer', 'admin'}:
+                cursor.execute(
+                    """
+                    SELECT ts.id,
+                           ts.start_time,
+                           ts.end_time,
+                           ts.status,
+                           c.name AS client_name,
+                           c.last_name AS client_last_name,
+                           c.username AS client_username
+                      FROM trainer_schedule ts
+                      JOIN users c
+                        ON c.id = ts.client_id
+                     WHERE ts.trainer_id = %s
+                       AND ts.status = 'booked'
+                       AND ts.end_time >= %s
+                     ORDER BY ts.start_time ASC
+                     LIMIT 1
+                    """,
+                    (user_id, now_utc),
+                )
+                row = cursor.fetchone()
+                if row:
+                    trainer_next_session = _describe_session(row, 'Client')
+        
     # Extract the name from the result
-    name = user[0]
-    fitness_goals = user[1] if user[1] else "Not set yet" 
-    workouts_completed = user[2] if user[2] is not None else 0  
-    last_workout_completed = user[3] if user[3] else "No workouts completed yet"
-    form_completed = user[4]
+    name = user.get('name')
+    fitness_goals = user.get('fitness_goals') if user.get('fitness_goals') else "Not set yet" 
+    workouts_completed = user.get('workouts_completed') if user.get('workouts_completed') is not None else 0  
+    last_workout_completed = user.get('last_workout_completed') if user.get('last_workout_completed') else "No workouts completed yet"
+    form_completed = user.get('form_completed')
 
     return render_template(
         'index.html', 
@@ -196,7 +310,9 @@ def home():
         fitness_goals=fitness_goals, 
         workouts_completed=workouts_completed,
         last_workout_completed=last_workout_completed,
-        form_completed=form_completed
+        form_completed=form_completed,
+        client_next_session=client_next_session,
+        trainer_next_session=trainer_next_session,
     )
 
 
@@ -2604,6 +2720,279 @@ def trainer_client_agenda(client_id):
         quick_filters=quick_filters,
         selected_ids=selected_ids if request.method == 'POST' and not action_performed else [],
         bulk_action=bulk_action if request.method == 'POST' else '',
+    )
+
+
+@app.route('/client/agenda')
+@login_required
+def client_self_agenda():
+    user_id = session['user_id']
+    role = session.get('role')
+    if role in {'trainer', 'admin'}:
+        return redirect(url_for('trainer_dashboard'))
+
+    per_page_selections = (10, 30, 50, 100)
+    per_page = session.get('self_agenda_per_page')
+    if per_page not in per_page_selections:
+        per_page = per_page_selections[0]
+    per_page_arg = request.args.get('per_page')
+    if per_page_arg is not None:
+        try:
+            per_page_candidate = int(per_page_arg)
+        except (TypeError, ValueError):
+            per_page_candidate = None
+        if per_page_candidate in per_page_selections:
+            per_page = per_page_candidate
+    if not isinstance(per_page, int) or per_page <= 0:
+        per_page = per_page_selections[0]
+    if session.get('self_agenda_per_page') != per_page:
+        session['self_agenda_per_page'] = per_page
+
+    try:
+        page = int(request.args.get('page', 1))
+    except (TypeError, ValueError):
+        page = 1
+    page = max(page, 1)
+    offset = (page - 1) * per_page
+
+    allowed_views = {'upcoming', 'all', 'today', 'week', 'month', 'custom'}
+    selected_view = (request.args.get('view') or 'upcoming').lower()
+    if selected_view not in allowed_views:
+        selected_view = 'upcoming'
+
+    start_date_raw = request.args.get('start_date') or ''
+    end_date_raw = request.args.get('end_date') or ''
+    if selected_view != 'custom' and (start_date_raw or end_date_raw):
+        selected_view = 'custom'
+
+    now_local = datetime.now().astimezone()
+    tz_info = now_local.tzinfo or timezone.utc
+    today_local = now_local.date()
+
+    def _start_of_day(target_date: date | None):
+        if not target_date:
+            return None
+        return datetime.combine(target_date, datetime.min.time(), tzinfo=tz_info)
+
+    def _start_of_next_day(target_date: date | None):
+        if not target_date:
+            return None
+        return _start_of_day(target_date + timedelta(days=1))
+
+    def _parse_date(value: str):
+        if not value:
+            return None
+        try:
+            return datetime.strptime(value, '%Y-%m-%d').date()
+        except (TypeError, ValueError):
+            return None
+
+    start_date_value = _parse_date(start_date_raw)
+    end_date_value = _parse_date(end_date_raw)
+    custom_date_error = False
+    custom_error_message = ''
+    if start_date_raw and not start_date_value:
+        custom_date_error = True
+        custom_error_message = 'Enter a valid start date.'
+    if end_date_raw and not end_date_value:
+        custom_date_error = True
+        custom_error_message = 'Enter a valid end date.'
+    if start_date_value and end_date_value and start_date_value > end_date_value:
+        custom_date_error = True
+        custom_error_message = 'Start date must be before the end date.'
+
+    filter_start = None
+    filter_end = None
+    if selected_view == 'today':
+        filter_start = _start_of_day(today_local)
+        filter_end = _start_of_next_day(today_local)
+    elif selected_view == 'week':
+        week_start = today_local - timedelta(days=today_local.weekday())
+        filter_start = _start_of_day(week_start)
+        filter_end = _start_of_day(week_start + timedelta(days=7))
+    elif selected_view == 'month':
+        month_start = today_local.replace(day=1)
+        if month_start.month == 12:
+            next_month = date(month_start.year + 1, 1, 1)
+        else:
+            next_month = date(month_start.year, month_start.month + 1, 1)
+        filter_start = _start_of_day(month_start)
+        filter_end = _start_of_day(next_month)
+    elif selected_view == 'all':
+        filter_start = None
+        filter_end = None
+    elif selected_view == 'custom':
+        if not custom_date_error:
+            if start_date_value:
+                filter_start = _start_of_day(start_date_value)
+            if end_date_value:
+                filter_end = _start_of_next_day(end_date_value)
+    else:
+        filter_start = _start_of_day(today_local)
+        filter_end = None
+
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            cursor.execute(
+                """
+                SELECT id, name, last_name
+                  FROM users
+                 WHERE id = %s
+                """,
+                (user_id,),
+            )
+            client = cursor.fetchone()
+
+            if not client:
+                flash("User not found.", "danger")
+                return redirect(url_for('logout'))
+
+            base_conditions = ["ts.client_id = %s"]
+            base_params = [user_id]
+
+            cursor.execute(
+                f"""
+                SELECT COUNT(*) AS total
+                  FROM trainer_schedule ts
+                 WHERE {' AND '.join(base_conditions)}
+                """,
+                base_params,
+            )
+            total_all_row = cursor.fetchone() or {}
+            total_all = int(total_all_row.get('total') or 0)
+
+            filtered_conditions = list(base_conditions)
+            filtered_params = list(base_params)
+            if filter_start:
+                filtered_conditions.append("ts.start_time >= %s")
+                filtered_params.append(filter_start)
+            if filter_end:
+                filtered_conditions.append("ts.start_time < %s")
+                filtered_params.append(filter_end)
+            where_clause = ' AND '.join(filtered_conditions)
+
+            cursor.execute(
+                f"""
+                SELECT COUNT(*) AS total
+                  FROM trainer_schedule ts
+                 WHERE {where_clause}
+                """,
+                filtered_params,
+            )
+            filtered_row = cursor.fetchone() or {}
+            filtered_total = int(filtered_row.get('total') or 0)
+
+            query = f"""
+                SELECT ts.id,
+                       ts.start_time,
+                       ts.end_time,
+                       ts.status
+                  FROM trainer_schedule ts
+                 WHERE {where_clause}
+                 ORDER BY ts.start_time ASC
+            """
+            data_params = list(filtered_params)
+            if per_page:
+                query += " LIMIT %s OFFSET %s"
+                data_params.extend([per_page, offset])
+            cursor.execute(query, data_params)
+            sessions = cursor.fetchall() or []
+
+    total_pages = 1
+    if filtered_total and per_page:
+        total_pages = (filtered_total + per_page - 1) // per_page
+    total_pages = max(total_pages, 1)
+    if page > total_pages:
+        args = request.args.to_dict(flat=True)
+        args['page'] = total_pages
+        return redirect(url_for('client_self_agenda', **args))
+
+    def _format_local_time(dt):
+        try:
+            localized = dt.astimezone()
+            return localized.strftime('%I:%M %p').lstrip('0')
+        except Exception:
+            return fmt_utc(dt)
+
+    agenda_events = []
+    for row in sessions:
+        start_dt = row.get('start_time')
+        end_dt = row.get('end_time')
+        start_iso = start_dt.isoformat() if start_dt else None
+        end_iso = end_dt.isoformat() if end_dt else None
+        date_display = '—'
+        start_time_display = '—'
+        end_time_display = '—'
+        if start_dt:
+            try:
+                start_local = start_dt.astimezone()
+                date_display = start_local.strftime('%b %d, %Y')
+                start_time_display = _format_local_time(start_dt)
+            except Exception:
+                start_time_display = fmt_utc(start_dt)
+        if end_dt:
+            end_time_display = _format_local_time(end_dt)
+        agenda_events.append({
+            'id': row['id'],
+            'status': (row.get('status') or 'booked').lower(),
+            'date': date_display,
+            'start_time': start_time_display,
+            'end_time': end_time_display,
+            'start_time_iso': start_iso,
+            'end_time_iso': end_iso,
+        })
+
+    if filtered_total:
+        page_start_index = offset + 1 if agenda_events else 0
+        page_end_index = offset + len(agenda_events)
+    else:
+        page_start_index = 0
+        page_end_index = 0
+
+    window_radius = 2
+    start_page = max(1, page - window_radius)
+    end_page = min(total_pages, page + window_radius)
+    if end_page - start_page < window_radius * 2:
+        if start_page == 1:
+            end_page = min(total_pages, start_page + window_radius * 2)
+        elif end_page == total_pages:
+            start_page = max(1, end_page - window_radius * 2)
+    page_numbers = list(range(start_page, end_page + 1))
+
+    quick_filters = [
+        {'key': 'upcoming', 'label': 'Upcoming'},
+        {'key': 'today', 'label': 'Today'},
+        {'key': 'week', 'label': 'This Week'},
+        {'key': 'month', 'label': 'This Month'},
+        {'key': 'all', 'label': 'All'},
+    ]
+
+    start_date_input = start_date_value.isoformat() if start_date_value else (start_date_raw or '')
+    end_date_input = end_date_value.isoformat() if end_date_value else (end_date_raw or '')
+
+    return render_template(
+        'client_agenda.html',
+        trainer=None,
+        client=client,
+        events=agenda_events,
+        total_sessions=total_all,
+        filtered_total=filtered_total,
+        page=page,
+        total_pages=total_pages,
+        per_page=per_page,
+        per_page_options=per_page_selections,
+        page_numbers=page_numbers,
+        page_start_index=page_start_index,
+        page_end_index=page_end_index,
+        selected_view=selected_view,
+        start_date_input=start_date_input,
+        end_date_input=end_date_input,
+        custom_date_error=custom_date_error,
+        custom_date_error_message=custom_error_message,
+        quick_filters=quick_filters,
+        selected_ids=[],
+        bulk_action='',
+        view_only=True,
     )
 
 
