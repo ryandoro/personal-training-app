@@ -2501,7 +2501,7 @@ def trainer_client_agenda(client_id):
             if end_date_value:
                 filter_end = _start_of_next_day(end_date_value)
     else:  # upcoming default
-        filter_start = _start_of_day(today_local)
+        filter_start = now_local  # show sessions from the current moment forward
         filter_end = None
 
     bulk_action = (request.form.get('bulk_action') or '').strip()
@@ -2829,7 +2829,7 @@ def client_self_agenda():
             if end_date_value:
                 filter_end = _start_of_next_day(end_date_value)
     else:
-        filter_start = _start_of_day(today_local)
+        filter_start = now_local  # upcoming view should start from right now
         filter_end = None
 
     with get_connection() as conn:
@@ -3103,7 +3103,7 @@ def trainer_agenda():
             if end_date_value:
                 filter_end = _start_of_next_day(end_date_value)
     else:  # upcoming default
-        filter_start = _start_of_day(today_local)
+        filter_start = now_local  # show sessions from the current moment forward
         filter_end = None
 
     bulk_action = (request.form.get('bulk_action') or '').strip()
