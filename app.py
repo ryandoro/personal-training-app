@@ -218,6 +218,7 @@ def home():
             'counterpart_role': counterpart_label,
             'status': (row.get('status') or 'booked').capitalize(),
             'start_iso': start_dt.isoformat(),
+            'end_iso': end_dt.isoformat(),
         }
 
     client_next_session = None

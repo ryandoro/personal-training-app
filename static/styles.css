@@ -1534,13 +1534,6 @@ iframe.fullscreen-sim {
   color: #f7931a;
 }
 
-.session-card__timezone {
-  font-size: 0.75rem;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: rgba(26, 33, 45, 0.55);
-}
-
 .session-card__role {
   font-size: 0.7rem;
   text-transform: uppercase;

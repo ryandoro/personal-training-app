@@ -79,11 +79,12 @@
             <h2 class="section-title text-uppercase">Your Next Session</h2>
             <a href="{{ url_for('client_schedule_view') }}"
                class="session-card"
+               data-session-start="{{ client_next_session.start_iso }}"
+               data-session-end="{{ client_next_session.end_iso }}"
                aria-label="Open your schedule to view the session on {{ client_next_session.full_date_label }}">
                 <div class="session-card__column session-card__column--datetime">
-                    <span class="session-card__date">{{ client_next_session.date_label }}</span>
-                    <span class="session-card__time">{{ client_next_session.time_label }}</span>
-                    <span class="session-card__timezone">{{ client_next_session.timezone_label }}</span>
+                    <span class="session-card__date" data-session-part="date">{{ client_next_session.date_label }}</span>
+                    <span class="session-card__time" data-session-part="time">{{ client_next_session.time_label }}</span>
                 </div>
                 <div class="session-card__column session-card__column--person">
                     <span class="session-card__role">{{ client_next_session.counterpart_role }}</span>
@@ -105,11 +106,12 @@
             <h2 class="section-title text-uppercase">Your Next Session</h2>
             <a href="{{ url_for('trainer_dashboard') }}#trainer-calendar-nav"
                class="session-card"
+               data-session-start="{{ trainer_next_session.start_iso }}"
+               data-session-end="{{ trainer_next_session.end_iso }}"
                aria-label="Open your trainer calendar to review the session on {{ trainer_next_session.full_date_label }}">
                 <div class="session-card__column session-card__column--datetime">
-                    <span class="session-card__date">{{ trainer_next_session.date_label }}</span>
-                    <span class="session-card__time">{{ trainer_next_session.time_label }}</span>
-                    <span class="session-card__timezone">{{ trainer_next_session.timezone_label }}</span>
+                    <span class="session-card__date" data-session-part="date">{{ trainer_next_session.date_label }}</span>
+                    <span class="session-card__time" data-session-part="time">{{ trainer_next_session.time_label }}</span>
                 </div>
                 <div class="session-card__column session-card__column--person">
                     <span class="session-card__role">{{ trainer_next_session.counterpart_role }}</span>
@@ -223,6 +225,69 @@
                     orb.style.animation = 'none';
                     orb.classList.add('glow');
                 });
+            });
+        });
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const sessionCards = document.querySelectorAll('.session-card[data-session-start][data-session-end]');
+            if (!sessionCards.length) {
+                return;
+            }
+
+            const dateFormatter = new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+            const timeFormatter = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' });
+            const weekdayFormatter = new Intl.DateTimeFormat(undefined, { weekday: 'short' });
+            const zoneFormatter = new Intl.DateTimeFormat(undefined, { timeZoneName: 'short' });
+
+            function getZoneLabel(date) {
+                try {
+                    const parts = zoneFormatter.formatToParts(date);
+                    const zonePart = parts.find(part => part.type === 'timeZoneName');
+                    if (zonePart?.value) {
+                        return zonePart.value;
+                    }
+                } catch (err) {
+                    // ignore and fall back below
+                }
+                try {
+                    const tzName = Intl.DateTimeFormat().resolvedOptions().timeZone;
+                    if (tzName) {
+                        return tzName;
+                    }
+                } catch (err) {
+                    // ignore
+                }
+                return 'Local time';
+            }
+
+            sessionCards.forEach(card => {
+                const startIso = card.getAttribute('data-session-start');
+                const endIso = card.getAttribute('data-session-end');
+                const start = startIso ? new Date(startIso) : null;
+                const end = endIso ? new Date(endIso) : null;
+                if (!start || Number.isNaN(start.getTime()) || !end || Number.isNaN(end.getTime())) {
+                    return;
+                }
+
+                const dateTarget = card.querySelector('[data-session-part="date"]');
+                const timeTarget = card.querySelector('[data-session-part="time"]');
+                const zoneTarget = card.querySelector('[data-session-part="timezone"]');
+
+                if (dateTarget) {
+                    dateTarget.textContent = dateFormatter.format(start);
+                }
+
+                if (timeTarget) {
+                    const startLabel = timeFormatter.format(start);
+                    const sameDay = start.toDateString() === end.toDateString();
+                    const endTimeLabel = timeFormatter.format(end);
+                    const endLabel = sameDay ? endTimeLabel : `${weekdayFormatter.format(end)} ${endTimeLabel}`;
+                    timeTarget.textContent = `${startLabel} – ${endLabel}`;
+                }
+
+                if (zoneTarget) {
+                    zoneTarget.textContent = getZoneLabel(start);
+                }
             });
         });
 </script>
