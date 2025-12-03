@@ -6185,7 +6185,7 @@ def upgrade():
             }],
             mode='subscription',
             success_url=url_for('upgrade_success', _external=True),
-            cancel_url=url_for('training', _external=True),
+            cancel_url=url_for('settings', _external=True),
             metadata={'user_id': user_id}
         )
 
@@ -6193,7 +6193,7 @@ def upgrade():
     
     except Exception as e:
         flash(f"Error creating Stripe checkout: {e}", "danger")
-        return redirect(url_for('training'))
+        return redirect(url_for('settings'))
 
 
 @app.route("/stripe/webhook", methods=["POST"])
@@ -6287,7 +6287,7 @@ def stripe_webhook():
 @login_required
 def upgrade_success():
     flash("🎉 You've successfully upgraded to Premium!", "success")
-    return redirect(url_for('training'))
+    return redirect(url_for('settings'))
 
 
 @app.route('/customer-portal')
@@ -6305,12 +6305,12 @@ def customer_portal():
                 stripe_customer_id = result[0]
             else:
                 flash("Unable to access Stripe customer info.", "danger")
-                return redirect(url_for('training'))
+                return redirect(url_for('settings'))
 
     # Create the session
     stripe_portal_session = stripe.billing_portal.Session.create(
         customer=stripe_customer_id,
-        return_url=url_for('training', _external=True),
+        return_url=url_for('settings', _external=True),
     )
 
     return redirect(stripe_portal_session.url)
