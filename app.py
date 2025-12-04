@@ -1,4 +1,4 @@
-import os, re, logging, json, psycopg2, psycopg2.extras, psycopg2.errors, stripe
+import os, re, logging, json, math, psycopg2, psycopg2.extras, psycopg2.errors, stripe
 from flask import Flask, flash, redirect, render_template, request, session, jsonify, url_for, current_app
 from markupsafe import Markup
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -45,6 +45,7 @@ from datetime import datetime, date, timedelta, timezone, time
 from zoneinfo import ZoneInfo
 from mail import send_email, send_password_reset_email, send_invite_email, send_verification_email
 from urllib.parse import urlencode 
+from decimal import Decimal
 
 # Set up basic logging configuration
 logging.basicConfig(level=logging.INFO)
@@ -76,6 +77,18 @@ VERIFY_PURPOSE = "verify_email"
 RESET_TTL_HOURS = 2
 
 TRAINER_NOTE_MAX_LENGTH = 1000
+ONE_REP_MAX_COEFFICIENT = 0.0333
+HISTORY_WINDOW_LIMITS = {
+    '90d': 150,
+    '1y': 240,
+    'all': 400,
+}
+HISTORY_WINDOW_DELTAS = {
+    '90d': timedelta(days=90),
+    '1y': timedelta(days=365),
+    'all': None,
+}
+DEFAULT_HISTORY_WINDOW = '90d'
 
 
 def _sanitize_trainer_note_input(value):
@@ -87,6 +100,61 @@ def _sanitize_trainer_note_input(value):
     if len(text) > TRAINER_NOTE_MAX_LENGTH:
         text = text[:TRAINER_NOTE_MAX_LENGTH]
     return text
+
+
+def _coerce_float(value):
+    if value is None:
+        return None
+    if isinstance(value, (float, int)):
+        return float(value)
+    if isinstance(value, Decimal):
+        return float(value)
+    try:
+        return float(str(value))
+    except (TypeError, ValueError):
+        return None
+
+
+def _estimate_one_rep_max(weight, reps):
+    weight_val = _coerce_float(weight)
+    reps_val = _coerce_float(reps)
+    if weight_val is None or reps_val is None:
+        return None
+    if weight_val <= 0 or reps_val <= 0:
+        return None
+    return round(weight_val * (1 + ONE_REP_MAX_COEFFICIENT * reps_val), 1)
+
+
+def _record_exercise_history(user_id, workout_id, max_weight, max_reps):
+    if max_weight is None and max_reps is None:
+        return
+    try:
+        with get_connection() as history_conn:
+            with history_conn.cursor() as history_cursor:
+                history_cursor.execute(
+                    """
+                    INSERT INTO user_exercise_history (user_id, workout_id, weight, reps)
+                    VALUES (%s, %s, %s, %s)
+                    """,
+                    (user_id, workout_id, max_weight, max_reps),
+                )
+    except psycopg2.errors.UndefinedTable:
+        logging.warning("user_exercise_history table missing; skipping history insert for workout_id=%s", workout_id)
+    except Exception:
+        logging.exception("Failed to record exercise history for workout_id=%s", workout_id)
+
+
+def _downsample_history(points: list[dict], max_points: int) -> list[dict]:
+    if not isinstance(points, list) or max_points is None or max_points <= 0:
+        return points
+    length = len(points)
+    if length <= max_points:
+        return points
+    step = math.ceil(length / max_points)
+    sampled = points[::step]
+    if sampled[-1] is not points[-1]:
+        sampled.append(points[-1])
+    return sampled
 
 
 def _normalize_plan_for_iteration(plan):
@@ -223,6 +291,9 @@ def home():
 
     client_next_session = None
     trainer_next_session = None
+    injury_status = None
+    injury_free_days = None
+    form_completed_flag = False
 
     # Connect to the database to fetch the username
     with get_connection() as conn:
@@ -234,16 +305,39 @@ def home():
                        last_workout_completed,
                        form_completed,
                        role,
-                       trainer_id
+                       trainer_id,
+                       injury,
+                       injury_details,
+                       cardio_restriction,
+                       injury_free_since
                   FROM users
                  WHERE id = %s
             """, (user_id,))
             user = cursor.fetchone()
-        
+
             # Ensure the user exists
             if user is None:
                 flash("User not found.", "danger")
                 return redirect('/logout')
+
+            form_completed_flag = bool(user.get('form_completed'))
+            injury_payload = parse_injury_payload(user.get('injury'))
+            cardio_flag = bool(user.get('cardio_restriction')) or injury_payload['cardio']
+            injury_details_text = (user.get('injury_details') or '').strip()
+            if form_completed_flag:
+                has_active_injury = bool(injury_payload['regions'] or cardio_flag or injury_details_text)
+                injury_status = 'Yes' if has_active_injury else 'No'
+                if not has_active_injury:
+                    streak_start = user.get('injury_free_since')
+                    if isinstance(streak_start, date):
+                        delta_days = (date.today() - streak_start).days
+                        if delta_days < 0:
+                            delta_days = 0
+                        injury_free_days = delta_days + 1
+                    else:
+                        injury_free_days = 0
+                else:
+                    injury_free_days = 0
 
             role = user.get('role')
             trainer_id = user.get('trainer_id')
@@ -303,7 +397,7 @@ def home():
     fitness_goals = user.get('fitness_goals') if user.get('fitness_goals') else "Not set yet" 
     workouts_completed = user.get('workouts_completed') if user.get('workouts_completed') is not None else 0  
     last_workout_completed = user.get('last_workout_completed') if user.get('last_workout_completed') else "No workouts completed yet"
-    form_completed = user.get('form_completed')
+    form_completed = form_completed_flag
 
     return render_template(
         'index.html', 
@@ -314,6 +408,8 @@ def home():
         form_completed=form_completed,
         client_next_session=client_next_session,
         trainer_next_session=trainer_next_session,
+        injury_status=injury_status,
+        injury_free_days=injury_free_days,
     )
 
 
@@ -806,6 +902,7 @@ def training():
         
         workout_duration = int(workout_duration_raw)
         injury_json = json.dumps(injury_regions_selected)
+        is_injury_free = (injury_status_normalized == "No")
 
         # Connect to the database and update user information
         try:
@@ -820,6 +917,7 @@ def training():
                             injury = %s, injury_details = %s, cardio_restriction = %s,
                             commitment = %s, additional_notes = %s, 
                             name = %s, last_name = %s, form_completed = TRUE, workout_duration = %s,
+                            injury_free_since = CASE WHEN %s THEN COALESCE(injury_free_since, CURRENT_DATE) ELSE NULL END,
                             subscription_type = 'premium',
                             trial_end_date = %s
                         WHERE id = %s
@@ -828,7 +926,7 @@ def training():
                         exercise_history, fitness_goals_str, injury_json, injury_details,
                         cardio_restriction_value,
                         commitment, additional_notes, name, last_name, workout_duration, 
-                        trial_end_date, user_id
+                        is_injury_free, trial_end_date, user_id
                     ))
                     conn.commit()
 
@@ -4115,6 +4213,7 @@ def trainer_update_client_injury(client_id):
         return redirect(url_for('trainer_dashboard'))
 
     injury_json = json.dumps(injury_regions_selected)
+    is_injury_free = (injury_status == 'No')
     with get_connection() as conn:
         with conn.cursor() as cursor:
             cursor.execute(
@@ -4122,10 +4221,11 @@ def trainer_update_client_injury(client_id):
                 UPDATE users
                    SET injury = %s,
                        injury_details = %s,
-                       cardio_restriction = %s
+                       cardio_restriction = %s,
+                       injury_free_since = CASE WHEN %s THEN COALESCE(injury_free_since, CURRENT_DATE) ELSE NULL END
                  WHERE id = %s
                 """,
-                (injury_json, injury_details, cardio_restriction_value, client_id),
+                (injury_json, injury_details, cardio_restriction_value, is_injury_free, client_id),
             )
             conn.commit()
 
@@ -4527,6 +4627,8 @@ def _apply_pr_update(user_id: int, workout_id: int, max_weight, max_reps):
                 (user_id, max_weight, max_reps, workout_id),
             )
 
+        _record_exercise_history(user_id, workout_id, max_weight, max_reps)
+
         active_updated = False
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(
@@ -4893,6 +4995,181 @@ def update_pr():
 
     result = _apply_pr_update(user_id, int(workout_id), max_weight, max_reps)
     return jsonify(result)
+
+
+@app.get('/exercise_history_data')
+@login_required
+def exercise_history_data():
+    workout_id_raw = request.args.get('workout_id')
+    try:
+        workout_id = int(str(workout_id_raw).strip())
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'error': 'Invalid workout id'}), 400
+
+    client_id_raw = request.args.get('client_id')
+    client_id = None
+    target_user_id = session['user_id']
+    trainer = None
+
+    if client_id_raw:
+        trainer = _require_trainer(session['user_id'])
+        if not trainer:
+            return jsonify({'success': False, 'error': 'Trainer access required'}), 403
+        try:
+            client_id = int(str(client_id_raw).strip())
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'error': 'Invalid client id'}), 400
+
+    window_key = (request.args.get('window') or '').strip().lower()
+    if window_key not in HISTORY_WINDOW_DELTAS:
+        window_key = DEFAULT_HISTORY_WINDOW
+    window_delta = HISTORY_WINDOW_DELTAS.get(window_key)
+    max_points = HISTORY_WINDOW_LIMITS.get(window_key, 200)
+    now_utc = datetime.now(timezone.utc)
+
+    valid_window_sequence = ['90d', '1y', 'all']
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            if client_id:
+                linked = _ensure_trainer_client_link(cursor, session['user_id'], client_id, trainer.get('role'))
+                if not linked:
+                    return jsonify({'success': False, 'error': 'Access denied'}), 403
+                target_user_id = client_id
+
+            cursor.execute(
+                """
+                SELECT id, name, category
+                  FROM workouts
+                 WHERE id = %s
+                """,
+                (workout_id,),
+            )
+            workout_row = cursor.fetchone()
+            if not workout_row:
+                return jsonify({'success': False, 'error': 'Workout not found'}), 404
+
+            history_query = [
+                "SELECT weight, reps, recorded_at",
+                "  FROM user_exercise_history",
+                " WHERE user_id = %s",
+                "   AND workout_id = %s",
+            ]
+            params = [target_user_id, workout_id]
+            if window_delta:
+                window_start = now_utc - window_delta
+                history_query.append("   AND recorded_at >= %s")
+                params.append(window_start)
+            history_query.append(" ORDER BY recorded_at ASC")
+            if max_points:
+                history_query.append(" LIMIT %s")
+                params.append(max_points)
+            cursor.execute("\n".join(history_query), params)
+            history_rows = cursor.fetchall() or []
+
+            used_window = window_key
+            if not history_rows:
+                for candidate in valid_window_sequence:
+                    if candidate == window_key:
+                        continue
+                    candidate_delta = HISTORY_WINDOW_DELTAS.get(candidate)
+                    candidate_limit = HISTORY_WINDOW_LIMITS.get(candidate)
+                    candidate_query = [
+                        "SELECT weight, reps, recorded_at",
+                        "  FROM user_exercise_history",
+                        " WHERE user_id = %s",
+                        "   AND workout_id = %s",
+                    ]
+                    candidate_params = [target_user_id, workout_id]
+                    if candidate_delta:
+                        candidate_start = now_utc - candidate_delta
+                        candidate_query.append("   AND recorded_at >= %s")
+                        candidate_params.append(candidate_start)
+                    candidate_query.append(" ORDER BY recorded_at ASC")
+                    if candidate_limit:
+                        candidate_query.append(" LIMIT %s")
+                        candidate_params.append(candidate_limit)
+                    cursor.execute("\n".join(candidate_query), candidate_params)
+                    history_rows = cursor.fetchall() or []
+                    if history_rows:
+                        used_window = candidate
+                        window_delta = candidate_delta
+                        max_points = candidate_limit
+                        break
+
+    category_label = (workout_row.get('category') or '').strip()
+    is_cardio = category_label.lower() == 'cardio'
+    history_payload = []
+    best_value = None
+
+    for row in history_rows:
+        weight_val = _coerce_float(row.get('weight'))
+        reps_numeric = _coerce_float(row.get('reps'))
+        reps_value = None
+        if reps_numeric is not None:
+            reps_value = reps_numeric if is_cardio else int(round(reps_numeric))
+
+        est_one_rm = None if is_cardio else _estimate_one_rep_max(weight_val, reps_value)
+        display_value = reps_value if is_cardio else est_one_rm
+
+        recorded_at = row.get('recorded_at')
+        if recorded_at and hasattr(recorded_at, 'isoformat'):
+            try:
+                if recorded_at.tzinfo is None:
+                    recorded_at = recorded_at.replace(tzinfo=timezone.utc)
+                recorded_label = recorded_at.isoformat()
+            except Exception:
+                recorded_label = str(recorded_at)
+        else:
+            recorded_label = None
+
+        history_entry = {
+            'recorded_at': recorded_label,
+            'weight': weight_val,
+            'reps': reps_value,
+            'est_one_rm': est_one_rm,
+            'display_value': display_value,
+        }
+
+        history_payload.append(history_entry)
+        if display_value is not None:
+            if best_value is None:
+                best_value = display_value
+            elif is_cardio:
+                best_value = max(best_value, display_value)
+            else:
+                best_value = max(best_value, display_value)
+
+    raw_history = history_payload[:]
+    history_payload = _downsample_history(raw_history, max_points or len(raw_history))
+
+    summary = None
+    if raw_history:
+        latest_entry = raw_history[-1]
+        summary = {
+            'latest_weight': latest_entry.get('weight'),
+            'latest_reps': latest_entry.get('reps'),
+            'latest_one_rm': latest_entry.get('est_one_rm'),
+            'latest_value': latest_entry.get('display_value'),
+            'best_value': best_value,
+        }
+
+    chart_label = "Time (min)" if is_cardio else "Estimated 1RM (lbs)"
+    chart_unit = "min" if is_cardio else "lbs"
+
+    return jsonify({
+        'success': True,
+        'workout': {
+            'id': workout_id,
+            'name': workout_row.get('name'),
+            'category': workout_row.get('category'),
+        },
+        'is_cardio': is_cardio,
+        'chart_label': chart_label,
+        'chart_unit': chart_unit,
+        'history': history_payload,
+        'summary': summary,
+        'window': used_window,
+    })
 
 
 @app.route("/search")
@@ -5382,6 +5659,7 @@ def settings():
 
         injury_json = json.dumps(injury_regions_selected)
         injury_status = injury_status_normalized
+        is_injury_free = (injury_status == 'No')
 
         # Validate password if provided
         hashed_password = None
@@ -5488,13 +5766,14 @@ def settings():
                         age = %s, weight = %s, height_feet = %s, height_inches = %s,
                         gender = %s, exercise_history = %s, fitness_goals = %s,
                         injury = %s, injury_details = %s, cardio_restriction = %s, commitment = %s,
-                        additional_notes = %s, form_completed = %s, workout_duration = %s
+                        additional_notes = %s, form_completed = %s, workout_duration = %s,
+                        injury_free_since = CASE WHEN %s THEN COALESCE(injury_free_since, CURRENT_DATE) ELSE NULL END
                     WHERE id = %s
                 """, (
                     username, name, last_name, email, age, weight, height_feet,
                     height_inches, gender, exercise_history, fitness_goals_cleaned,
                     injury_json, injury_details, cardio_restriction_value, commitment, additional_notes, new_form_completed, 
-                    workout_duration, 
+                    workout_duration, is_injury_free,
                     user_id
                 ))
 
@@ -5639,6 +5918,7 @@ def admin_user_profile(user_id):
                 return redirect(url_for('admin_user_profile', user_id=user_id))
 
         injury_json = json.dumps(injury_regions_selected)
+        is_injury_free = (injury_status_input == 'No')
 
         data = {
             'name': request.form.get('name') or None,
@@ -5692,6 +5972,7 @@ def admin_user_profile(user_id):
                         cardio_restriction = %s,
                         commitment = %s,
                         additional_notes = %s,
+                        injury_free_since = CASE WHEN %s THEN COALESCE(injury_free_since, CURRENT_DATE) ELSE NULL END,
                         workouts_completed = %s,
                         sessions_remaining = %s,
                         trainer_id = %s
@@ -5705,6 +5986,7 @@ def admin_user_profile(user_id):
                         data['height_feet'], data['height_inches'], data['gender'],
                         data['exercise_history'], fitness_goals_str, data['injury'],
                         data['injury_details'], data['cardio_restriction'], data['commitment'], data['additional_notes'],
+                        is_injury_free,
                         data['workouts_completed'], data['sessions_remaining'], trainer_id_val, user_id
                     ))
                     conn.commit()

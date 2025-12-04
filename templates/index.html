@@ -52,6 +52,23 @@
                         <span class="stat-placeholder">{{ last_workout_completed }}</span>
                     {% endif %}
                 </article>
+                <article class="stat-card stat-card--injury">
+                    <span class="stat-icon stat-icon--injury"><i class="bi bi-shield-check"></i></span>
+                    <span class="stat-label">Injury-Free Streak</span>
+                    {% if not form_completed %}
+                        <span class="stat-placeholder">Complete your readiness form to start tracking</span>
+                    {% elif injury_status == 'Yes' %}
+                        <span class="stat-value text-danger">0</span>
+                        <span class="stat-helper text-danger">Active restriction on file</span>
+                    {% else %}
+                        <span class="stat-value">{{ injury_free_days or 0 }}</span>
+                        {% if injury_free_days and injury_free_days > 0 %}
+                            <span class="stat-helper">Days without reported injuries</span>
+                        {% else %}
+                            <span class="stat-helper">Tracking just started</span>
+                        {% endif %}
+                    {% endif %}
+                </article>
                 <article class="stat-card goals-card">
                     <span class="stat-icon stat-icon--goals"><i class="bi bi-bullseye"></i></span>
                     {% set goal_list = fitness_goals.split(',') if fitness_goals else [] %}
@@ -91,7 +108,6 @@
                     <span class="session-card__name">{{ client_next_session.counterpart_name }}</span>
                 </div>
                 <div class="session-card__column session-card__column--status">
-                    <span class="status-pill">{{ client_next_session.status }}</span>
                     <span class="session-card__cta">
                         View schedule
                         <i class="bi bi-arrow-right-short" aria-hidden="true"></i>
@@ -118,7 +134,6 @@
                     <span class="session-card__name">{{ trainer_next_session.counterpart_name }}</span>
                 </div>
                 <div class="session-card__column session-card__column--status">
-                    <span class="status-pill">{{ trainer_next_session.status }}</span>
                     <span class="session-card__cta">
                         Manage schedule
                         <i class="bi bi-arrow-right-short" aria-hidden="true"></i>

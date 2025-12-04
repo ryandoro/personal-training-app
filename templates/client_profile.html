@@ -327,26 +327,62 @@
                                                 {% else %}
                                                     {% set reps_display = '—' %}
                                                 {% endif %}
-                                                {% set notes_text = workout.notes or '' %}
-                                                {% set has_notes = notes_text|trim %}
-                                                <div class="col">
-                                                    <div class="card h-100 lookup-result-card shadow-sm" data-workout-card="{{ workout.workout_id }}">
-                                                        <div class="card-body d-flex flex-column">
-                                                            <div class="d-flex justify-content-center align-items-center">
-                                                                <h5 class="card-title text-primary fw-bold mb-0">{{ workout_name }}</h5>
-                                                            </div>
+                                            {% set notes_text = workout.notes or '' %}
+                                            {% set has_notes = notes_text|trim %}
+                                            {% set initial_one_rm = None %}
+                                            {% if not is_cardio and workout.max_weight is not none and workout.max_reps is not none %}
+                                                {% set weight_val = workout.max_weight|float %}
+                                                {% set reps_val = workout.max_reps|int %}
+                                                {% if weight_val > 0 and reps_val > 0 %}
+                                                    {% set initial_one_rm = weight_val * (1 + 0.0333 * reps_val) %}
+                                                {% endif %}
+                                            {% endif %}
+                                            <div class="col">
+                                                <div class="card h-100 lookup-result-card shadow-sm"
+                                                     data-workout-card="{{ workout.workout_id }}"
+                                                     data-client-id="{{ client.id }}"
+                                                     data-exercise-type="{{ 'cardio' if is_cardio else 'strength' }}"
+                                                     data-history-window="90d">
+                                                    <div class="card-body d-flex flex-column">
+                                                        <div class="d-flex justify-content-center align-items-center">
+                                                            <h5 class="card-title text-primary fw-bold mb-0">{{ workout_name }}</h5>
+                                                        </div>
                                                             <div class="personal-best max-summary mt-3 text-center" data-id="{{ workout.workout_id }}" data-category="{{ workout_category }}">
                                                                 <span class="max-label text-uppercase fw-semibold d-block small text-muted">Client Max</span>
                                                                 <div class="max-pill-group d-inline-flex gap-2">
                                                                     <span class="max-pill max-pill-weight">{{ weight_display }}</span>
-                                                                    <span class="max-pill max-pill-reps">{{ reps_display }}</span>
-                                                                </div>
-                                                                <span class="personal-max-text d-none">Client Max: {{ weight_display }} × {{ reps_display }}</span>
+                                                                <span class="max-pill max-pill-reps">{{ reps_display }}</span>
                                                             </div>
-                                                            <div class="d-flex flex-column flex-sm-column gap-2 mt-3">
-                                                                <button class="btn btn-outline-secondary btn-sm max-action-btn update-pr-link" data-id="{{ workout.workout_id }}" data-category="{{ workout_category }}">Update Max</button>
-                                                                <button class="btn btn-outline-primary btn-sm max-action-btn toggle-description"
-                                                                        type="button"
+                                                            <span class="personal-max-text d-none">Client Max: {{ weight_display }} × {{ reps_display }}</span>
+                                                        </div>
+                                                        <div class="exercise-metric text-center mt-3" aria-live="polite">
+                                                            <span class="max-label text-uppercase fw-semibold d-block small text-muted">
+                                                                {{ 'Best Time' if is_cardio else 'Est. 1RM' }}
+                                                            </span>
+                                                            <div class="exercise-metric-value fw-semibold"
+                                                                 data-metric-value
+                                                                 data-metric-type="{{ 'cardio' if is_cardio else 'strength' }}"
+                                                                 data-workout-id="{{ workout.workout_id }}">
+                                                                {% if not is_cardio and initial_one_rm is not none %}
+                                                                    {{ ('%.0f' % initial_one_rm) }} lbs
+                                                                {% else %}
+                                                                    —
+                                                                {% endif %}
+                                                            </div>
+                                                        </div>
+                                                        <div class="exercise-progress-chart mt-3" data-progress-chart>
+                                                            <canvas id="client-chart-{{ workout.workout_id }}-{{ loop.index0 }}" class="progress-chart-canvas" aria-label="Client history chart"></canvas>
+                                                            <div class="chart-placeholder text-muted small">Log a max to unlock this chart.</div>
+                                                        </div>
+                                                        <div class="chart-window-controls btn-group btn-group-sm justify-content-center mt-2" role="group" aria-label="History Range">
+                                                            <button type="button" class="btn btn-outline-secondary chart-window-btn active" data-window="90d">90d</button>
+                                                            <button type="button" class="btn btn-outline-secondary chart-window-btn" data-window="1y">1y</button>
+                                                            <button type="button" class="btn btn-outline-secondary chart-window-btn" data-window="all">All</button>
+                                                        </div>
+                                                        <div class="d-flex flex-column flex-sm-column gap-2 mt-3">
+                                                            <button class="btn btn-outline-secondary btn-sm max-action-btn update-pr-link" data-id="{{ workout.workout_id }}" data-category="{{ workout_category }}">Update Max</button>
+                                                            <button class="btn btn-outline-primary btn-sm max-action-btn toggle-description"
+                                                                    type="button"
                                                                         data-id="lookup-desc-{{ workout.workout_id }}-{{ loop.index0 }}"
                                                                         data-label-show="View Description"
                                                                         data-label-hide="Hide Description">
@@ -815,10 +851,14 @@
 
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="{{ url_for('static', filename='js/exercise_history.js') }}"></script>
 <script>
 (function(){
     const updatePrUrl = "{{ url_for('trainer_update_pr', client_id=client.id) }}";
     const updateNotesUrl = "{{ url_for('trainer_update_notes', client_id=client.id) }}";
+    const historyEndpoint = "{{ url_for('exercise_history_data') }}";
+    const historyClientId = JSON.parse('{{ client.id|tojson }}');
     const NOTES_PLACEHOLDER = 'No notes yet.';
 
     const toast = document.getElementById('toastSuccess');
@@ -1662,6 +1702,20 @@
                     summary.textContent = `Client Max: ${weightSpan.textContent} × ${repsSpan.textContent}`;
                 }
             });
+            if (window.FitBaseExerciseHistory) {
+                document.querySelectorAll(`[data-metric-value][data-workout-id="${currentWorkoutId}"]`).forEach((node) => {
+                    if (isCardio) {
+                        const parsedMinutes = Number(returnedReps);
+                        node.textContent = Number.isFinite(parsedMinutes) ? `${parsedMinutes} min` : '—';
+                    } else {
+                        const updatedOneRm = window.FitBaseExerciseHistory.computeOneRepMax(returnedWeight, returnedReps);
+                        node.textContent = updatedOneRm !== null
+                            ? window.FitBaseExerciseHistory.formatOneRepMax(updatedOneRm)
+                            : '—';
+                    }
+                });
+                window.FitBaseExerciseHistory.refreshHistory(currentWorkoutId);
+            }
             closeModal(prModal);
             showToast('Personal record updated!');
         })
@@ -1956,6 +2010,15 @@
             // Defer to avoid blocking native submit behaviour
             requestAnimationFrame(() => setGenerateButtonLoading(true));
         });
+
+        if (window.FitBaseExerciseHistory) {
+        window.FitBaseExerciseHistory.initCharts({
+            cardSelector: '#exercise-lookup-results .lookup-result-card',
+            historyUrl: historyEndpoint,
+            clientId: historyClientId,
+            defaultWindow: '90d',
+        });
+    }
 
         const resultsSection = document.getElementById('exercise-lookup-results');
         const hasExerciseLookupQuery = resultsSection?.dataset.hasQuery === 'true';
