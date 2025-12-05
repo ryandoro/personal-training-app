@@ -249,6 +249,35 @@
                 return;
             }
 
+            // Provide consistent pressed feedback on touch devices
+            sessionCards.forEach(card => {
+                let pressTimeout;
+
+                const addPressedState = () => {
+                    card.classList.add('session-card--pressed');
+                    if (pressTimeout) {
+                        clearTimeout(pressTimeout);
+                        pressTimeout = null;
+                    }
+                };
+
+                const removePressedState = () => {
+                    if (pressTimeout) {
+                        clearTimeout(pressTimeout);
+                    }
+                    pressTimeout = window.setTimeout(() => {
+                        card.classList.remove('session-card--pressed');
+                        pressTimeout = null;
+                    }, 120);
+                };
+
+                card.addEventListener('pointerdown', addPressedState);
+                card.addEventListener('pointerup', removePressedState);
+                card.addEventListener('pointerleave', removePressedState);
+                card.addEventListener('pointercancel', removePressedState);
+                card.addEventListener('blur', removePressedState);
+            });
+
             const dateFormatter = new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
             const timeFormatter = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' });
             const weekdayFormatter = new Intl.DateTimeFormat(undefined, { weekday: 'short' });

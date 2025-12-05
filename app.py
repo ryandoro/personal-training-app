@@ -1132,27 +1132,12 @@ def trainer_dashboard():
             clients = cursor.fetchall() or []
 
     client_ids = [client['id'] for client in clients]
-    completed_counts: dict[int, int] = {}
-    if client_ids:
-        with get_connection() as conn:
-            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
-                cursor.execute(
-                    """
-                    SELECT client_id, COUNT(*) AS completed_count
-                      FROM trainer_schedule
-                     WHERE trainer_id = %s
-                       AND client_id = ANY(%s)
-                       AND status = 'completed'
-                     GROUP BY client_id
-                    """,
-                    (user_id, client_ids),
-                )
-                for row in cursor.fetchall() or []:
-                    completed_counts[row['client_id']] = row['completed_count']
+    booked_counts, completed_counts = _compute_client_schedule_counts(user_id, client_ids, sync_booked=True)
 
     for client in clients:
         total_sessions = client.get('sessions_remaining')
-        booked_sessions = client.get('sessions_booked') or 0
+        booked_sessions = booked_counts.get(client['id'], 0)
+        client['sessions_booked'] = booked_sessions
         completed_sessions = completed_counts.get(client['id'], 0)
         client['sessions_completed_count'] = completed_sessions
         client['sessions_total'] = total_sessions
@@ -1275,19 +1260,6 @@ def client_profile(client_id):
             )
             active = cursor.fetchone()
 
-            cursor.execute(
-                """
-                SELECT COUNT(*)::int AS completed_count
-                  FROM trainer_schedule
-                 WHERE trainer_id = %s
-                   AND client_id = %s
-                   AND status = 'completed'
-                """,
-                (trainer_id, client_id),
-            )
-            completed_row = cursor.fetchone() or {}
-            sessions_completed_count = int(completed_row.get('completed_count') or 0)
-
             if exercise_search_term:
                 cursor.execute(
                     """
@@ -1310,6 +1282,9 @@ def client_profile(client_id):
                     (client_id, f"%{exercise_search_term}%"),
                 )
                 exercise_search_results = cursor.fetchall() or []
+    booked_counts, completed_counts = _compute_client_schedule_counts(trainer_id, [client_id], sync_booked=True)
+    client['sessions_booked'] = booked_counts.get(client_id, client.get('sessions_booked') or 0)
+    sessions_completed_count = completed_counts.get(client_id, sessions_completed_count)
 
     injury_payload = parse_injury_payload(client.get('injury') if client else None)
     cardio_restriction_flag = bool(client.get('cardio_restriction') if client else False) or injury_payload['cardio']
@@ -1623,6 +1598,40 @@ def _adjust_sessions_booked(cursor, client_id: int, delta: int) -> None:
         """,
         (delta, delta, delta, client_id),
     )
+
+def _compute_client_schedule_counts(trainer_id: int, client_ids: list[int], sync_booked: bool = False) -> tuple[dict[int, int], dict[int, int]]:
+    booked_counts: dict[int, int] = {}
+    completed_counts: dict[int, int] = {}
+    if not client_ids:
+        return booked_counts, completed_counts
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            cursor.execute(
+                """
+                SELECT client_id,
+                       SUM(CASE WHEN status = 'booked' THEN 1 ELSE 0 END)::int AS booked_count,
+                       SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END)::int AS completed_count
+                  FROM trainer_schedule
+                 WHERE trainer_id = %s
+                   AND client_id = ANY(%s)
+                 GROUP BY client_id
+                """,
+                (trainer_id, client_ids),
+            )
+            for row in cursor.fetchall() or []:
+                client_id = row['client_id']
+                booked_counts[client_id] = row.get('booked_count') or 0
+                completed_counts[client_id] = row.get('completed_count') or 0
+        if sync_booked:
+            payload = [(booked_counts.get(cid, 0), cid) for cid in client_ids]
+            with conn.cursor() as cursor:
+                psycopg2.extras.execute_batch(
+                    cursor,
+                    "UPDATE users SET sessions_booked = %s WHERE id = %s",
+                    payload,
+                )
+            conn.commit()
+    return booked_counts, completed_counts
 
 
 def _serialize_schedule_row(row):

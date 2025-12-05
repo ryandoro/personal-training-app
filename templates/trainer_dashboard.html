@@ -2289,30 +2289,35 @@
                     return;
                 }
                 const payload = entryType === 'time_off' ? data.block : data.event;
+                let normalizedNote = notePayload;
                 if (!payload) {
                     fetchEvents();
-                    return;
+                } else {
+                    upsertEvent(payload);
+                    sortEvents();
+                    renderEvents();
+                    const repeatInfo = state.modalEvent ? state.modalEvent.repeatInfo : undefined;
+                    normalizedNote = payload.note ?? '';
+                    const normalizedStatus = entryType === 'time_off'
+                        ? 'time_off'
+                        : (payload.status || state.modalEvent.status || 'booked');
+                    state.modalEvent = {
+                        ...state.modalEvent,
+                        ...payload,
+                        note: normalizedNote,
+                        repeatInfo,
+                        status: normalizedStatus
+                    };
+                    if (eventNoteInput) {
+                        eventNoteInput.value = normalizedNote;
+                    }
+                    updateNoteWrapperHighlight(normalizedNote);
                 }
-                upsertEvent(payload);
-                sortEvents();
-                renderEvents();
-                const repeatInfo = state.modalEvent ? state.modalEvent.repeatInfo : undefined;
-                const normalizedNote = payload.note ?? '';
-                const normalizedStatus = entryType === 'time_off'
-                    ? 'time_off'
-                    : (payload.status || state.modalEvent.status || 'booked');
-                state.modalEvent = {
-                    ...state.modalEvent,
-                    ...payload,
-                    note: normalizedNote,
-                    repeatInfo,
-                    status: normalizedStatus
-                };
-                if (eventNoteInput) {
-                    eventNoteInput.value = normalizedNote;
-                }
-                updateNoteWrapperHighlight(normalizedNote);
-                showEventNoteStatus(normalizedNote ? 'Note saved.' : 'Note cleared.', 'success');
+                const hasNote = Boolean(normalizedNote && normalizedNote.trim().length);
+                const inlineMessage = hasNote ? 'Note saved.' : 'Note cleared.';
+                showEventNoteStatus(inlineMessage, 'success');
+                showDashboardToast(hasNote ? 'Trainer note saved.' : 'Trainer note cleared.', 'success');
+                closeEventModal();
             })
             .catch(() => {
                 const fallbackMessage = 'Unable to save note right now.';

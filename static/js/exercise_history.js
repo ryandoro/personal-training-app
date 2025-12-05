@@ -133,6 +133,8 @@ function renderChart(card, payload, placeholder, canvas) {
                         borderColor: DEFAULT_LINE_COLOR,
                         backgroundColor: DEFAULT_FILL_COLOR,
                         pointRadius: 3,
+                        pointHoverRadius: 5,
+                        pointHitRadius: 10,
                         borderWidth: 2,
                         fill: true,
                         tension: 0.25,

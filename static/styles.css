@@ -1522,7 +1522,8 @@ iframe.fullscreen-sim {
   border-color: rgba(30, 164, 230, 0.45);
 }
 
-.session-card:active {
+.session-card:active,
+.session-card.session-card--pressed {
   box-shadow:
     0 0 0 0.2rem rgba(30, 164, 230, 0.35),
     0 24px 58px rgba(12, 50, 87, 0.3);
