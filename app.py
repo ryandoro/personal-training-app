@@ -1,4 +1,4 @@
-import os, re, logging, json, math, psycopg2, psycopg2.extras, psycopg2.errors, stripe
+import os, re, logging, json, math, psycopg2, psycopg2.extras, psycopg2.errors, stripe, requests
 from flask import Flask, flash, redirect, render_template, request, session, jsonify, url_for, current_app
 from markupsafe import Markup
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -43,9 +43,17 @@ from collections import OrderedDict
 from dotenv import load_dotenv
 from datetime import datetime, date, timedelta, timezone, time
 from zoneinfo import ZoneInfo
-from mail import send_email, send_password_reset_email, send_invite_email, send_verification_email
+from mail import (
+    send_email,
+    send_password_reset_email,
+    send_invite_email,
+    send_verification_email,
+    send_trainer_link_email,
+    send_trainer_link_connected_email,
+)
 from urllib.parse import urlencode 
 from decimal import Decimal
+from dns import resolver as dns_resolver, exception as dns_exception
 
 # Set up basic logging configuration
 logging.basicConfig(level=logging.INFO)
@@ -61,7 +69,18 @@ app.secret_key = secret
 
 # Stripe
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
-price_id = os.getenv("STRIPE_PREMIUM_PRICE_ID")
+premium_price_id = os.getenv("STRIPE_PREMIUM_PRICE_ID")
+pro_price_id = os.getenv("STRIPE_PRO_PRICE_ID")
+stripe_portal_configuration_id = os.getenv("STRIPE_PORTAL_CONFIGURATION_ID")
+PLAN_PRICE_LOOKUP = {
+    "premium": premium_price_id,
+    "pro": pro_price_id,
+}
+PRICE_PLAN_LOOKUP = {
+    price_id: plan
+    for plan, price_id in PLAN_PRICE_LOOKUP.items()
+    if price_id
+}
 ENV = os.getenv("FLASK_ENV", "development")
 if ENV == "production":
     webhook_secret = os.getenv("STRIPE_WEBHOOK_SECRET_LIVE")
@@ -76,7 +95,30 @@ RESEND_COOLDOWN_SECONDS = 60
 VERIFY_PURPOSE = "verify_email"
 RESET_TTL_HOURS = 2
 
+TURNSTILE_SITE_KEY = os.getenv("TURNSTILE_SITE_KEY")
+TURNSTILE_SECRET_KEY = os.getenv("TURNSTILE_SECRET_KEY")
+TURNSTILE_ENABLED = bool(TURNSTILE_SITE_KEY and TURNSTILE_SECRET_KEY)
+SESSION_VERSION_CHECK_INTERVAL_SECONDS = int(os.getenv("SESSION_VERSION_CHECK_INTERVAL_SECONDS", "0"))
+
+REGISTRATION_RATE_LIMIT_WINDOW = timedelta(hours=int(os.getenv("REGISTRATION_RATE_LIMIT_WINDOW_HOURS", "1")))
+REGISTRATION_RATE_LIMIT_PER_EMAIL = int(os.getenv("REGISTRATION_RATE_LIMIT_PER_EMAIL", "3"))
+REGISTRATION_RATE_LIMIT_PER_IP = int(os.getenv("REGISTRATION_RATE_LIMIT_PER_IP", "20"))
+
+DISPOSABLE_EMAIL_DOMAINS = {
+    "mailinator.com",
+    "tempmail.com",
+    "guerrillamail.com",
+    "10minutemail.com",
+    "yopmail.com",
+    "discard.email",
+    "fakeinbox.com",
+    "sharklasers.com",
+    "trashmail.com",
+    "getnada.com",
+}
+
 TRAINER_NOTE_MAX_LENGTH = 1000
+TRAINER_PROFILE_TEXT_LIMIT = 1000
 ONE_REP_MAX_COEFFICIENT = 0.0333
 HISTORY_WINDOW_LIMITS = {
     '90d': 150,
@@ -89,6 +131,140 @@ HISTORY_WINDOW_DELTAS = {
     'all': None,
 }
 DEFAULT_HISTORY_WINDOW = '90d'
+
+TRAINER_CLIENT_COUNT_BUCKETS = [
+    {'code': 1, 'label': '0-5 active clients', 'min': 0, 'max': 5},
+    {'code': 2, 'label': '6-15 active clients', 'min': 6, 'max': 15},
+    {'code': 3, 'label': '16-30 active clients', 'min': 16, 'max': 30},
+    {'code': 4, 'label': '31+ active clients', 'min': 31, 'max': None},
+]
+
+TRAINER_SESSION_BUCKETS = [
+    {'code': 1, 'label': '0-15 sessions/week', 'min': 0, 'max': 15},
+    {'code': 2, 'label': '16-30 sessions/week', 'min': 16, 'max': 30},
+    {'code': 3, 'label': '31-40 sessions/week', 'min': 31, 'max': 40},
+    {'code': 4, 'label': '41+ sessions/week', 'min': 41, 'max': None},
+]
+
+TRAINER_CLIENT_BUCKET_CODES = {entry['code'] for entry in TRAINER_CLIENT_COUNT_BUCKETS}
+TRAINER_SESSION_BUCKET_CODES = {entry['code'] for entry in TRAINER_SESSION_BUCKETS}
+SCHEDULE_ACCESS_REQUIRED_MESSAGE = "Schedule access requires an active training plan."
+
+
+def _normalize_role_value(role_value, *, default=None):
+    """Convert stored role strings to a supported canonical value."""
+    if isinstance(role_value, str):
+        normalized = role_value.strip().lower()
+        if normalized == 'client':
+            normalized = 'user'
+        if normalized in ALLOWED_ROLES:
+            return normalized
+    return default
+
+
+def _resolve_user_role(*, user_id=None, conn=None, default='user'):
+    """Ensure session holds a canonical role value, reloading from DB if needed."""
+    current_role = session.get('role')
+    normalized = _normalize_role_value(current_role, default=None)
+    if normalized:
+        if current_role != normalized:
+            session['role'] = normalized
+        if session.get('is_admin') != (normalized == 'admin'):
+            session['is_admin'] = (normalized == 'admin')
+        return normalized
+
+    if user_id is None:
+        user_id = session.get('user_id')
+    if not user_id:
+        normalized = _normalize_role_value(None, default=default)
+        if session.get('role') != normalized:
+            session['role'] = normalized
+        if session.get('is_admin') != (normalized == 'admin'):
+            session['is_admin'] = (normalized == 'admin')
+        return normalized
+
+    def _fetch_role(active_conn):
+        with active_conn.cursor() as cursor:
+            cursor.execute("SELECT role FROM users WHERE id = %s", (user_id,))
+            row = cursor.fetchone()
+            return row[0] if row else None
+
+    if conn is not None:
+        db_role = _fetch_role(conn)
+    else:
+        with get_connection() as temp_conn:
+            db_role = _fetch_role(temp_conn)
+
+    normalized = _normalize_role_value(db_role, default=default)
+    if session.get('role') != normalized:
+        session['role'] = normalized
+    if session.get('is_admin') != (normalized == 'admin'):
+        session['is_admin'] = (normalized == 'admin')
+    return normalized
+
+
+def _enforce_session_version(user_id: int):
+    """Ensure current session matches the user's latest session_version."""
+    stored_version = session.get('session_version')
+    if stored_version is None:
+        return None
+
+    now = datetime.now(timezone.utc)
+    if SESSION_VERSION_CHECK_INTERVAL_SECONDS > 0:
+        last_checked_iso = session.get('session_version_checked_at')
+        if last_checked_iso:
+            try:
+                last_checked = datetime.fromisoformat(last_checked_iso)
+            except ValueError:
+                last_checked = None
+            if last_checked:
+                delta = (now - last_checked).total_seconds()
+                if delta < SESSION_VERSION_CHECK_INTERVAL_SECONDS:
+                    return None
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT session_version FROM users WHERE id = %s", (user_id,))
+            row = cur.fetchone()
+    session['session_version_checked_at'] = now.isoformat()
+    db_version = (row[0] if row else None) or 1
+
+    if db_version == stored_version:
+        return None
+
+    session.clear()
+    flash("Please log in again to refresh your account changes.", "info")
+    return redirect(url_for('login'))
+
+
+def _user_has_schedule_access(user_row):
+    """Client schedule is available only when linked to a trainer and on a paid tier."""
+    if not user_row:
+        return False
+    subscription_type = (user_row.get('subscription_type') or '').strip().lower()
+    if subscription_type == 'free':
+        return False
+    return bool(user_row.get('trainer_id'))
+
+
+def _normalize_trainer_bucket(value, buckets):
+    if value is None:
+        return None
+    try:
+        numeric_value = int(value)
+    except (TypeError, ValueError):
+        return None
+    bucket_codes = {entry['code'] for entry in buckets}
+    if numeric_value in bucket_codes:
+        return numeric_value
+    for entry in buckets:
+        min_val = entry.get('min')
+        max_val = entry.get('max')
+        if min_val is not None and numeric_value < min_val:
+            continue
+        if max_val is None or numeric_value <= max_val:
+            return entry['code']
+    return None
 
 
 def _sanitize_trainer_note_input(value):
@@ -406,6 +582,7 @@ def home():
         workouts_completed=workouts_completed,
         last_workout_completed=last_workout_completed,
         form_completed=form_completed,
+        user_role=role,
         client_next_session=client_next_session,
         trainer_next_session=trainer_next_session,
         injury_status=injury_status,
@@ -413,11 +590,138 @@ def home():
     )
 
 
+def _get_request_ip():
+    header_keys = [
+        "CF-Connecting-IP",
+        "X-Forwarded-For",
+        "X-Real-IP",
+    ]
+    for key in header_keys:
+        value = request.headers.get(key)
+        if value:
+            return value.split(",")[0].strip()
+    return request.remote_addr
 
-@app.route('/register', methods=['GET', 'POST'])
-def register():
+
+def _verify_turnstile_token(token: str, remote_ip: str | None) -> bool:
+    if not TURNSTILE_ENABLED:
+        return True
+    if not token:
+        return False
+    payload = {
+        "secret": TURNSTILE_SECRET_KEY,
+        "response": token,
+    }
+    if remote_ip:
+        payload["remoteip"] = remote_ip
+    try:
+        resp = requests.post(
+            "https://challenges.cloudflare.com/turnstile/v0/siteverify",
+            data=payload,
+            timeout=5,
+        )
+        resp.raise_for_status()
+        result = resp.json()
+    except requests.RequestException:
+        current_app.logger.exception("Turnstile verification request failed")
+        return False
+    except ValueError:
+        current_app.logger.warning("Unexpected Turnstile response payload")
+        return False
+
+    success = bool(result.get("success"))
+    if not success:
+        current_app.logger.warning("Turnstile rejected registration: %s", result.get("error-codes"))
+    return success
+
+
+def _domain_is_disposable(domain: str) -> bool:
+    return domain.lower() in DISPOSABLE_EMAIL_DOMAINS
+
+
+def _domain_has_mx_record(domain: str) -> bool:
+    try:
+        answers = dns_resolver.resolve(domain, "MX", lifetime=3.0)
+        return bool(answers)
+    except dns_exception.DNSException:
+        current_app.logger.warning("Unable to verify MX for domain=%s", domain)
+        return False
+
+
+def _check_registration_rate_limit(email: str | None, ip: str | None):
+    if REGISTRATION_RATE_LIMIT_WINDOW <= timedelta(0):
+        return True, None
+    cutoff = datetime.now(timezone.utc) - REGISTRATION_RATE_LIMIT_WINDOW
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                if REGISTRATION_RATE_LIMIT_PER_EMAIL > 0 and email:
+                    cur.execute(
+                        """
+                        SELECT COUNT(1)
+                          FROM registration_attempts
+                         WHERE lower(email) = lower(%s)
+                           AND created_at >= %s
+                        """,
+                        (email, cutoff),
+                    )
+                    if cur.fetchone()[0] >= REGISTRATION_RATE_LIMIT_PER_EMAIL:
+                        return False, "Too many attempts for that email. Please try again later."
+
+                if REGISTRATION_RATE_LIMIT_PER_IP > 0 and ip:
+                    cur.execute(
+                        """
+                        SELECT COUNT(1)
+                          FROM registration_attempts
+                         WHERE ip = %s
+                           AND created_at >= %s
+                        """,
+                        (ip, cutoff),
+                    )
+                    if cur.fetchone()[0] >= REGISTRATION_RATE_LIMIT_PER_IP:
+                        return False, "Too many registrations from this network. Please wait and try again."
+    except psycopg2.errors.UndefinedTable:
+        current_app.logger.warning("registration_attempts table missing; skipping rate limit enforcement")
+        return True, None
+    except psycopg2.Error:
+        current_app.logger.exception("Unable to check registration rate limit")
+        return True, None
+
+    return True, None
+
+
+def _record_registration_attempt(email: str | None, ip: str | None):
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO registration_attempts (email, ip)
+                    VALUES (%s, %s)
+                    """,
+                    (email, ip),
+                )
+            conn.commit()
+    except psycopg2.errors.UndefinedTable:
+        current_app.logger.warning("registration_attempts table missing; skipping attempt logging")
+    except psycopg2.Error:
+        current_app.logger.exception("Failed to record registration attempt")
+
+
+def _render_register_template(trainer_mode: bool):
+    endpoint = 'trainer_register' if trainer_mode else 'register'
+    return render_template(
+        'register.html',
+        trainer_mode=trainer_mode,
+        form_action=url_for(endpoint),
+        turnstile_enabled=TURNSTILE_ENABLED,
+        turnstile_site_key=TURNSTILE_SITE_KEY,
+    )
+
+
+def _handle_registration(trainer_mode: bool):
     if 'user_id' in session:
-        return redirect('/')
+        return redirect(url_for('home'))
 
     if request.method == 'POST':
         username = (request.form.get('username') or '').strip()
@@ -427,53 +731,76 @@ def register():
         confirmation = request.form.get('confirmation') or ''
 
         if not username:
-            flash("Username is required", "danger"); return render_template('register.html')
+            flash("Username is required", "danger"); return _render_register_template(trainer_mode)
         if not raw_email:
-            flash("Email is required", "danger"); return render_template('register.html')
+            flash("Email is required", "danger"); return _render_register_template(trainer_mode)
         if not re.match(r"^[^@]+@[^@]+\.[^@]+$", raw_email):
-            flash("Please enter a valid email address.", "danger"); return render_template('register.html')
+            flash("Please enter a valid email address.", "danger"); return _render_register_template(trainer_mode)
         if not password or not confirmation:
-            flash("Password and confirmation are required", "danger"); return render_template('register.html')
+            flash("Password and confirmation are required", "danger"); return _render_register_template(trainer_mode)
         if len(username) > 50 or len(username) < 3:
-            flash("Username must be 3–50 characters", "danger"); return render_template('register.html')
+            flash("Username must be 3–50 characters", "danger"); return _render_register_template(trainer_mode)
         if len(password) < 8:
-            flash("Password must be at least 8 characters", "danger"); return render_template('register.html')
+            flash("Password must be at least 8 characters", "danger"); return _render_register_template(trainer_mode)
         if not any(c.isupper() for c in password):
-            flash("Password must include at least one uppercase letter", "danger"); return render_template('register.html')
+            flash("Password must include at least one uppercase letter", "danger"); return _render_register_template(trainer_mode)
         if not any(c in "!@#$%^&*()-_+=<>?/{}~" for c in password):
-            flash("Password must include at least one special character", "danger"); return render_template('register.html')
+            flash("Password must include at least one special character", "danger"); return _render_register_template(trainer_mode)
         if password != confirmation:
-            flash("Passwords do not match", "danger"); return render_template('register.html')
+            flash("Passwords do not match", "danger"); return _render_register_template(trainer_mode)
+
+        client_ip = _get_request_ip()
+        turnstile_token = (request.form.get('cf-turnstile-response') or '').strip()
+
+        if TURNSTILE_ENABLED:
+            if not turnstile_token:
+                flash("Please complete the verification challenge.", "danger"); return _render_register_template(trainer_mode)
+            if not _verify_turnstile_token(turnstile_token, client_ip):
+                flash("We couldn't verify that you're human. Please try again.", "danger"); return _render_register_template(trainer_mode)
+
+        if email:
+            domain = email.rsplit('@', 1)[1]
+            if _domain_is_disposable(domain):
+                flash("Please use a permanent email address.", "danger"); return _render_register_template(trainer_mode)
+            if not _domain_has_mx_record(domain):
+                flash("We couldn't confirm that email provider receives messages. Try another email.", "danger"); return _render_register_template(trainer_mode)
+
+        allowed, rate_limit_message = _check_registration_rate_limit(email, client_ip)
+        if not allowed:
+            flash(rate_limit_message or "Too many registration attempts. Please try again later.", "danger"); return _render_register_template(trainer_mode)
+
+        _record_registration_attempt(email, client_ip)
+
+        subscription_type = 'pro' if trainer_mode else 'free'
+        role = 'trainer' if trainer_mode else 'user'
 
         with get_connection() as conn:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-                # Check username exists (case-insensitive, to match login behavior)
                 cur.execute("SELECT 1 FROM users WHERE lower(username)=lower(%s) LIMIT 1", (username,))
                 if cur.fetchone():
                     flash("Username already exists", "danger")
-                    return render_template('register.html')
+                    return _render_register_template(trainer_mode)
 
                 if email:
                     cur.execute("SELECT 1 FROM users WHERE lower(email)=lower(%s) LIMIT 1", (email,))
                     if cur.fetchone():
                         flash("An account with that email already exists", "danger")
-                        return render_template('register.html')
+                        return _render_register_template(trainer_mode)
 
                 hashed_password = generate_password_hash(password)
 
                 try:
                     cur.execute("""
-                        INSERT INTO users (username, hash, email, email_verified)
-                        VALUES (%s, %s, %s, %s)
+                        INSERT INTO users (username, hash, email, email_verified, subscription_type, role)
+                        VALUES (%s, %s, %s, %s, %s, %s)
                         RETURNING id
-                    """, (username, hashed_password, email, False))
+                    """, (username, hashed_password, email, False, subscription_type, role))
                     user_row = cur.fetchone()
                     user_id = user_row['id']
 
-                    # Issue verification token 
-                    raw_token, expires_at = issue_single_use_token(conn, user_id, "verify_email", VERIFY_TTL_HOURS)  
+                    raw_token, expires_at, _token_id = issue_single_use_token(conn, user_id, "verify_email", VERIFY_TTL_HOURS)  
                     verify_url = url_for("verify_email", token=raw_token, _external=True)
-                    resend_url  = url_for("resend_verify_confirm", token=raw_token, _external=True)
+                    resend_url  = url_for("resend_verify_confirm", _external=True)
 
                     conn.commit()
 
@@ -483,15 +810,14 @@ def register():
                     else:
                         flash("Error creating account", "danger")
                     conn.rollback()
-                    return render_template('register.html')
+                    return _render_register_template(trainer_mode)
 
-        # Send welcome + verify email
         try:
             send_verification_email(
                 to_email=email,
                 verify_url=verify_url,
                 first_name=username,
-                ttl_hours=VERIFY_TTL_HOURS, 
+                ttl_hours=VERIFY_TTL_HOURS,
                 current_year=date.today().year,
                 resend_url=resend_url
             )
@@ -501,7 +827,17 @@ def register():
         flash("Registration successful! Please check your email to verify your account.", "success")
         return redirect('/login')
 
-    return render_template('register.html')
+    return _render_register_template(trainer_mode)
+
+
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    return _handle_registration(trainer_mode=False)
+
+
+@app.route('/trainer/register', methods=['GET', 'POST'])
+def trainer_register():
+    return _handle_registration(trainer_mode=True)
 
 
 @app.route('/verify_email')
@@ -551,37 +887,46 @@ def verify_email():
 
 @app.get("/verify/resend")
 def resend_verify_confirm():
-    raw = (request.args.get("token") or "").strip()
-    token_digest = hash_token(raw) if raw else ""
-    return render_template("resend_verify_confirm.html", token_digest=token_digest)
+    prefill_email = ""
+    if 'user_id' in session:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT email FROM users WHERE id = %s", (session['user_id'],))
+                row = cur.fetchone()
+                if row and row[0]:
+                    prefill_email = row[0]
+    return render_template("resend_verify_confirm.html", prefill_email=prefill_email)
 
 
 
 @app.post("/verify/resend")
 def resend_verify_do():
-    """POST: actually issue a new token and email."""
+    """POST: actually issue a new token and email using an email address."""
     generic_msg = "If an account exists and isn’t verified, we’ve sent a new verification link."
-    digest = (request.form.get("token_digest") or "").strip()
+    raw_email = (request.form.get("email") or "").strip()
 
-    if not digest:
-        flash(generic_msg, "info")
-        return redirect(url_for("login"))
+    if not raw_email:
+        flash("Please enter the email address associated with your account.", "danger")
+        return redirect(url_for("resend_verify_confirm"))
+    if not re.match(r"^[^@]+@[^@]+\.[^@]+$", raw_email):
+        flash("Please enter a valid email address.", "danger")
+        return redirect(url_for("resend_verify_confirm"))
+
+    normalized_email = normalize_email(raw_email)
 
     try:
         with get_connection() as conn:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
                 cur.execute("""
-                    SELECT u.id AS user_id, u.email, u.username, u.email_verified
-                      FROM user_tokens ut
-                      JOIN users u ON u.id = ut.user_id
-                     WHERE ut.purpose = %s
-                       AND ut.token_digest = %s
+                    SELECT id AS user_id, email, username, email_verified
+                      FROM users
+                     WHERE lower(email) = lower(%s)
                      LIMIT 1
-                """, (VERIFY_PURPOSE, digest))
+                """, (normalized_email,))
                 row = cur.fetchone()
 
                 if not row:
-                    flash("That link is invalid or no longer available. If you still need access, try again from your latest email.", "info")
+                    flash(generic_msg, "info")
                     return redirect(url_for("login"))
 
                 if row["email_verified"]:
@@ -600,44 +945,40 @@ def resend_verify_do():
                 now = datetime.now(timezone.utc)
 
                 if last:
-                    last_ts = last["created_at"]  
+                    last_ts = last["created_at"]
                     if last_ts.tzinfo is None:
                         last_ts = last_ts.replace(tzinfo=timezone.utc)
 
                     delta = now - last_ts
-                    if (delta) < timedelta(seconds=RESEND_COOLDOWN_SECONDS):
-                        remaining = max(1, RESEND_COOLDOWN_SECONDS - int((delta.total_seconds())))
+                    if delta < timedelta(seconds=RESEND_COOLDOWN_SECONDS):
+                        remaining = max(1, RESEND_COOLDOWN_SECONDS - int(delta.total_seconds()))
                         flash(f"A verification email was just sent. Please verify or try again in ~{remaining}s.", "warning")
                         return redirect(url_for("login"))
-                
-                # Invalidate prior unused verify tokens 
+
                 cur.execute("""
                     UPDATE user_tokens
-                        SET used_at = %s
-                     WHERE user_id = %s 
-                        AND purpose = %s 
-                        AND used_at IS NULL
+                       SET used_at = %s
+                     WHERE user_id = %s
+                       AND purpose = %s
+                       AND used_at IS NULL
                 """, (now, row["user_id"], VERIFY_PURPOSE))
 
-                # Issue new token
-                new_raw, _expires_at = issue_single_use_token(conn, row["user_id"], VERIFY_PURPOSE, VERIFY_TTL_HOURS)
+                new_raw, _expires_at, _token_id = issue_single_use_token(conn, row["user_id"], VERIFY_PURPOSE, VERIFY_TTL_HOURS)
                 new_verify_url = url_for("verify_email", token=new_raw, _external=True)
-                new_resend_url  = url_for("resend_verify_confirm", token=new_raw, _external=True)
                 conn.commit()
 
-        # Send email outside transaction
         send_verification_email(
             to_email=row["email"],
             first_name=row["username"],
             verify_url=new_verify_url,
             ttl_hours=VERIFY_TTL_HOURS,
-            resend_url=new_resend_url
+            resend_url=url_for("resend_verify_confirm", _external=True)
         )
         flash("We've sent you a new verification link.", "success")
         return redirect(url_for("login"))
 
     except Exception:
-        current_app.logger.exception("Resend via token failed")
+        current_app.logger.exception("Resend via email failed")
         flash(generic_msg, "info")
         return redirect(url_for("login"))
 
@@ -697,8 +1038,10 @@ def login():
         # Success → remember session
         session['user_id'] = user['id']
         session['session_version'] = user.get('session_version', 1)
-        session['role'] = user.get('role')
-        session['is_admin'] = (user.get('role') == 'admin')
+        session['session_version_checked_at'] = datetime.now(timezone.utc).isoformat()
+        normalized_role = _normalize_role_value(user.get('role'), default='user')
+        session['role'] = normalized_role
+        session['is_admin'] = (normalized_role == 'admin')
 
         # Stamp last login
         with get_connection() as conn:
@@ -721,6 +1064,12 @@ def check_trial_status_and_subscription():
     # Skip checks for static files and public routes
     if request.endpoint in ['static', 'login', 'register', 'logout', None]:
         return
+
+    enforcement_response = _enforce_session_version(session['user_id'])
+    if enforcement_response:
+        return enforcement_response
+
+    _resolve_user_role(user_id=session['user_id'])
 
     # Run the checks once per day per user session
     today = datetime.now(timezone.utc).date().isoformat()
@@ -752,6 +1101,13 @@ def training():
     cardio_restriction_prefill = False
     injury_details_prefill = ''
     injury_status_prefill = 'No'
+    user_role = 'user'
+    workout_duration = None
+    fitness_goals = None
+    trainer_client_count_prefill = None
+    trainer_sessions_per_week_prefill = None
+    trainer_focus_areas_prefill = ''
+    trainer_platform_goals_prefill = ''
 
     try:
         # Check if the form has already been completed
@@ -760,21 +1116,28 @@ def training():
                 cursor.execute(
                     """
                     SELECT form_completed, exercise_history, fitness_goals, workout_duration,
-                           injury, injury_details, cardio_restriction
+                           injury, injury_details, cardio_restriction, role,
+                           trainer_client_count, trainer_sessions_per_week,
+                           trainer_focus_areas, trainer_platform_goals
                       FROM users
                      WHERE id = %s
                     """,
                     (user_id,)
                 )
                 result = cursor.fetchone()
-                form_completed = bool(result[0])  # Retrieve form_completed status
-                exercise_history = result[1]  # Fetch exercise history
-                fitness_goals = result[2]  # Fetch fitness goals
+                form_completed = bool(result[0])
+                exercise_history = result[1]
+                fitness_goals = result[2]
                 workout_duration = result[3]
                 injury_profile = parse_injury_payload(result[4])
                 injury_regions_prefill = injury_profile['regions']
                 cardio_restriction_prefill = bool(result[6]) or injury_profile['cardio']
                 injury_details_prefill = result[5]
+                user_role = result[7] or 'user'
+                trainer_client_count_prefill = _normalize_trainer_bucket(result[8], TRAINER_CLIENT_COUNT_BUCKETS)
+                trainer_sessions_per_week_prefill = _normalize_trainer_bucket(result[9], TRAINER_SESSION_BUCKETS)
+                trainer_focus_areas_prefill = result[10] or ''
+                trainer_platform_goals_prefill = result[11] or ''
                 injury_status_prefill = 'Yes' if (injury_regions_prefill or cardio_restriction_prefill or (injury_details_prefill or '').strip()) else 'No'
     except Exception as e:
         flash(f"An error occurred: {e}", "danger")
@@ -800,6 +1163,13 @@ def training():
             custom_workout_token=CUSTOM_WORKOUT_TOKEN,
             home_workout_token=HOME_WORKOUT_TOKEN,
             home_equipment_options=HOME_EQUIPMENT_OPTIONS,
+            user_role=user_role,
+            trainer_client_count_prefill=trainer_client_count_prefill,
+            trainer_sessions_per_week_prefill=trainer_sessions_per_week_prefill,
+            trainer_focus_areas_prefill=trainer_focus_areas_prefill,
+            trainer_platform_goals_prefill=trainer_platform_goals_prefill,
+            trainer_client_count_options=TRAINER_CLIENT_COUNT_BUCKETS,
+            trainer_sessions_per_week_options=TRAINER_SESSION_BUCKETS,
         )
 
     # If the user submits the form and it hasn't been completed yet
@@ -825,6 +1195,17 @@ def training():
         commitment = request.form.get('commitment')
         additional_notes = request.form.get('additional_notes')
         waiver = request.form.get('waiver')
+        trainer_client_count = None
+        trainer_sessions_per_week = None
+        trainer_focus_areas = None
+        trainer_platform_goals = None
+        is_trainer = (user_role == 'trainer')
+
+        if is_trainer:
+            trainer_client_count = int_or_none(request.form.get('trainer_client_count'))
+            trainer_sessions_per_week = int_or_none(request.form.get('trainer_sessions_per_week'))
+            trainer_focus_areas = (request.form.get('trainer_focus_areas') or '').strip()
+            trainer_platform_goals = (request.form.get('trainer_platform_goals') or '').strip()
 
 
         # Combine fitness goals into a single string
@@ -879,6 +1260,20 @@ def training():
         if not waiver:
             errors["waiver"] = "You must agree to the Terms of Service and Liability Waiver."
 
+        if is_trainer:
+            if trainer_client_count is None or trainer_client_count not in TRAINER_CLIENT_BUCKET_CODES:
+                errors['trainer_client_count'] = "Select the range that best matches your client load."
+            if trainer_sessions_per_week is None or trainer_sessions_per_week not in TRAINER_SESSION_BUCKET_CODES:
+                errors['trainer_sessions_per_week'] = "Select the range that best matches your weekly cadence."
+            if not trainer_focus_areas:
+                errors['trainer_focus_areas'] = "Tell us about the clients you specialize in coaching."
+            elif len(trainer_focus_areas) > TRAINER_PROFILE_TEXT_LIMIT:
+                trainer_focus_areas = trainer_focus_areas[:TRAINER_PROFILE_TEXT_LIMIT]
+            if not trainer_platform_goals:
+                errors['trainer_platform_goals'] = "Share how you'll use FitBaseAI with your clients."
+            elif len(trainer_platform_goals) > TRAINER_PROFILE_TEXT_LIMIT:
+                trainer_platform_goals = trainer_platform_goals[:TRAINER_PROFILE_TEXT_LIMIT]
+
         if errors:
             flash("Please fix the highlighted fields.", "danger")
             # Re-render with what the user typed + which fields failed
@@ -898,11 +1293,22 @@ def training():
                 custom_workout_token=CUSTOM_WORKOUT_TOKEN,
                 home_workout_token=HOME_WORKOUT_TOKEN,
                 home_equipment_options=HOME_EQUIPMENT_OPTIONS,
+                user_role=user_role,
+                trainer_client_count_prefill=trainer_client_count_prefill,
+                trainer_sessions_per_week_prefill=trainer_sessions_per_week_prefill,
+                trainer_focus_areas_prefill=trainer_focus_areas_prefill,
+                trainer_platform_goals_prefill=trainer_platform_goals_prefill,
+                trainer_client_count_options=TRAINER_CLIENT_COUNT_BUCKETS,
+                trainer_sessions_per_week_options=TRAINER_SESSION_BUCKETS,
             ), 400
         
         workout_duration = int(workout_duration_raw)
         injury_json = json.dumps(injury_regions_selected)
         is_injury_free = (injury_status_normalized == "No")
+        trainer_client_count_value = trainer_client_count if is_trainer else None
+        trainer_sessions_per_week_value = trainer_sessions_per_week if is_trainer else None
+        trainer_focus_areas_value = trainer_focus_areas if is_trainer else None
+        trainer_platform_goals_value = trainer_platform_goals if is_trainer else None
 
         # Connect to the database and update user information
         try:
@@ -916,27 +1322,40 @@ def training():
                             gender = %s, exercise_history = %s, fitness_goals = %s, 
                             injury = %s, injury_details = %s, cardio_restriction = %s,
                             commitment = %s, additional_notes = %s, 
+                            trainer_client_count = %s, trainer_sessions_per_week = %s,
+                            trainer_focus_areas = %s, trainer_platform_goals = %s,
                             name = %s, last_name = %s, form_completed = TRUE, workout_duration = %s,
                             injury_free_since = CASE WHEN %s THEN COALESCE(injury_free_since, CURRENT_DATE) ELSE NULL END,
-                            subscription_type = 'premium',
+                            subscription_type = CASE 
+                                WHEN role = 'trainer' THEN 'pro'
+                                ELSE 'premium'
+                            END,
                             trial_end_date = %s
                         WHERE id = %s
                     """, (
                         age, weight, height_feet, height_inches, gender, 
                         exercise_history, fitness_goals_str, injury_json, injury_details,
                         cardio_restriction_value,
-                        commitment, additional_notes, name, last_name, workout_duration, 
+                        commitment, additional_notes,
+                        trainer_client_count_value, trainer_sessions_per_week_value,
+                        trainer_focus_areas_value, trainer_platform_goals_value,
+                        name, last_name, workout_duration, 
                         is_injury_free, trial_end_date, user_id
                     ))
                     conn.commit()
 
-                    flash("✅ Your 14-day free Premium trial has started! You now have full access to the personalized workout generator and tracking.", "success")
+                    plan_label = "Pro" if user_role == 'trainer' else "Premium"
+                    flash(f"✅ Your 14-day free {plan_label} trial has started! You now have full access to the personalized workout generator and tracking.", "success")
 
             form_completed = True  # Mark the form as completed
             injury_regions_prefill = injury_regions_selected
             cardio_restriction_prefill = cardio_restriction_value
             injury_details_prefill = injury_details
             injury_status_prefill = 'Yes' if (injury_regions_selected or cardio_restriction_value or (injury_details or '').strip()) else 'No'
+            trainer_client_count_prefill = trainer_client_count_value
+            trainer_sessions_per_week_prefill = trainer_sessions_per_week_value
+            trainer_focus_areas_prefill = trainer_focus_areas_value or ''
+            trainer_platform_goals_prefill = trainer_platform_goals_value or ''
             flash("Your information has been successfully updated!", "success")
         except Exception as e:
             flash(f"An error occurred: {e}", "danger")
@@ -964,6 +1383,13 @@ def training():
                 custom_workout_token=CUSTOM_WORKOUT_TOKEN,
                 home_workout_token=HOME_WORKOUT_TOKEN,
                 home_equipment_options=HOME_EQUIPMENT_OPTIONS,
+                user_role=user_role,
+                trainer_client_count_prefill=trainer_client_count_value,
+                trainer_sessions_per_week_prefill=trainer_sessions_per_week_value,
+                trainer_focus_areas_prefill=trainer_focus_areas_value or '',
+                trainer_platform_goals_prefill=trainer_platform_goals_value or '',
+                trainer_client_count_options=TRAINER_CLIENT_COUNT_BUCKETS,
+                trainer_sessions_per_week_options=TRAINER_SESSION_BUCKETS,
             )
 
     categories = get_category_groups()
@@ -1072,6 +1498,13 @@ def training():
         custom_workout_token=CUSTOM_WORKOUT_TOKEN,
         home_workout_token=HOME_WORKOUT_TOKEN,
         home_equipment_options=HOME_EQUIPMENT_OPTIONS,
+        user_role=user_role,
+        trainer_client_count_prefill=trainer_client_count_prefill,
+        trainer_sessions_per_week_prefill=trainer_sessions_per_week_prefill,
+        trainer_focus_areas_prefill=trainer_focus_areas_prefill,
+        trainer_platform_goals_prefill=trainer_platform_goals_prefill,
+        trainer_client_count_options=TRAINER_CLIENT_COUNT_BUCKETS,
+        trainer_sessions_per_week_options=TRAINER_SESSION_BUCKETS,
     )
 
 
@@ -1080,10 +1513,16 @@ def training():
 def trainer_dashboard():
     """Render trainer dashboard with stats and assigned clients."""
     user_id = session['user_id']
+    # Downgrade immediately if the trial/subscription has lapsed
+    check_and_downgrade_trial(user_id)
+    check_subscription_expiry(user_id)
     trainer = _require_trainer(user_id)
     if not trainer:
-        flash("Trainer access required.", "danger")
+        flash("Trainer access requires an active plan.", "danger")
         return redirect(url_for('home'))
+    if trainer.get('role') == 'trainer' and not trainer.get('form_completed'):
+        flash("Complete your fitness questionnaire to unlock the trainer dashboard.", "warning")
+        return redirect(url_for('training'))
 
     search_term = (request.args.get('search') or '').strip()
     total_clients = 0
@@ -1205,7 +1644,7 @@ def _require_trainer(user_id: int) -> dict | None:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
             cursor.execute(
                 """
-                SELECT id, role, name, last_name, username, email, workouts_completed
+                SELECT id, role, name, last_name, username, email, subscription_type, workouts_completed, form_completed
                   FROM users
                  WHERE id = %s
                 """,
@@ -1215,6 +1654,82 @@ def _require_trainer(user_id: int) -> dict | None:
     if not trainer or trainer.get('role') not in {'trainer', 'admin'}:
         return None
     return trainer
+
+
+def _get_trainer_link_invite(conn, token_id: int) -> dict | None:
+    with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+        cursor.execute(
+            """
+            SELECT tli.id,
+                   tli.token_id,
+                   tli.trainer_id,
+                   tli.client_id,
+                   tli.sessions_remaining,
+                   tli.accepted_at,
+                   t.name AS trainer_name,
+                   t.last_name AS trainer_last_name,
+                   t.username AS trainer_username,
+                   t.email AS trainer_email,
+                   c.email AS client_email,
+                   c.name AS client_name,
+                   c.last_name AS client_last_name,
+                   c.username AS client_username
+              FROM trainer_link_invites tli
+              JOIN users t
+                ON tli.trainer_id = t.id
+              JOIN users c
+                ON tli.client_id = c.id
+             WHERE tli.token_id = %s
+            """,
+            (token_id,)
+        )
+        return cursor.fetchone()
+
+
+def _format_display_name(person: dict, fallback: str) -> str:
+    parts = [part for part in (person.get('name'), person.get('last_name')) if part]
+    if parts:
+        return " ".join(parts)
+    username = person.get('username')
+    if username:
+        return username
+    return fallback
+
+
+def _trainer_display_name(trainer: dict) -> str:
+    return _format_display_name(trainer, 'your trainer')
+
+
+def _client_display_name(client: dict) -> str:
+    return _format_display_name(client, 'your client')
+
+
+def _format_sessions_note(sessions_remaining: int | None) -> str | None:
+    if sessions_remaining is None:
+        return None
+    sessions_label = f"{sessions_remaining} session{'s' if sessions_remaining != 1 else ''}"
+    return f"They noted you purchased {sessions_label}."
+
+
+def _build_trainer_invite_note(trainer: dict, sessions_remaining: int | None) -> str:
+    trainer_name = _trainer_display_name(trainer)
+    base = f"{trainer_name} invited you to train with them on FitBaseAI."
+    sessions_note = _format_sessions_note(sessions_remaining)
+    if sessions_note:
+        base += f" {sessions_note}"
+    return base
+
+
+def trainer_has_premium_generation_access(trainer: dict | None) -> bool:
+    """Return True when a trainer/admin can always create premium workouts for clients."""
+    if not trainer:
+        return False
+    role = (trainer.get('role') or '').lower()
+    if role == 'admin':
+        return True
+    if role == 'trainer':
+        return (trainer.get('subscription_type') or '').lower() == 'pro'
+    return False
 
 
 @app.route('/client_profile/<int:client_id>')
@@ -1300,6 +1815,8 @@ def client_profile(client_id):
         subscription_type == 'free'
         or (subscription_type == 'premium' and trial_end_date and today > trial_end_date)
     )
+    trainer_can_generate_premium = trainer_has_premium_generation_access(trainer)
+    premium_generation_allowed = client_has_premium_access or trainer_can_generate_premium
 
     active_workout = None
     active_skipped = {}
@@ -1373,6 +1890,7 @@ def client_profile(client_id):
         home_workout_token=HOME_WORKOUT_TOKEN,
         home_equipment_options=HOME_EQUIPMENT_OPTIONS,
         client_has_premium_access=client_has_premium_access,
+        premium_generation_allowed=premium_generation_allowed,
         sessions_booked=client.get('sessions_booked') if client else 0,
         sessions_completed=sessions_completed_count,
         NOTES_PLACEHOLDER='No notes yet.',
@@ -3647,6 +4165,15 @@ def client_schedule_data():
     with get_connection() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
             cursor.execute(
+                "SELECT subscription_type FROM users WHERE id = %s",
+                (user_id,),
+            )
+            user_row = cursor.fetchone()
+            if not user_row or (user_row.get('subscription_type') or '').strip().lower() == 'free':
+                return jsonify({'success': False, 'error': SCHEDULE_ACCESS_REQUIRED_MESSAGE}), 403
+
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            cursor.execute(
                 """
                 SELECT ts.id, ts.trainer_id, ts.client_id, ts.start_time, ts.end_time, ts.status, ts.note,
                        t.name AS trainer_name, t.last_name AS trainer_last_name,
@@ -3686,11 +4213,13 @@ def client_schedule_preferences():
         with get_connection() as conn:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
                 cursor.execute(
-                    "SELECT trainer_id FROM users WHERE id = %s",
+                    "SELECT trainer_id, subscription_type FROM users WHERE id = %s",
                     (user_id,),
                 )
                 row = cursor.fetchone()
-                trainer_id = row.get('trainer_id') if row else None
+                if not row or (row.get('subscription_type') or '').strip().lower() == 'free':
+                    return jsonify({'success': False, 'error': SCHEDULE_ACCESS_REQUIRED_MESSAGE}), 403
+                trainer_id = row.get('trainer_id')
 
                 cursor.execute(
                     "SELECT view_start, view_end, follow_trainer FROM client_schedule_preferences WHERE client_id = %s",
@@ -3741,6 +4270,15 @@ def client_schedule_preferences():
     with get_connection() as conn:
         with conn.cursor() as cursor:
             cursor.execute(
+                "SELECT subscription_type FROM users WHERE id = %s",
+                (user_id,),
+            )
+            subscription_row = cursor.fetchone()
+            if not subscription_row or (subscription_row[0] or '').strip().lower() == 'free':
+                return jsonify({'success': False, 'error': SCHEDULE_ACCESS_REQUIRED_MESSAGE}), 403
+
+        with conn.cursor() as cursor:
+            cursor.execute(
                 """
                 INSERT INTO client_schedule_preferences (client_id, view_start, view_end, follow_trainer)
                 VALUES (%s, %s, %s, %s)
@@ -3769,11 +4307,15 @@ def client_schedule_view():
     with get_connection() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
             cursor.execute(
-                "SELECT trainer_id FROM users WHERE id = %s",
+                "SELECT trainer_id, subscription_type FROM users WHERE id = %s",
                 (user_id,),
             )
             row = cursor.fetchone()
-            trainer_id = row.get('trainer_id') if row else None
+            if not row or (row.get('subscription_type') or '').strip().lower() == 'free':
+                flash(SCHEDULE_ACCESS_REQUIRED_MESSAGE, 'warning')
+                return redirect(url_for('plan_options'))
+
+            trainer_id = row.get('trainer_id')
 
             trainer_info = None
             if trainer_id:
@@ -3794,6 +4336,7 @@ def generate_client_workout(client_id):
     if not trainer:
         flash("Trainer access required.", "danger")
         return redirect(url_for('home'))
+    trainer_can_generate_premium = trainer_has_premium_generation_access(trainer)
 
     selected_category = (request.form.get('category') or '').strip()
     if not selected_category:
@@ -3873,13 +4416,14 @@ def generate_client_workout(client_id):
     subscription_type = client.get('subscription_type')
     trial_end_date = client.get('trial_end_date')
 
-    today = datetime.today().date()
-    if subscription_type == 'free' or (
-        subscription_type == 'premium' and trial_end_date and today > trial_end_date
-    ):
-        if selected_category != 'Shoulders and Abs':
-            flash("This client needs Premium access to use that category.", "warning")
-            return redirect(url_for('client_profile', client_id=client_id))
+    if not trainer_can_generate_premium:
+        today = datetime.today().date()
+        if subscription_type == 'free' or (
+            subscription_type == 'premium' and trial_end_date and today > trial_end_date
+        ):
+            if selected_category != 'Shoulders and Abs':
+                flash("This client needs Premium access to use that category.", "warning")
+                return redirect(url_for('client_profile', client_id=client_id))
 
     user_level = get_user_level(client.get('exercise_history'))
     if is_custom:
@@ -4416,54 +4960,142 @@ def add_client():
                 flash(msg, 'danger')
             return render_template('trainer_add_client.html', trainer=trainer, form_data=form_data)
 
+        invite_context = None
+        link_context = None
         try:
             with get_connection() as conn:
                 conn.autocommit = False
-                try:
-                    user_id = upsert_invited_user(
-                        conn,
-                        email=email,
-                        first=name,
-                        last=last_name,
-                        role='user',
-                        subscription='premium',
-                        invited_by=trainer_id,
-                        trainer_id=trainer_id,
-                        sessions_remaining=sessions_remaining,
+                existing_user = None
+                with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                    cursor.execute(
+                        "SELECT id, status, trainer_id, name, last_name, email FROM users WHERE lower(email) = %s LIMIT 1",
+                        (email.lower(),)
                     )
-                except ValueError as ve:
-                    conn.rollback()
-                    flash(str(ve), 'danger')
-                    return render_template('trainer_add_client.html', trainer=trainer, form_data=form_data)
+                    existing_user = cursor.fetchone()
 
-                raw_token, expires_at = issue_single_use_token(conn, user_id, 'invite', INVITE_TTL_HOURS)
-                conn.commit()
+                if existing_user and existing_user.get('status') == 'active':
+                    if existing_user.get('trainer_id') == trainer_id:
+                        conn.rollback()
+                        flash('That client is already connected to you.', 'info')
+                        return render_template('trainer_add_client.html', trainer=trainer, form_data=form_data)
+                    if existing_user.get('trainer_id') and existing_user.get('trainer_id') != trainer_id:
+                        conn.rollback()
+                        flash('This user is already linked to another trainer.', 'danger')
+                        return render_template('trainer_add_client.html', trainer=trainer, form_data=form_data)
+
+                    raw_token, expires_at, token_id = issue_single_use_token(conn, existing_user['id'], 'trainer_link', INVITE_TTL_HOURS)
+                    with conn.cursor() as cursor:
+                        cursor.execute(
+                            """
+                            DELETE FROM trainer_link_invites
+                             WHERE client_id = %s
+                               AND trainer_id = %s
+                               AND accepted_at IS NULL
+                            """,
+                            (existing_user['id'], trainer_id)
+                        )
+                        cursor.execute(
+                            """
+                            INSERT INTO trainer_link_invites (token_id, trainer_id, client_id, sessions_remaining)
+                            VALUES (%s, %s, %s, %s)
+                            """,
+                            (token_id, trainer_id, existing_user['id'], sessions_remaining)
+                        )
+                    conn.commit()
+                    link_context = {
+                        'email': existing_user.get('email') or email,
+                        'first_name': existing_user.get('name') or name or 'there',
+                        'trainer_display': _trainer_display_name(trainer),
+                        'invite_url': url_for('trainer_link_accept', token=raw_token, _external=True),
+                        'sessions_note': _format_sessions_note(sessions_remaining),
+                    }
+                else:
+                    try:
+                        user_id = upsert_invited_user(
+                            conn,
+                            email=email,
+                            first=name,
+                            last=last_name,
+                            role='user',
+                            subscription='premium',
+                            invited_by=trainer_id,
+                            trainer_id=trainer_id,
+                            sessions_remaining=sessions_remaining,
+                        )
+                    except ValueError as ve:
+                        conn.rollback()
+                        flash(str(ve), 'danger')
+                        return render_template('trainer_add_client.html', trainer=trainer, form_data=form_data)
+
+                    raw_token, expires_at, _token_id = issue_single_use_token(conn, user_id, 'invite', INVITE_TTL_HOURS)
+                    conn.commit()
+                    invite_context = {
+                        'invite_url': url_for('accept_invite', token=raw_token, _external=True),
+                        'email': email,
+                        'first_name': name or 'there',
+                        'admin_note': _build_trainer_invite_note(trainer, sessions_remaining),
+                    }
 
         except psycopg2.Error:
             current_app.logger.exception('Failed creating client invite')
             flash('Error creating client invite.', 'danger')
             return render_template('trainer_add_client.html', trainer=trainer, form_data=form_data)
 
-        invite_url = url_for('accept_invite', token=raw_token, _external=True)
-        trainer_name = trainer.get('name') or trainer.get('username') or 'your trainer'
-        trainer_sessions = sessions_remaining if sessions_remaining is not None else 'unlimited'
-        admin_note = f"{trainer_name} invited you to train with them on FitBaseAI."
-        if sessions_remaining is not None:
-            admin_note += f" They noted you purchased {sessions_remaining} session{'s' if sessions_remaining != 1 else ''}."
+        if link_context:
+            try:
+                send_trainer_link_email(
+                    to_email=link_context['email'],
+                    first_name=link_context['first_name'],
+                    trainer_display_name=link_context['trainer_display'],
+                    invite_url=link_context['invite_url'],
+                    sessions_summary=link_context['sessions_note'],
+                )
+                flash(
+                    Markup(
+                        f"Trainer link invite sent to <strong>{link_context['email']}</strong>. "
+                        f"<button type=\"button\" class=\"btn btn-sm btn-link text-decoration-none flash-copy\" data-link=\"{link_context['invite_url']}\">Copy invite link</button>"
+                    ),
+                    'success',
+                )
+            except Exception:
+                current_app.logger.exception('Failed to send trainer link email to existing client')
+                flash(
+                    Markup(
+                        f"Link invite created, but email failed to send. Share it manually: "
+                        f"<a href=\"{link_context['invite_url']}\">{link_context['invite_url']}</a>"
+                    ),
+                    'warning',
+                )
+            return redirect(url_for('trainer_dashboard'))
 
-        try:
-            send_invite_email(
-                to_email=email,
-                first_name=name or 'there',
-                invite_url=invite_url,
-                admin_note=admin_note,
-            )
-            flash(Markup(f'Invitation sent to {email}. If needed, share this link: <a href="{invite_url}">{invite_url}</a>'), 'success')
-        except Exception:
-            current_app.logger.exception('Failed to send invite email to new client')
-            flash(Markup(f'Invite link created, but email failed to send. Share it manually: <a href="{invite_url}">{invite_url}</a>'), 'warning')
+        if invite_context:
+            try:
+                send_invite_email(
+                    to_email=invite_context['email'],
+                    first_name=invite_context['first_name'],
+                    invite_url=invite_context['invite_url'],
+                    admin_note=invite_context['admin_note'],
+                )
+                flash(
+                    Markup(
+                        f"Invitation sent to <strong>{invite_context['email']}</strong>. "
+                        f"<button type=\"button\" class=\"btn btn-sm btn-link text-decoration-none flash-copy\" data-link=\"{invite_context['invite_url']}\">Copy invite link</button>"
+                    ),
+                    'success',
+                )
+            except Exception:
+                current_app.logger.exception('Failed to send invite email to new client')
+                flash(
+                    Markup(
+                        f"Invite link created, but email failed to send. Share it manually: "
+                        f"<a href=\"{invite_context['invite_url']}\">{invite_context['invite_url']}</a>"
+                    ),
+                    'warning',
+                )
+            return redirect(url_for('trainer_dashboard'))
 
-        return redirect(url_for('trainer_dashboard'))
+        flash('Unable to create that invite. Please try again.', 'danger')
+        return render_template('trainer_add_client.html', trainer=trainer, form_data=form_data)
 
     return render_template('trainer_add_client.html', trainer=trainer)
 
@@ -4908,44 +5540,86 @@ def complete_workout():
     return jsonify({'success': True})
 
 
+def _load_last_workout_payload(user_id: int, category: str) -> tuple[OrderedDict | None, str]:
+    """Return the stored workout payload (if any) and a user-friendly label."""
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT last_workout_details
+                  FROM users
+                 WHERE id = %s AND last_workout_completed = %s
+                """,
+                (user_id, category),
+            )
+            row = cursor.fetchone()
+
+    if not row or not row[0]:
+        return None, category
+
+    try:
+        workouts = json.loads(row[0], object_pairs_hook=OrderedDict)
+    except (TypeError, json.JSONDecodeError):
+        return None, category
+
+    display_category = category
+    if isinstance(workouts, dict) and '_meta' in workouts:
+        meta = workouts.pop('_meta') or {}
+        pretty_custom = meta.get('custom_categories_pretty') if isinstance(meta, dict) else None
+        if isinstance(pretty_custom, list) and pretty_custom:
+            display_category = ', '.join(pretty_custom)
+
+    return workouts, display_category
+
 
 @app.route('/workout_details/<category>', methods=['GET'])
 @login_required
 def workout_details(category):
     user_id = session['user_id']
 
-    with get_connection() as conn:
-        with conn.cursor() as cursor:
-
-            # Fetch the last workout details for the given category
-            cursor.execute("""
-                SELECT last_workout_details
-                FROM users
-                WHERE id = %s AND last_workout_completed = %s
-            """, (user_id, category))
-            result = cursor.fetchone()
-
-    if not result or not result[0]:
-        return render_template('workout_details.html', category=category, display_category=category, workouts=None)
-
-    # Load and preserve subcategory order
-    workouts = json.loads(result[0], object_pairs_hook=OrderedDict)
-    meta = {}
-    if isinstance(workouts, dict) and '_meta' in workouts:
-        meta = workouts.pop('_meta') or {}
-    pretty_custom = meta.get('custom_categories_pretty') if isinstance(meta, dict) else None
-    if isinstance(pretty_custom, list) and pretty_custom:
-        display_category = ', '.join(pretty_custom)
-    else:
-        display_category = category
-
+    workouts, display_category = _load_last_workout_payload(user_id, category)
     return render_template(
         'workout_details.html',
         category=category,
         display_category=display_category,
         workouts=workouts,
+        back_url=url_for('home'),
     )
 
+
+
+@app.route('/trainer/clients/<int:client_id>/workout_details/<category>', methods=['GET'])
+@login_required
+def trainer_client_workout_details(client_id, category):
+    trainer = _require_trainer(session['user_id'])
+    if not trainer:
+        flash("Trainer access required.", "danger")
+        return redirect(url_for('home'))
+
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            cursor.execute(
+                "SELECT id, trainer_id, name, last_name FROM users WHERE id = %s",
+                (client_id,),
+            )
+            client = cursor.fetchone()
+
+    if not client:
+        flash("Client not found.", "danger")
+        return redirect(url_for('trainer_dashboard'))
+
+    if client.get('trainer_id') != trainer.get('id') and trainer.get('role') != 'admin':
+        flash("You do not have access to that client's workouts.", "danger")
+        return redirect(url_for('trainer_dashboard'))
+
+    workouts, display_category = _load_last_workout_payload(client_id, category)
+    return render_template(
+        'workout_details.html',
+        category=category,
+        display_category=display_category,
+        workouts=workouts,
+        back_url=url_for('client_profile', client_id=client_id),
+    )
 
 
 @app.route('/update_notes', methods=['POST'])
@@ -5282,7 +5956,7 @@ def forgot_password():
                     return redirect(url_for('login'))
 
                 # Issue single-use reset token
-                raw_token, expires_at = issue_single_use_token(conn, user_id, "reset_password", RESET_TTL_HOURS)
+                raw_token, expires_at, _token_id = issue_single_use_token(conn, user_id, "reset_password", RESET_TTL_HOURS)
                 reset_url = url_for("reset_password", token=raw_token, _external=True)
                 conn.commit()
 
@@ -5380,15 +6054,15 @@ def settings():
                 SELECT username, name, last_name, email, age, weight, height_feet, height_inches,
                        gender, exercise_history, fitness_goals, injury, injury_details, cardio_restriction,
                        commitment, additional_notes, form_completed, workout_duration,
-                        subscription_type, trial_end_date
+                       subscription_type, trial_end_date, trainer_id
                 FROM users
                 WHERE id = %s
             """, (user_id,))
             row = cursor.fetchone()
     columns = ['username', 'name', 'last_name', 'email', 'age', 'weight', 'height_feet', 'height_inches',
-                'gender', 'exercise_history', 'fitness_goals', 'injury', 'injury_details', 'cardio_restriction',
-                'commitment', 'additional_notes', 'form_completed', 'workout_duration',
-                'subscription_type', 'trial_end_date']
+               'gender', 'exercise_history', 'fitness_goals', 'injury', 'injury_details', 'cardio_restriction',
+               'commitment', 'additional_notes', 'form_completed', 'workout_duration',
+               'subscription_type', 'trial_end_date', 'trainer_id']
 
     user = dict(zip(columns, row)) if row else {k: "" for k in columns}
     for k in columns:
@@ -6108,7 +6782,7 @@ def admin_invite_user():
                 flash(str(ve), "danger")
                 return render_template("admin_add_user.html")
 
-            raw_token, expires_at = issue_single_use_token(conn, user_id, "invite", INVITE_TTL_HOURS)
+            raw_token, expires_at, _token_id = issue_single_use_token(conn, user_id, "invite", INVITE_TTL_HOURS)
             invite_url = url_for("accept_invite", token=raw_token, _external=True)
             invite_expires_in = fmt_utc(expires_at)
 
@@ -6252,6 +6926,130 @@ def accept_invite_post():
         return redirect(url_for("accept_invite", token=token))
 
 
+@app.route('/trainer_link', methods=['GET', 'POST'])
+def trainer_link_accept():
+    token_source = request.form if request.method == 'POST' else request.args
+    token = (token_source.get('token') or '').strip()
+    if not token:
+        flash('Missing trainer invite token.', 'danger')
+        return redirect(url_for('login'))
+
+    if request.method == 'GET':
+        with get_connection() as conn:
+            info = validate_token(conn, token, 'trainer_link')
+            if not info:
+                flash('This trainer invite link is invalid or has expired.', 'danger')
+                return redirect(url_for('login'))
+            invite = _get_trainer_link_invite(conn, info['token_id'])
+            if not invite or invite.get('client_id') != info['user_id']:
+                flash('This trainer invite link is invalid.', 'danger')
+                return redirect(url_for('login'))
+            if invite.get('accepted_at'):
+                flash('This trainer invite link has already been used.', 'warning')
+                return redirect(url_for('login'))
+
+        trainer_stub = {
+            'name': invite.get('trainer_name'),
+            'last_name': invite.get('trainer_last_name'),
+            'username': invite.get('trainer_username'),
+        }
+        return render_template(
+            'trainer_link_accept.html',
+            token=token,
+            trainer_display_name=_trainer_display_name(trainer_stub),
+            sessions_summary=_format_sessions_note(invite.get('sessions_remaining')),
+        )
+
+    try:
+        with get_connection() as conn:
+            conn.autocommit = False
+            info = validate_token(conn, token, 'trainer_link')
+            if not info:
+                conn.rollback()
+                flash('This trainer invite link is invalid or has expired.', 'danger')
+                return redirect(url_for('login'))
+            invite = _get_trainer_link_invite(conn, info['token_id'])
+            if not invite or invite.get('client_id') != info['user_id']:
+                conn.rollback()
+                flash('This trainer invite link is invalid.', 'danger')
+                return redirect(url_for('login'))
+            if invite.get('accepted_at'):
+                conn.rollback()
+                flash('This trainer invite has already been accepted.', 'warning')
+                return redirect(url_for('login'))
+
+            trainer_stub = {
+                'name': invite.get('trainer_name'),
+                'last_name': invite.get('trainer_last_name'),
+                'username': invite.get('trainer_username'),
+            }
+            client_stub = {
+                'name': invite.get('client_name'),
+                'last_name': invite.get('client_last_name'),
+                'username': invite.get('client_username'),
+            }
+            trainer_display = _trainer_display_name(trainer_stub)
+            sessions_note = _format_sessions_note(invite.get('sessions_remaining'))
+            client_display = _client_display_name(client_stub)
+
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(
+                    "SELECT trainer_id FROM users WHERE id = %s FOR UPDATE",
+                    (invite['client_id'],)
+                )
+                client_row = cursor.fetchone()
+                if not client_row:
+                    conn.rollback()
+                    flash('We could not find that account anymore.', 'danger')
+                    return redirect(url_for('login'))
+                existing_trainer = client_row.get('trainer_id')
+                if existing_trainer and existing_trainer != invite['trainer_id']:
+                    conn.rollback()
+                    flash('Your account is already connected to another trainer.', 'danger')
+                    return redirect(url_for('login'))
+
+                set_clauses = ['trainer_id = %s', 'updated_at = now()']
+                params = [invite['trainer_id']]
+                if invite.get('sessions_remaining') is not None:
+                    set_clauses.insert(1, 'sessions_remaining = %s')
+                    params.append(invite['sessions_remaining'])
+                params.append(invite['client_id'])
+                cursor.execute(
+                    f"UPDATE users SET {', '.join(set_clauses)} WHERE id = %s",
+                    params,
+                )
+                cursor.execute(
+                    "UPDATE trainer_link_invites SET accepted_at = now() WHERE id = %s",
+                    (invite['id'],),
+                )
+
+            mark_token_used(conn, info['token_id'])
+            conn.commit()
+
+    except Exception:
+        current_app.logger.exception('Failed processing trainer link invite')
+        flash('We could not complete that request. Please ask your trainer to resend the invite.', 'danger')
+        return redirect(url_for('login'))
+
+    if invite.get('trainer_email'):
+        try:
+            send_trainer_link_connected_email(
+                to_email=invite['trainer_email'],
+                trainer_display_name=trainer_display,
+                client_display_name=client_display,
+            )
+        except Exception:
+            current_app.logger.exception('Failed sending trainer link confirmation email')
+
+    success_message = f"You're now connected with {trainer_display}."
+    if sessions_note:
+        success_message += f" {sessions_note}"
+    flash(success_message, 'success')
+    if session.get('user_id') == invite['client_id']:
+        return redirect(url_for('home'))
+    return redirect(url_for('login'))
+
+
 @app.post('/admin/user/<int:user_id>/resend-invite')
 @login_required
 def admin_resend_invite(user_id):
@@ -6274,7 +7072,7 @@ def admin_resend_invite(user_id):
 
         # Issue token (also invalidates any unused previous ones)
         try:
-            raw, exp = issue_single_use_token(conn, user_id, 'invite', INVITE_TTL_HOURS)
+            raw, exp, _token_id = issue_single_use_token(conn, user_id, 'invite', INVITE_TTL_HOURS)
             invite_url = url_for('accept_invite', token=raw, _external=True)
             invite_expires_in = fmt_utc(exp)
             conn.commit()
@@ -6315,7 +7113,7 @@ def admin_copy_invite(user_id):
                 return redirect(url_for('admin_user_profile', user_id=user_id))
 
         try:
-            raw, exp = issue_single_use_token(conn, user_id, 'invite', INVITE_TTL_HOURS)
+            raw, exp, _token_id = issue_single_use_token(conn, user_id, 'invite', INVITE_TTL_HOURS)
             invite_url = url_for('accept_invite', token=raw, _external=True)
             invite_expires_in = fmt_utc(exp)
             conn.commit()
@@ -6408,7 +7206,8 @@ def inject_global_context():
     return {
         "current_year": current_year,
         "current_date": current_date,
-        "user": user
+        "user": user,
+        "user_has_schedule_access": _user_has_schedule_access(user),
     }
 
 
@@ -6422,10 +7221,32 @@ def privacy():
     return render_template("privacy.html")
 
 
+@app.route("/plans")
+def plan_options():
+    is_logged_in = 'user_id' in session
+    premium_cta = url_for('upgrade', plan='premium') if is_logged_in else url_for('register')
+    pro_cta = url_for('upgrade', plan='pro') if is_logged_in else url_for('trainer_register')
+    return render_template(
+        "plan_options.html",
+        is_logged_in=is_logged_in,
+        premium_cta=premium_cta,
+        pro_cta=pro_cta
+    )
+
+
 @app.route('/upgrade')
 @login_required
 def upgrade():
     user_id = session["user_id"]
+    plan = (request.args.get("plan") or "premium").strip().lower()
+    if plan not in PLAN_PRICE_LOOKUP:
+        flash("Invalid plan selection.", "danger")
+        return redirect(url_for('settings'))
+
+    target_price_id = PLAN_PRICE_LOOKUP.get(plan)
+    if not target_price_id:
+        flash("Selected plan is not available right now. Please contact support.", "danger")
+        return redirect(url_for('settings'))
 
     # Initialize defaults 
     user_email = None
@@ -6472,13 +7293,13 @@ def upgrade():
             payment_method_types=['card'],
             customer=stripe_customer_id,
             line_items=[{
-                'price': price_id,  
+                'price': target_price_id,
                 'quantity': 1,
             }],
             mode='subscription',
             success_url=url_for('upgrade_success', _external=True),
             cancel_url=url_for('settings', _external=True),
-            metadata={'user_id': user_id}
+            metadata={'user_id': user_id, 'plan': plan}
         )
 
         return redirect(checkout_session.url)
@@ -6510,6 +7331,9 @@ def stripe_webhook():
         print("✅ Handling checkout.session.completed")
 
         user_id = session_data.get('metadata', {}).get('user_id')
+        plan = session_data.get('metadata', {}).get('plan', 'premium')
+        if plan not in PLAN_PRICE_LOOKUP:
+            plan = 'premium'
         stripe_customer_id = session_data.get('customer')
 
         if user_id and stripe_customer_id:
@@ -6517,11 +7341,17 @@ def stripe_webhook():
                 with conn.cursor() as cursor:
                     cursor.execute("""
                         UPDATE users
-                        SET subscription_type = 'premium', 
+                        SET subscription_type = %s,
+                            role = CASE 
+                                WHEN %s = 'pro' AND role != 'admin' THEN 'trainer'
+                                WHEN %s != 'pro' AND role != 'admin' THEN 'user'
+                                ELSE role 
+                            END,
                             trial_end_date = NULL,
-                            subscription_cancel_at = NULL
+                            subscription_cancel_at = NULL,
+                            session_version = COALESCE(session_version, 0) + 1
                         WHERE id = %s
-                    """, (user_id,))
+                    """, (plan, plan, plan, user_id))
                     conn.commit()
 
     elif event['type'] == 'customer.subscription.updated':
@@ -6529,6 +7359,33 @@ def stripe_webhook():
         stripe_customer_id = sub_data.get('customer')
         cancel_at = sub_data.get('cancel_at')  # Will be None if user resumed
         cancel_at_period_end = sub_data.get('cancel_at_period_end', False)
+        price_id = None
+        items = (sub_data.get('items') or {}).get('data') or []
+        for item in items:
+            price_obj = item.get('price')
+            if isinstance(price_obj, dict):
+                price_id = price_obj.get('id')
+            else:
+                price_id = price_obj
+            if price_id:
+                break
+
+        plan_from_price = PRICE_PLAN_LOOKUP.get(price_id)
+        if plan_from_price and stripe_customer_id:
+            with get_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute("""
+                        UPDATE users
+                        SET subscription_type = %s,
+                            role = CASE 
+                                WHEN %s = 'pro' AND role != 'admin' THEN 'trainer'
+                                WHEN %s != 'pro' AND role != 'admin' THEN 'user'
+                                ELSE role
+                            END,
+                            session_version = COALESCE(session_version, 0) + 1
+                        WHERE stripe_customer_id = %s
+                    """, (plan_from_price, plan_from_price, plan_from_price, stripe_customer_id))
+                    conn.commit()
 
         if cancel_at_period_end:
             print("⚠️ Subscription set to cancel at period end")
@@ -6566,7 +7423,13 @@ def stripe_webhook():
                 cursor.execute("""
                     UPDATE users
                     SET subscription_type = 'free',
-                        subscription_cancel_at = NULL
+                        role = CASE 
+                            WHEN role != 'admin' THEN 'user'
+                            ELSE role
+                        END,
+                        trial_end_date = NULL,
+                        subscription_cancel_at = NULL,
+                        session_version = COALESCE(session_version, 0) + 1
                     WHERE stripe_customer_id = %s
                 """, (stripe_customer_id,))
                 conn.commit()
@@ -6578,7 +7441,7 @@ def stripe_webhook():
 @app.route('/upgrade-success')
 @login_required
 def upgrade_success():
-    flash("🎉 You've successfully upgraded to Premium!", "success")
+    flash("🎉 You've successfully upgraded your account!", "success")
     return redirect(url_for('settings'))
 
 
@@ -6600,10 +7463,14 @@ def customer_portal():
                 return redirect(url_for('settings'))
 
     # Create the session
-    stripe_portal_session = stripe.billing_portal.Session.create(
-        customer=stripe_customer_id,
-        return_url=url_for('settings', _external=True),
-    )
+    session_payload = {
+        "customer": stripe_customer_id,
+        "return_url": url_for('settings', _external=True),
+    }
+    if stripe_portal_configuration_id:
+        session_payload["configuration"] = stripe_portal_configuration_id
+
+    stripe_portal_session = stripe.billing_portal.Session.create(**session_payload)
 
     return redirect(stripe_portal_session.url)
 

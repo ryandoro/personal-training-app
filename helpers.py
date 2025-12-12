@@ -392,8 +392,10 @@ def issue_single_use_token(conn, user_id: int, purpose: str, ttl_hours: int):
         cur.execute("""
             INSERT INTO user_tokens (user_id, purpose, token_digest, expires_at)
             VALUES (%s, %s, %s, %s)
+            RETURNING id
         """, (user_id, purpose, digest, expires_at))
-    return raw_token, expires_at
+        token_id = cur.fetchone()[0]
+    return raw_token, expires_at, token_id
 
 
 
@@ -881,31 +883,48 @@ def check_and_downgrade_trial(user_id):
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute("""
-                SELECT subscription_type, trial_end_date
+                SELECT role, subscription_type, trial_end_date
                 FROM users
                 WHERE id = %s
             """, (user_id,))
             result = cur.fetchone()
-
             if not result:
                 return
 
-            subscription_type, trial_end_date = result
+            role, subscription_type, trial_end_date = result
+            role = (role or '').strip().lower()
+            subscription_type = (subscription_type or '').strip().lower()
             today = datetime.today().date()
 
             if not trial_end_date:
                 return
-            
-            if subscription_type == 'premium' and trial_end_date and today >= trial_end_date:
-                # Trial expired → downgrade to 'free'
-                cur.execute("""
-                    UPDATE users
-                    SET subscription_type = 'free'
-                    WHERE id = %s
-                """, (user_id,))
-                conn.commit()
+            if today < trial_end_date:
+                return
 
-                print("🔻User's trial expired. Downgraded to free.")
+            new_role = 'user' if role == 'trainer' else role
+            new_subscription = 'free' if subscription_type in {'premium', 'pro'} else subscription_type
+            if new_role != role or new_subscription != subscription_type:
+                cur.execute(
+                    """
+                    UPDATE users
+                       SET role = %s,
+                           subscription_type = %s,
+                           session_version = COALESCE(session_version, 0) + 1,
+                           updated_at = CURRENT_TIMESTAMP
+                     WHERE id = %s
+                     RETURNING session_version
+                    """,
+                    (new_role, new_subscription, user_id),
+                )
+                row = cur.fetchone()
+                conn.commit()
+                print("🔻User's trial expired. Downgraded account privileges.")
+
+                if session.get('user_id') == user_id:
+                    session['role'] = new_role
+                    session['is_admin'] = False
+                    if row and row[0] is not None:
+                        session['session_version'] = row[0]
 
 
 def check_subscription_expiry(user_id):
@@ -924,7 +943,7 @@ def check_subscription_expiry(user_id):
 
             subscription_type, cancel_at = result
 
-            if subscription_type == 'premium' and cancel_at:
+            if subscription_type in ('premium', 'pro') and cancel_at:
                 # Compare current time with cancel_at
                 if cancel_at.tzinfo is None:
                     cancel_at = cancel_at.replace(tzinfo=timezone.utc)
@@ -938,11 +957,16 @@ def check_subscription_expiry(user_id):
                     cursor.execute("""
                         UPDATE users
                         SET subscription_type = 'free',
-                            subscription_cancel_at = NULL
+                            subscription_cancel_at = NULL,
+                            role = CASE WHEN role = 'trainer' THEN 'user' ELSE role END,
+                            session_version = COALESCE(session_version, 0) + 1
                         WHERE id = %s
+                        RETURNING session_version
                     """, (user_id,))
+                    row = cursor.fetchone()
                     conn.commit()
 
                     print("🔻User's Subscription Canceled and Ended. Downgraded to free.")
 
-                    
+                    if session.get('user_id') == user_id and row and row[0] is not None:
+                        session['session_version'] = row[0]

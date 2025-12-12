@@ -95,7 +95,15 @@
                     </div>
                     <div class="client-metric">
                         <span class="client-metric__label">Last Workout</span>
-                        <span class="client-metric__value">{{ client.last_workout_completed or '—' }}</span>
+                        {% if client.last_workout_completed %}
+                            <a class="client-metric__value stat-link p-0"
+                               href="{{ url_for('trainer_client_workout_details', client_id=client.id, category=client.last_workout_completed) }}">
+                                {{ client.last_workout_completed }}
+                                <span class="stat-link-icon">›</span>
+                            </a>
+                        {% else %}
+                            <span class="client-metric__value">—</span>
+                        {% endif %}
                     </div>
                 </div>
                     {% if injury_status == 'Yes' %}
@@ -463,7 +471,7 @@
                                             <option value="{{ category }}">{{ category }}</option>
                                         {% endif %}
                                     {% endfor %}
-                                    {% if client_has_premium_access %}
+                                    {% if premium_generation_allowed %}
                                         <option value="{{ custom_workout_token }}">{{ custom_workout_token }}</option>
                                         <option value="{{ home_workout_token }}">{{ home_workout_token }}</option>
                                     {% endif %}

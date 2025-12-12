@@ -35,10 +35,14 @@ This prototype shows how fitness workflows can be turned into scalable, intuitiv
 - AI-driven workout adjustments to overcome injuries 
 - Expanded analytics in the admin dashboard  
 
+### Registration safeguards
+- Run the migration in `sql/202421_create_registration_attempts.sql` to enable rate-limited logging for signup attempts.
+- Provide Cloudflare Turnstile keys via the `TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY` environment variables to enable the human-verification widget on `/register`.
+- Optional environment overrides let you tune throttling thresholds: `REGISTRATION_RATE_LIMIT_WINDOW_HOURS`, `REGISTRATION_RATE_LIMIT_PER_EMAIL`, and `REGISTRATION_RATE_LIMIT_PER_IP`.
+
 ---
 ## 👤 Author
 **Ryan Doro**  
 - 13 years in the fitness industry (trainer, sales, general manager)  
 - Software engineer with experience in Python, Flask, PostgreSQL, JavaScript, Stripe, and Postmark  
 - [LinkedIn](https://www.linkedin.com/in/ryandoroprogramming) | [Email](mailto:ryandoro93@gmail.com)
-

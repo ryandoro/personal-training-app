@@ -1,0 +1,32 @@
+{% extends "layout.html" %}
+
+{% block title %}Trainer Invite{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-md-8 col-lg-6">
+            <div class="card shadow border-0">
+                <div class="card-body p-4">
+                    <h1 class="h3 fw-bold mb-3 text-center">Connect with {{ trainer_display_name }}</h1>
+                    <p class="text-muted mb-4 text-center">
+                        Approving this invite lets your trainer view your workouts, track progress, and manage sessions inside FitBaseAI.
+                    </p>
+                    {% if sessions_summary %}
+                        <div class="alert alert-info" role="status">
+                            {{ sessions_summary }}
+                        </div>
+                    {% endif %}
+                    <form method="post" class="mt-4">
+                        <input type="hidden" name="token" value="{{ token }}">
+                        <button type="submit" class="btn btn-primary w-100">Approve Trainer Invite</button>
+                    </form>
+                    <p class="text-center small text-muted mt-3 mb-0">
+                        Don’t recognize this? You can ignore the invite—your trainer won’t gain access unless you approve it.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

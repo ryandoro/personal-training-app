@@ -12,13 +12,21 @@
                 <i class="bi bi-stars"></i>
             </div>
             <p class="surface-hero__eyebrow">Get Started</p>
-            <h2 class="surface-hero__title">Create Your Account</h2>
-            <p class="surface-hero__subtitle">
-                Unlock personalized programming, coaching insights, and faster progress.
-            </p>
+            <h2 class="surface-hero__title">
+                {% if trainer_mode %}Create Your Trainer Account{% else %}Create Your Account{% endif %}
+            </h2>
+            {% if trainer_mode %}
+                <p class="surface-hero__subtitle">
+                    Become a FitBaseAI Pro trainer to unlock the trainer dashboard, client rosters, and scheduling. Your 14-day Pro trial begins once you complete the onboarding questionnaire on the training page.
+                </p>
+            {% else %}
+                <p class="surface-hero__subtitle">
+                    Unlock personalized programming, coaching insights, and faster progress.
+                </p>
+            {% endif %}
         </div>
         <div class="surface-body surface-body--dense">
-            <form action="/register" method="post" class="d-flex flex-column gap-3">
+            <form action="{{ form_action }}" method="post" class="d-flex flex-column gap-3">
                 <div>
                     <label for="email" class="form-label fw-semibold">Email</label>
                     <input type="email"
@@ -55,14 +63,27 @@
                            placeholder="Confirm your password"
                            required>
                 </div>
+                {% if turnstile_enabled %}
+                <div class="turnstile-wrapper">
+                    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+                    <div class="cf-turnstile"
+                         data-sitekey="{{ turnstile_site_key }}"
+                         data-theme="light"
+                         data-size="normal"></div>
+                </div>
+                {% endif %}
                 <button type="submit" class="btn btn-brand btn-lg w-100">
-                    Create Account
+                    {% if trainer_mode %}Create Trainer Account{% else %}Create Account{% endif %}
                 </button>
             </form>
             <div class="surface-footer">
-                <p class="mb-0">
+                <p class="mb-2">
                     Already have an account?
                     <a href="/login">Sign in</a>.
+                </p>
+                <p class="mb-0d">
+                    Need to verify your email?
+                    <a href="{{ url_for('resend_verify_confirm') }}">Resend verification link</a>.
                 </p>
             </div>
         </div>

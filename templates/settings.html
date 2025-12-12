@@ -41,21 +41,21 @@ Account Settings
                             {% endfor %}
                         </div>
                         <div class="surface-actions justify-content-center mt-3">
-                            {% if user.subscription_type == 'premium' and (not user.trial_end_date or user.trial_end_date < current_date) %}
+                            {% if user.subscription_type in ['premium', 'pro'] and (not user.trial_end_date or user.trial_end_date < current_date) %}
                                 <a href="{{ url_for('customer_portal') }}" class="btn btn-brand">
                                     Manage Subscription
                                 </a>
                             {% else %}
-                                <a href="{{ url_for('upgrade') }}" class="btn btn-brand">
-                                    Upgrade to Premium
+                                <a href="{{ url_for('plan_options') }}" class="btn btn-brand">
+                                    Upgrade
                                 </a>
                             {% endif %}
                         </div>
                         <p class="text-center text-muted small mb-0">
-                            {% if user.subscription_type == 'premium' and (not user.trial_end_date or user.trial_end_date < current_date) %}
+                            {% if user.subscription_type in ['premium', 'pro'] and (not user.trial_end_date or user.trial_end_date < current_date) %}
                                 Update your subscription anytime.
                             {% else %}
-                                Unlock full access to your personalized training experience.
+                                Unlock premium and pro features whenever you're ready.
                             {% endif %}
                         </p>
                     </div>

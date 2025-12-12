@@ -4,6 +4,19 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Resend verification • FitBaseAI</title>
+  <style>
+    .flash-msg {
+      padding: 12px 14px;
+      border-radius: 10px;
+      color: #111827;
+      font-size: 14px;
+      margin-bottom: 8px;
+    }
+    .flash-info { background: #E0F2FE; }
+    .flash-danger { background: #FEE2E2; }
+    .flash-warning { background: #FEF3C7; }
+    .flash-success { background: #DCFCE7; }
+  </style>
 </head>
 <body style="margin:0;background:#F5F7FB;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,'Helvetica Neue',sans-serif;color:#111827;line-height:1.6;">
   <div style="min-height:100dvh;display:flex;align-items:center;justify-content:center;padding:24px;">
@@ -13,18 +26,44 @@
         <p style="margin:0;color:#374151;">If your previous link is expired or not working, we can send a new one to the email on file.</p>
       </div>
 
-      <div style="padding:0px 24px 24px 24px;text-align:center;">
-        <form method="post" action="{{ url_for('resend_verify_do') }}" style="margin:0 0 18px 0;">
-          <input type="hidden" name="token_digest" value="{{ token_digest }}">
+      <div style="padding:0 24px 24px 24px;">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            <div style="margin-bottom:16px;">
+              {% for category, message in messages %}
+                {% set flash_class = 'flash-info' %}
+                {% if category == 'danger' %}
+                  {% set flash_class = 'flash-danger' %}
+                {% elif category == 'warning' %}
+                  {% set flash_class = 'flash-warning' %}
+                {% elif category == 'success' %}
+                  {% set flash_class = 'flash-success' %}
+                {% endif %}
+                <div class="flash-msg {{ flash_class }}">{{ message }}</div>
+              {% endfor %}
+            </div>
+          {% endif %}
+        {% endwith %}
+
+        <form method="post" action="{{ url_for('resend_verify_do') }}" style="display:flex;flex-direction:column;gap:12px;text-align:left;">
+          <label for="email" style="font-weight:600;color:#111827;">Email address</label>
+          <input type="email"
+                 id="email"
+                 name="email"
+                 value="{{ prefill_email or '' }}"
+                 placeholder="you@example.com"
+                 required
+                 style="border:1px solid #CBD5F5;border-radius:10px;padding:12px 14px;font-size:16px;">
           <button type="submit"
                   style="display:inline-block;background:#1EA4E6;color:#fff;border:0;border-radius:10px;padding:12px 18px;font-weight:600;font-size:16px;cursor:pointer;">
             Send me a new link
           </button>
         </form>
-        <hr>
-        <p style="margin:8px 0 0 0;font-size:12px;color:#6B7280;">
-          We’ll send a new link if an account exists and isn’t verified yet. Please check your inbox (and spam).
+        <hr style="margin:18px 0;">
+        <p style="margin:0 0 4px 0;font-size:13px;color:#6B7280;">
+          We’ll send a fresh verification link if that email exists and hasn’t been verified yet. Please check your inbox and spam folder.
         </p>
+        <p style="margin:0;font-size:13px;color:#6B7280;">Need help? Reach out to <a href="mailto:hello@fitbaseai.com" style="color:#1EA4E6;">hello@fitbaseai.com</a>.</p>
       </div>
     </div>
   </div>

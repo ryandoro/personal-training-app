@@ -9,23 +9,39 @@
     {% if not form_completed %}   
         <div class="card shadow p-4 mb-5 rounded">
             <div class="card-body">
-                <h3 class="card-title text-center fw-bold mb-4">Welcome to your personalized training journey!</h3>
-            
-                <p>
-                    <strong>Thank you</strong> for trusting us to guide you toward becoming the strongest, healthiest version of yourself. There’s no one-size-fits-all approach to fitness, but we’ve built a simple, effective roadmap tailored to your goals.
-                </p>
-            
-                <p>
-                    These foundational exercises and instructions will help you <strong>move better, look better, and feel amazing.</strong> Your body is the only vehicle you’ve got — and we're going to take great care of it.
-                </p>
-            
-                <p>
-                    Be consistent, fuel your body right, and enjoy the process. Got questions? We're here for you.
-                </p>
-            
-                <p>
-                    <strong>Let’s get to work — your results start now!</strong>
-                </p>
+                {% if user_role == 'trainer' %}
+                    <h3 class="card-title text-center fw-bold mb-4">Welcome to your FitBaseAI Trainer launchpad!</h3>
+
+                    <p>
+                        <strong>Thanks for joining FitBaseAI as a coach.</strong> This onboarding form helps us personalize both your own programming and the experience your clients will have inside the platform.
+                    </p>
+
+                    <p>
+                        Complete the questionnaire below to <strong>unlock your trainer dashboard</strong>, manage your clientele, and start using the workout generator for client sessions and your own training.
+                    </p>
+
+                    <p>
+                        The more we know about how you coach—your client load, session cadence, and service focus—the better we can tailor tools that keep you and your clients progressing.
+                    </p>
+                {% else %}
+                    <h3 class="card-title text-center fw-bold mb-4">Welcome to your personalized training journey!</h3>
+                
+                    <p>
+                        <strong>Thank you</strong> for trusting us to guide you toward becoming the strongest, healthiest version of yourself. There’s no one-size-fits-all approach to fitness, but we’ve built a simple, effective roadmap tailored to your goals.
+                    </p>
+                
+                    <p>
+                        These foundational exercises and instructions will help you <strong>move better, look better, and feel amazing.</strong> Your body is the only vehicle you’ve got — and we're going to take great care of it.
+                    </p>
+                
+                    <p>
+                        Be consistent, fuel your body right, and enjoy the process. Got questions? We're here for you.
+                    </p>
+                
+                    <p>
+                        <strong>Let’s get to work — your results start now!</strong>
+                    </p>
+                {% endif %}
 
                 <hr class="my-4">
             
@@ -39,7 +55,7 @@
                     </div>
                     <div class="col-md-4 mb-2">
                         <div class="p-3 border rounded bg-light shadow-sm h-100">
-                            <strong>Step 2:</strong> Unlock your free 14-day Premium Trial and receive personalized workout plans built around your goals.
+                            <strong>Step 2:</strong> Unlock your free 14-day trial and receive personalized workout plans built around your goals.
                         </div>
                     </div>
                     <div class="col-md-4 mb-2">
@@ -365,6 +381,85 @@
                         </div>
                     </div>                      
 
+                    {% if user_role == 'trainer' %}
+                    <div class="mb-4 p-4 border rounded bg-light trainer-onboarding">
+                        <div class="d-flex flex-column flex-md-row align-items-center justify-content-md-between gap-2 mb-3 text-center text-md-start trainer-onboarding-header">
+                            <h5 class="fw-semibold mb-0">Trainer Onboarding</h5>
+                            <span class="badge bg-primary text-white">Unlocks Trainer Dashboard</span>
+                        </div>
+                        <p class="text-muted small mb-4">Help us understand how you coach so we can tailor FitBaseAI for both you and your clients.</p>
+
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                {% set tcc_prefill = trainer_client_count_prefill|string if trainer_client_count_prefill is not none else '' %}
+                                {% set tcc = form_data.get('trainer_client_count') if form_data is defined else tcc_prefill %}
+                                <label for="trainer_client_count" class="form-label fw-bold">How many active clients do you currently coach?</label>
+                                <select class="form-select {{ 'is-invalid' if errors and errors.get('trainer_client_count') }}"
+                                        id="trainer_client_count"
+                                        name="trainer_client_count"
+                                        required>
+                                    <option value="" disabled {% if not tcc %}selected{% endif %}>Select a range</option>
+                                    {% for option in trainer_client_count_options %}
+                                        {% set option_value = option.code|string %}
+                                        <option value="{{ option_value }}" {% if tcc == option_value %}selected{% endif %}>{{ option.label }}</option>
+                                    {% endfor %}
+                                </select>
+                                <div class="invalid-feedback">
+                                    {{ errors.get('trainer_client_count') if errors and errors.get('trainer_client_count') else 'Select the range that best matches your current client load.' }}
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                {% set tspw_prefill = trainer_sessions_per_week_prefill|string if trainer_sessions_per_week_prefill is not none else '' %}
+                                {% set tspw = form_data.get('trainer_sessions_per_week') if form_data is defined else tspw_prefill %}
+                                <label for="trainer_sessions_per_week" class="form-label fw-bold">How many client sessions per week will you run through FitBaseAI?</label>
+                                <select class="form-select {{ 'is-invalid' if errors and errors.get('trainer_sessions_per_week') }}"
+                                        id="trainer_sessions_per_week"
+                                        name="trainer_sessions_per_week"
+                                        required>
+                                    <option value="" disabled {% if not tspw %}selected{% endif %}>Select a range</option>
+                                    {% for option in trainer_sessions_per_week_options %}
+                                        {% set option_value = option.code|string %}
+                                        <option value="{{ option_value }}" {% if tspw == option_value %}selected{% endif %}>{{ option.label }}</option>
+                                    {% endfor %}
+                                </select>
+                                <div class="invalid-feedback">
+                                    {{ errors.get('trainer_sessions_per_week') if errors and errors.get('trainer_sessions_per_week') else 'Select the range that best matches your weekly training cadence.' }}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mt-4">
+                            {% set focus_prefill = form_data.get('trainer_focus_areas') if form_data is defined else trainer_focus_areas_prefill %}
+                            <label for="trainer_focus_areas" class="form-label fw-bold">Who do you primarily train?</label>
+                            <textarea
+                                class="form-control {{ 'is-invalid' if errors and errors.get('trainer_focus_areas') }}"
+                                id="trainer_focus_areas"
+                                name="trainer_focus_areas"
+                                rows="3"
+                                placeholder="Ex: Busy professionals, post-partum clients, collegiate athletes"
+                                required>{{ focus_prefill if focus_prefill is not none else '' }}</textarea>
+                            <div class="invalid-feedback">
+                                {{ errors.get('trainer_focus_areas') if errors and errors.get('trainer_focus_areas') else 'Briefly describe your ideal client so we can tailor resources.' }}
+                            </div>
+                        </div>
+
+                        <div class="mt-3">
+                            {% set goals_prefill = form_data.get('trainer_platform_goals') if form_data is defined else trainer_platform_goals_prefill %}
+                            <label for="trainer_platform_goals" class="form-label fw-bold">How will you use FitBaseAI for yourself and your clients?</label>
+                            <textarea
+                                class="form-control {{ 'is-invalid' if errors and errors.get('trainer_platform_goals') }}"
+                                id="trainer_platform_goals"
+                                name="trainer_platform_goals"
+                                rows="3"
+                                placeholder="Ex: Program design for semi-private sessions, remote check-ins, tracking my own training"
+                                required>{{ goals_prefill if goals_prefill is not none else '' }}</textarea>
+                            <div class="invalid-feedback">
+                                {{ errors.get('trainer_platform_goals') if errors and errors.get('trainer_platform_goals') else 'Let us know how we can best support your coaching workflow.' }}
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+
                     <!-- Additional Notes -->
                     <div class="mb-3">
                         <label for="additional-notes" class="form-label fw-bold">Anything else you'd like to share?</label>
@@ -395,7 +490,7 @@
 
                     <small class="text-muted d-block mb-2">
                         <i class="bi bi-info-circle"></i>
-                        By clicking Submit, your <strong>free 14-day Premium Trial</strong> will begin. You'll get full access to the <strong>personalized workout generator</strong> and <strong>progress tracking</strong>—upgrade anytime during your trial to keep it.
+                        By clicking Submit, your <strong>free 14-day trial</strong> will begin. You'll get full access to the <strong>personalized workout generator</strong> and <strong>progress tracking</strong>—upgrade anytime during your trial to keep it.
                     </small>
                 </form>
             </div>        

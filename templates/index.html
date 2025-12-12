@@ -26,7 +26,11 @@
                 </p>
                 {% if not name %}
                     <p class="mt-2">
-                        To get started, head over to the <a href="{{ url_for('training') }}" class="link-blue fw-semibold">training page</a> and fill out your fitness questionnaire.
+                        {% if user_role == 'trainer' %}
+                            To get started and unlock your trainer dashboard, head over to the <a href="{{ url_for('training') }}" class="link-blue fw-semibold">training page</a> and fill out your fitness questionnaire.
+                        {% else %}
+                            To get started, head over to the <a href="{{ url_for('training') }}" class="link-blue fw-semibold">training page</a> and fill out your fitness questionnaire.
+                        {% endif %}
                     </p>
                 {% endif %}
             </section>

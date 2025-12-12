@@ -51,7 +51,7 @@
                             <li class="nav-item">
                                 <a class="nav-link" href="/training">Training</a>
                             </li>
-                            {% if session.get('role') == 'user' and user and user.trainer_id %}
+                            {% if session.get('role') == 'user' and user_has_schedule_access %}
                                 <li class="nav-item">
                                     <a class="nav-link" href="{{ url_for('client_schedule_view') }}">Schedule</a>
                                 </li>
@@ -85,6 +85,7 @@
     <!-- Custom Global Toast -->
     <div id="globalToast" class="toast-floating fw-bold" style="display:none;">
         <span id="toastMessage" class="toast-message"></span>
+        <div id="toastActions" class="toast-actions mt-2"></div>
         <button type="button" class="btn-close" aria-label="Close"
             onclick="document.getElementById('globalToast').style.display='none';"></button>
     </div>
@@ -93,27 +94,31 @@
      <main class="flex-grow-1">
         <div class="container content mt-3">
             <!-- Show Trial Countdown Banner after the form is submitted -->
-            {% if (user.subscription_type == 'free' or user.subscription_type == 'premium') and user.trial_end_date %}
+            {% if user and user.trial_end_date %}
                 {% set days_left = (user.trial_end_date - current_date).days %}
                 {% if days_left > 0 %}
-                    <div style="background: #e6f6fd; border: 1px solid #1EA4E6; border-radius: 16px; padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 2px 10px rgba(0,0,0,0.05); margin: 16px auto 8px auto; max-width: 900px;">
+                    <div style="background: #e6f6fd; border: 1px solid #1EA4E6; border-radius: 16px; padding: 16px 24px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); margin: 16px auto 8px auto; max-width: 900px;">
                         <div style="font-size: 16px; font-weight: 600; color: #003f5c;">
-                            🚀 {{ days_left }} day{{ 's' if days_left > 1 }} left in your free <span style="color:#1EA4E6;">Premium</span> trial!<br>
-                            <span style="font-weight:400; color:#555;">Want to keep full access after your trial?</span>
+                            🚀 {{ days_left }} day{{ 's' if days_left > 1 }} left in your free trial!
                         </div>
-                        <a href="/upgrade" style="background-color: #1EA4E6; color: #ffffff; font-weight: 600; font-size: 14px; padding: 12px 18px; border-radius: 10px; text-decoration: none; transition: background-color 0.3s ease;">
-                            Upgrade to Premium
-                        </a>
+                        <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: nowrap;">
+                            <span style="font-weight: 400; color: #555; flex: 1; min-width: 0;">Want to keep full access after your trial?</span>
+                            <a href="{{ url_for('plan_options') }}" style="background-color: #1EA4E6; color: #ffffff; font-weight: 600; font-size: 14px; padding: 12px 18px; border-radius: 10px; text-decoration: none; transition: background-color 0.3s ease;">
+                                Upgrade
+                            </a>
+                        </div>
                     </div>
                 {% else %}
-                    <div style="background: #fff7e6; border: 1px solid #F7931A; border-radius: 16px; padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 2px 10px rgba(0,0,0,0.05); margin: 16px auto 8px auto; max-width: 900px;">
+                    <div style="background: #fff7e6; border: 1px solid #F7931A; border-radius: 16px; padding: 16px 24px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); margin: 16px auto 8px auto; max-width: 900px;">
                         <div style="font-size: 16px; font-weight: 600; color: #663c00;">
-                            🚧 Your free trial has ended.<br>
-                            <span style="font-weight:400; color:#7a4f01;">Upgrade to Premium to continue accessing all training and tracking features.</span>
+                            🚧 Your free trial has ended.
                         </div>
-                        <a href="/upgrade" style="background-color: #F7931A; color: #ffffff; font-weight: 600; font-size: 14px; padding: 12px 18px; border-radius: 10px; text-decoration: none;">
-                            Upgrade Now
-                        </a>
+                        <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: nowrap;">
+                            <span style="font-weight:400; color:#7a4f01; flex: 1; min-width: 0;">Upgrade to continue accessing all training and tracking features.</span>
+                            <a href="{{ url_for('plan_options') }}" style="background-color: #F7931A; color: #ffffff; font-weight: 600; font-size: 14px; padding: 12px 18px; border-radius: 10px; text-decoration: none;">
+                                Upgrade Now
+                            </a>
+                        </div>
                     </div>
                 {% endif %}
             {% endif %}
@@ -147,8 +152,60 @@
         {{ get_flashed_messages(with_categories=true)|tojson }}
     </script>    
     <script>
+        function copyInviteLink(text, button) {
+            const setStatus = (msg) => {
+                if (!button) return;
+                const original = button.textContent;
+                button.textContent = msg;
+                setTimeout(() => button.textContent = original, 2000);
+            };
+
+            const fallbackCopy = () => {
+                const temp = document.createElement('textarea');
+                temp.value = text;
+                temp.style.position = 'fixed';
+                temp.style.opacity = '0';
+                document.body.appendChild(temp);
+                temp.focus();
+                temp.select();
+                try {
+                    document.execCommand('copy');
+                    setStatus('Copied!');
+                } catch {
+                    setStatus('Copy failed');
+                }
+                document.body.removeChild(temp);
+            };
+
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(text).then(
+                    () => setStatus('Copied!'),
+                    () => fallbackCopy()
+                );
+            } else {
+                fallbackCopy();
+            }
+        }
+
+        const bindInlineCopyButtons = () => {
+            document.querySelectorAll('.flash-copy').forEach(btn => {
+                if (btn.dataset.copyBound === 'true') {
+                    return;
+                }
+                btn.dataset.copyBound = 'true';
+                btn.addEventListener('click', (event) => {
+                    event.preventDefault();
+                    const link = btn.dataset.link;
+                    if (link) {
+                        copyInviteLink(link, btn);
+                    }
+                });
+            });
+        };
+
         window.addEventListener('DOMContentLoaded', () => {
             const toast = document.getElementById('globalToast');
+            const toastActions = document.getElementById('toastActions');
             const rawData = document.getElementById('flashed-messages')?.textContent;
     
             if (!rawData || !toast) return;
@@ -163,7 +220,27 @@
             if (messages.length > 0) {
                 const [category, message] = messages[0];
 
-                document.getElementById('toastMessage').textContent = message;
+                toastActions.innerHTML = '';
+                const tempWrapper = document.createElement('div');
+                tempWrapper.innerHTML = message;
+                const copyButton = tempWrapper.querySelector('.flash-copy');
+                let copyLink = null;
+                if (copyButton && copyButton.dataset.link) {
+                    copyLink = copyButton.dataset.link;
+                    copyButton.remove();
+                }
+                document.getElementById('toastMessage').innerHTML = tempWrapper.innerHTML;
+                if (copyLink) {
+                    const btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.className = 'btn btn-sm btn-outline-primary flash-copy-trigger';
+                    btn.textContent = 'Copy invite link';
+                    btn.addEventListener('click', () => copyInviteLink(copyLink, btn));
+                    toastActions.style.display = 'block';
+                    toastActions.appendChild(btn);
+                } else {
+                    toastActions.style.display = 'none';
+                }
 
                 toast.classList.remove('toast-success', 'toast-warning', 'toast-danger', 'toast-info');
 
@@ -184,7 +261,11 @@
                         toast.style.display = 'none';
                     }, 5000);
                 }
+
+                bindInlineCopyButtons();
             }
+
+            bindInlineCopyButtons();
         });
     </script>           
 </body>

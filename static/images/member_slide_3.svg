@@ -1,0 +1,17 @@
+<svg width="640" height="360" viewBox="0 0 640 360" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="grad3" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#7f5dff"/>
+      <stop offset="100%" stop-color="#57c7ff"/>
+    </linearGradient>
+  </defs>
+  <rect width="640" height="360" rx="28" fill="url(#grad3)"/>
+  <rect x="48" y="48" width="544" height="264" rx="20" fill="rgba(255,255,255,0.94)"/>
+  <text x="70" y="88" font-family="'Inter', sans-serif" font-size="20" fill="#312e81" font-weight="600">Readiness &amp; Notes</text>
+  <rect x="70" y="120" width="500" height="90" rx="14" fill="#f5f3ff"/>
+  <rect x="90" y="140" width="200" height="14" rx="7" fill="#c4b5fd"/>
+  <rect x="90" y="165" width="360" height="10" rx="5" fill="#ddd6fe"/>
+  <rect x="90" y="185" width="280" height="10" rx="5" fill="#ddd6fe"/>
+  <rect x="70" y="230" width="160" height="44" rx="22" fill="#4f46e5"/>
+  <text x="110" y="258" font-family="'Inter', sans-serif" font-size="14" fill="#ffffff" font-weight="600">Submit Update</text>
+</svg>

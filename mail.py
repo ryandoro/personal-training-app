@@ -66,6 +66,55 @@ def send_invite_email(*, to_email: str, first_name: str, invite_url: str, admin_
     return send_email(to=to_email, subject=subject, html=html)
 
 
+def send_trainer_link_email(*, to_email: str, first_name: str, trainer_display_name: str, invite_url: str, sessions_summary: Optional[str] = None):
+    subject = "Approve your trainer connection on FitBaseAI"
+    html = render_template(
+        "email/trainer_link_invite.html",
+        first_name=first_name,
+        trainer_display_name=trainer_display_name,
+        invite_url=invite_url,
+        sessions_summary=sessions_summary,
+        current_year=date.today().year,
+    )
+    text_lines = [
+        f"{trainer_display_name} wants to connect to your FitBaseAI account.",
+        "Approve access with this link:",
+        invite_url,
+    ]
+    if sessions_summary:
+        text_lines.insert(1, sessions_summary)
+    return send_email(
+        to=to_email,
+        subject=subject,
+        html=html,
+        text="\n".join(text_lines),
+        Tag="trainer-link-invite",
+        TrackLinks="None",
+    )
+
+
+def send_trainer_link_connected_email(*, to_email: str, trainer_display_name: str, client_display_name: str):
+    subject = "A client just connected on FitBaseAI"
+    html = render_template(
+        "email/trainer_link_connected.html",
+        trainer_display_name=trainer_display_name,
+        client_display_name=client_display_name,
+        current_year=date.today().year,
+    )
+    text = (
+        f"{client_display_name} approved your trainer invite on FitBaseAI.\n"
+        f"You can now program workouts, track progress, and manage sessions from your dashboard."
+    )
+    return send_email(
+        to=to_email,
+        subject=subject,
+        html=html,
+        text=text,
+        Tag="trainer-link-connected",
+        TrackLinks="None",
+    )
+
+
 def send_verification_email(*, to_email: str, first_name: str, verify_url: str, ttl_hours: int, current_year: int | None = None, resend_url: str | None = None):
     subject = "Welcome to FitBaseAI! - Verify your email"
     if current_year is None:

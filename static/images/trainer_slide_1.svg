@@ -1,0 +1,18 @@
+<svg width="640" height="360" viewBox="0 0 640 360" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="tgrad1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1ea4e6"/>
+      <stop offset="100%" stop-color="#005bea"/>
+    </linearGradient>
+  </defs>
+  <rect width="640" height="360" rx="28" fill="url(#tgrad1)"/>
+  <rect x="48" y="48" width="544" height="264" rx="20" fill="rgba(255,255,255,0.95)"/>
+  <text x="70" y="88" font-family="'Inter', sans-serif" font-size="20" fill="#0f172a" font-weight="600">Trainer Dashboard</text>
+  <rect x="70" y="110" width="500" height="34" rx="12" fill="#e0f2fe"/>
+  <rect x="70" y="154" width="220" height="130" rx="14" fill="#eff6ff"/>
+  <rect x="310" y="154" width="260" height="60" rx="14" fill="#f1f5f9"/>
+  <rect x="310" y="224" width="260" height="60" rx="14" fill="#f1f5f9"/>
+  <rect x="90" y="174" width="100" height="12" rx="6" fill="#60a5fa"/>
+  <rect x="90" y="196" width="150" height="10" rx="5" fill="#cbd5f5"/>
+  <rect x="90" y="216" width="150" height="10" rx="5" fill="#cbd5f5"/>
+</svg>

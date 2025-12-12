@@ -46,3 +46,4 @@ psycopg2-binary==2.9.10
 python-dotenv==1.1.0
 postmarker>=1.0.0
 stripe
+dnspython==2.7.0
