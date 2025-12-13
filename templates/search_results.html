@@ -68,7 +68,19 @@
                                     </div>
                                     <div class="exercise-metric text-center mt-3" aria-live="polite">
                                         <span class="max-label text-uppercase fw-semibold d-block small text-muted">
-                                            {{ 'Best Time' if is_cardio else 'Est. 1RM' }}
+                                            {% if is_cardio %}
+                                                Best Time
+                                            {% else %}
+                                                <span class="d-inline-flex align-items-center justify-content-center gap-2">
+                                                    Est. 1RM
+                                                    <button type="button"
+                                                            class="info-tooltip-trigger"
+                                                            aria-label="What is a 1RM?"
+                                                            data-tooltip="1RM stands for One-Rep Max &mdash; the maximum amount of weight you can lift for a single, complete repetition with proper form.">
+                                                        <i class="bi bi-info-circle" aria-hidden="true"></i>
+                                                    </button>
+                                                </span>
+                                            {% endif %}
                                         </span>
                                         <div class="exercise-metric-value fw-semibold"
                                              data-metric-value
@@ -181,7 +193,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const historyEndpoint = "{{ url_for('exercise_history_data') }}";
     const updatePrUrl = "{{ url_for('update_pr') }}";
     const updateNotesUrl = "{{ url_for('update_notes') }}";
-    const NOTES_PLACEHOLDER = {{ NOTES_PLACEHOLDER|tojson }};
+    const NOTES_PLACEHOLDER = JSON.parse('{{ NOTES_PLACEHOLDER|tojson|safe }}');
     let toastTimeout = null;
     let activeNotesWorkoutId = null;
 
