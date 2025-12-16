@@ -94,33 +94,88 @@
                         <div class="persona-slide active">
                             <div class="persona-slide__content">
                                 <figure class="persona-slide__frame">
-                                    <img src="{{ url_for('static', filename='images/member_slide_1.svg') }}" alt="Preview of the FitBaseAI workout builder interface" loading="lazy">
+                                    <img src="{{ url_for('static', filename='images/member_slider_welcome_home.png') }}" alt="Preview of the FitBaseAI workout builder interface" loading="lazy">
+                                </figure>
+                                <div class="persona-slide__details">
+                                    <div class="persona-slide__badge">Your Dashboard</div>
+                                    <p class="persona-slide__copy">Build custom workouts, track everything, and see your progress.</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="persona-slide">
+                            <div class="persona-slide__content">
+                                <figure class="persona-slide__frame">
+                                    <img src="{{ url_for('static', filename='images/member_slider_chart.png') }}" alt="Timeline view showing workout history and streaks" loading="lazy">
+                                </figure>
+                                <div class="persona-slide__details">
+                                    <div class="persona-slide__badge">Progress Charts</div>
+                                    <p class="persona-slide__copy">Visualize your workouts over time and celebrate every new personal best.</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="persona-slide">
+                            <div class="persona-slide__content">
+                                <figure class="persona-slide__frame">
+                                    <img src="{{ url_for('static', filename='images/member_slider_build_workout.png') }}" alt="Form showing readiness questions and personal notes" loading="lazy">
                                 </figure>
                                 <div class="persona-slide__details">
                                     <div class="persona-slide__badge">Workout Generator</div>
-                                    <p class="persona-slide__copy">Build science-backed sessions in seconds around your equipment, goals, and time.</p>
+                                    <p class="persona-slide__copy">Build sessions <strong>in seconds</strong> around your equipment, goals, and time.</p>
                                 </div>
                             </div>
                         </div>
                         <div class="persona-slide">
                             <div class="persona-slide__content">
                                 <figure class="persona-slide__frame">
-                                    <img src="{{ url_for('static', filename='images/member_slide_2.svg') }}" alt="Timeline view showing workout history and streaks" loading="lazy">
+                                    <img src="{{ url_for('static', filename='images/member_slider_guidelines.png') }}" alt="Form showing readiness questions and personal notes" loading="lazy">
                                 </figure>
                                 <div class="persona-slide__details">
-                                    <div class="persona-slide__badge">Progress Timeline</div>
-                                    <p class="persona-slide__copy">Spot streaks, PRs, and cardio improvements right from your dashboard.</p>
+                                    <div class="persona-slide__badge">Guidelines</div>
+                                    <p class="persona-slide__copy">Follow coaching cues tailored for your experience and target heart-rate zone.</p>
                                 </div>
                             </div>
                         </div>
                         <div class="persona-slide">
                             <div class="persona-slide__content">
                                 <figure class="persona-slide__frame">
-                                    <img src="{{ url_for('static', filename='images/member_slide_3.svg') }}" alt="Form showing readiness questions and personal notes" loading="lazy">
+                                    <img src="{{ url_for('static', filename='images/member_slider_workout_card1.png') }}" alt="Form showing readiness questions and personal notes" loading="lazy">
                                 </figure>
                                 <div class="persona-slide__details">
-                                    <div class="persona-slide__badge">Readiness & Notes</div>
-                                    <p class="persona-slide__copy">Share context, injuries, and focus areas so every plan adjusts on the fly.</p>
+                                    <div class="persona-slide__badge">Workout Cards</div>
+                                    <p class="persona-slide__copy">See start/finish photos plus demo videos for every move so you know what to do.</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="persona-slide">
+                            <div class="persona-slide__content">
+                                <figure class="persona-slide__frame">
+                                    <img src="{{ url_for('static', filename='images/member_slider_workout_card2.png') }}" alt="Form showing readiness questions and personal notes" loading="lazy">
+                                </figure>
+                                <div class="persona-slide__details">
+                                    <div class="persona-slide__badge">Exercise Logging</div>
+                                    <p class="persona-slide__copy">Track weights and reps, view descriptions, and write exercise notes.</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="persona-slide">
+                            <div class="persona-slide__content">
+                                <figure class="persona-slide__frame">
+                                    <img src="{{ url_for('static', filename='images/member_slider_stats1.png') }}" alt="Form showing readiness questions and personal notes" loading="lazy">
+                                </figure>
+                                <div class="persona-slide__details">
+                                    <div class="persona-slide__badge">Personal Stats</div>
+                                    <p class="persona-slide__copy">Focus on staying injury-free, and never lose your workout history.</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="persona-slide">
+                            <div class="persona-slide__content">
+                                <figure class="persona-slide__frame">
+                                    <img src="{{ url_for('static', filename='images/member_slider_stats2.png') }}" alt="Form showing readiness questions and personal notes" loading="lazy">
+                                </figure>
+                                <div class="persona-slide__details">
+                                    <div class="persona-slide__badge">Adaptive Goals</div>
+                                    <p class="persona-slide__copy">Adjust goals anytime so you can stay focused today and every day.</p>
                                 </div>
                             </div>
                         </div>
@@ -129,9 +184,6 @@
                                 <i class="bi bi-chevron-left"></i>
                             </button>
                             <div class="persona-slider-dots">
-                                <button type="button" class="persona-slider-dot active" data-index="0" aria-label="Show workout generator preview"></button>
-                                <button type="button" class="persona-slider-dot" data-index="1" aria-label="Show progress timeline preview"></button>
-                                <button type="button" class="persona-slider-dot" data-index="2" aria-label="Show readiness preview"></button>
                             </div>
                             <button type="button" class="persona-slider-arrow persona-slider-arrow--next" aria-label="Next member preview">
                                 <i class="bi bi-chevron-right"></i>
@@ -158,33 +210,88 @@
                         <div class="persona-slide active">
                             <div class="persona-slide__content">
                                 <figure class="persona-slide__frame">
-                                    <img src="{{ url_for('static', filename='images/trainer_slide_1.svg') }}" alt="FitBaseAI trainer dashboard overview" loading="lazy">
+                                    <img src="{{ url_for('static', filename='images/trainer_slider_dashboard.png') }}" alt="FitBaseAI trainer dashboard overview" loading="lazy">
                                 </figure>
                                 <div class="persona-slide__details">
                                     <div class="persona-slide__badge">Trainer Dashboard</div>
-                                    <p class="persona-slide__copy">See today’s roster, outstanding tasks, and form updates at a glance.</p>
+                                    <p class="persona-slide__copy">Check this week's roster, agendas, and sessions in one glance.</p>
                                 </div>
                             </div>
                         </div>
                         <div class="persona-slide">
                             <div class="persona-slide__content">
                                 <figure class="persona-slide__frame">
-                                    <img src="{{ url_for('static', filename='images/trainer_slide_2.svg') }}" alt="Calendar view showing the trainer scheduling interface" loading="lazy">
-                                </figure>
-                                <div class="persona-slide__details">
-                                    <div class="persona-slide__badge">Smart Scheduler</div>
-                                    <p class="persona-slide__copy">Manage availability, sessions, and time off from a focused or full-week calendar.</p>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="persona-slide">
-                            <div class="persona-slide__content">
-                                <figure class="persona-slide__frame">
-                                    <img src="{{ url_for('static', filename='images/trainer_slide_3.svg') }}" alt="Client profile workspace with notes and metrics" loading="lazy">
+                                    <img src="{{ url_for('static', filename='images/trainer_slider_roster_list.png') }}" alt="Calendar view showing the trainer scheduling interface" loading="lazy">
                                 </figure>
                                 <div class="persona-slide__details">
                                     <div class="persona-slide__badge">Client Workspace</div>
-                                    <p class="persona-slide__copy">Track injuries, progress notes, and shared workouts so every check-in stays organized.</p>
+                                    <p class="persona-slide__copy">Manage availability, add new clients, and book sessions directly from your roster.</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="persona-slide">
+                            <div class="persona-slide__content">
+                                <figure class="persona-slide__frame">
+                                    <img src="{{ url_for('static', filename='images/trainer_slider_focused_schedule.png') }}" alt="Client profile workspace with notes and metrics" loading="lazy">
+                                </figure>
+                                <div class="persona-slide__details">
+                                    <div class="persona-slide__badge">Adaptive Schedule</div>
+                                    <p class="persona-slide__copy">Drag and drop sessions or personal time blocks across multi-day views.</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="persona-slide">
+                            <div class="persona-slide__content">
+                                <figure class="persona-slide__frame">
+                                    <img src="{{ url_for('static', filename='images/trainer_slider_full_week_schedule.png') }}" alt="Client profile workspace with notes and metrics" loading="lazy">
+                                </figure>
+                                <div class="persona-slide__details">
+                                    <div class="persona-slide__badge">Full-Week Views</div>
+                                    <p class="persona-slide__copy">Switch to an expanded layout for deep scheduling tasks on desktop or mobile.</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="persona-slide">
+                            <div class="persona-slide__content">
+                                <figure class="persona-slide__frame">
+                                    <img src="{{ url_for('static', filename='images/trainer_slider_client_modal.png') }}" alt="Client profile workspace with notes and metrics" loading="lazy">
+                                </figure>
+                                <div class="persona-slide__details">
+                                    <div class="persona-slide__badge">Informed Sessions</div>
+                                    <p class="persona-slide__copy">Update status, add session notes, link to profiles, and schedule repeat sessions.</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="persona-slide">
+                            <div class="persona-slide__content">
+                                <figure class="persona-slide__frame">
+                                    <img src="{{ url_for('static', filename='images/trainer_slider_agenda_view.png') }}" alt="Client profile workspace with notes and metrics" loading="lazy">
+                                </figure>
+                                <div class="persona-slide__details">
+                                    <div class="persona-slide__badge">Agenda Views</div>
+                                    <p class="persona-slide__copy">Compare your agenda with each client's so every session stays organized.</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="persona-slide">
+                            <div class="persona-slide__content">
+                                <figure class="persona-slide__frame">
+                                    <img src="{{ url_for('static', filename='images/trainer_slider_client_profile.png') }}" alt="Client profile workspace with notes and metrics" loading="lazy">
+                                </figure>
+                                <div class="persona-slide__details">
+                                    <div class="persona-slide__badge">Client Profiles</div>
+                                    <p class="persona-slide__copy">Edit stats, goals, injuries, and pull up client-specific workouts <strong>in seconds</strong>.</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="persona-slide">
+                            <div class="persona-slide__content">
+                                <figure class="persona-slide__frame">
+                                    <img src="{{ url_for('static', filename='images/trainer_slider_personal_time.png') }}" alt="Client profile workspace with notes and metrics" loading="lazy">
+                                </figure>
+                                <div class="persona-slide__details">
+                                    <div class="persona-slide__badge">Personal Time</div>
+                                    <p class="persona-slide__copy">Block meetings, errands, or recovery time to protect your schedule.</p>
                                 </div>
                             </div>
                         </div>
@@ -193,9 +300,6 @@
                                 <i class="bi bi-chevron-left"></i>
                             </button>
                             <div class="persona-slider-dots">
-                                <button type="button" class="persona-slider-dot active" data-index="0" aria-label="Show trainer dashboard preview"></button>
-                                <button type="button" class="persona-slider-dot" data-index="1" aria-label="Show scheduler preview"></button>
-                                <button type="button" class="persona-slider-dot" data-index="2" aria-label="Show client workspace preview"></button>
                             </div>
                             <button type="button" class="persona-slider-arrow persona-slider-arrow--next" aria-label="Next trainer preview">
                                 <i class="bi bi-chevron-right"></i>
@@ -258,67 +362,240 @@
 </section>
 </div>
 
+<div class="persona-lightbox" id="personaLightbox" aria-hidden="true">
+    <div class="persona-lightbox__content" role="dialog" aria-modal="true" aria-label="Persona preview">
+        <button type="button" class="persona-lightbox__close" aria-label="Close preview">&times;</button>
+        <button type="button" class="persona-lightbox__arrow persona-lightbox__arrow--prev" aria-label="Show previous preview">
+            <i class="bi bi-chevron-left" aria-hidden="true"></i>
+        </button>
+        <button type="button" class="persona-lightbox__arrow persona-lightbox__arrow--next" aria-label="Show next preview">
+            <i class="bi bi-chevron-right" aria-hidden="true"></i>
+        </button>
+        <div class="persona-lightbox__frame">
+            <img src="" alt="" class="persona-lightbox__image">
+        </div>
+        <div class="persona-lightbox__details">
+            <div class="persona-lightbox__badge"></div>
+            <p class="persona-lightbox__copy"></p>
+        </div>
+    </div>
+</div>
+
 <script>
 document.addEventListener('DOMContentLoaded', () => {
     const sliders = document.querySelectorAll('.persona-slider');
+    const lightbox = document.getElementById('personaLightbox');
+    const lightboxImage = lightbox?.querySelector('.persona-lightbox__image');
+    const lightboxBadge = lightbox?.querySelector('.persona-lightbox__badge');
+    const lightboxCopy = lightbox?.querySelector('.persona-lightbox__copy');
+    const lightboxClose = lightbox?.querySelector('.persona-lightbox__close');
+    const lightboxPrev = lightbox?.querySelector('.persona-lightbox__arrow--prev');
+    const lightboxNext = lightbox?.querySelector('.persona-lightbox__arrow--next');
+
+    let activeSlider = null;
+    let activeSlides = [];
+    let activeIndex = 0;
+    let touchStartX = null;
+
+    const renderLightboxContent = () => {
+        if (!lightbox || !lightboxImage || !lightboxBadge || !lightboxCopy) {
+            return;
+        }
+        const slide = activeSlides[activeIndex];
+        if (!slide) {
+            return;
+        }
+        const image = slide.querySelector('.persona-slide__frame img');
+        if (!image) {
+            return;
+        }
+        const badge = slide.querySelector('.persona-slide__badge');
+        const copy = slide.querySelector('.persona-slide__copy');
+
+        lightboxImage.src = image.src;
+        lightboxImage.alt = image.alt || '';
+        lightboxBadge.textContent = badge?.textContent || '';
+        lightboxCopy.textContent = copy?.textContent || '';
+
+        activeSlider?._personaState?.showSlide?.(activeIndex);
+    };
+
+    const openLightbox = (slider, slideIndex) => {
+        if (!lightbox) {
+            return;
+        }
+
+        const sliderSlides = slider?._personaState?.slides || Array.from(slider?.querySelectorAll('.persona-slide') || []);
+        activeSlider = slider;
+        activeSlides = sliderSlides;
+        activeIndex = slideIndex;
+
+        if (!activeSlides.length || !activeSlides[activeIndex]) {
+            activeSlider = null;
+            return;
+        }
+
+        slider?._personaState?.showSlide?.(slideIndex);
+        renderLightboxContent();
+
+        lightbox.classList.add('persona-lightbox--visible');
+        lightbox.setAttribute('aria-hidden', 'false');
+        document.body.classList.add('persona-lightbox-open');
+        lightboxClose?.focus();
+    };
+
+    const closeLightbox = () => {
+        if (!lightbox) {
+            return;
+        }
+        lightbox.classList.remove('persona-lightbox--visible');
+        lightbox.setAttribute('aria-hidden', 'true');
+        document.body.classList.remove('persona-lightbox-open');
+        activeSlider = null;
+        activeSlides = [];
+        activeIndex = 0;
+    };
+
+    const changeLightboxSlide = (direction) => {
+        if (!activeSlides.length) {
+            return;
+        }
+        activeIndex = (activeIndex + direction + activeSlides.length) % activeSlides.length;
+        renderLightboxContent();
+    };
+
+    lightboxClose?.addEventListener('click', closeLightbox);
+    lightbox?.addEventListener('click', (event) => {
+        if (event.target === lightbox) {
+            closeLightbox();
+        }
+    });
+
+    lightboxPrev?.addEventListener('click', (event) => {
+        event.stopPropagation();
+        changeLightboxSlide(-1);
+    });
+
+    lightboxNext?.addEventListener('click', (event) => {
+        event.stopPropagation();
+        changeLightboxSlide(1);
+    });
+
+    document.addEventListener('keydown', (event) => {
+        if (!lightbox?.classList.contains('persona-lightbox--visible')) {
+            return;
+        }
+
+        if (event.key === 'Escape') {
+            closeLightbox();
+        } else if (event.key === 'ArrowRight') {
+            event.preventDefault();
+            changeLightboxSlide(1);
+        } else if (event.key === 'ArrowLeft') {
+            event.preventDefault();
+            changeLightboxSlide(-1);
+        }
+    });
+
+    lightbox?.addEventListener('touchstart', (event) => {
+        if (!lightbox.classList.contains('persona-lightbox--visible')) {
+            return;
+        }
+        touchStartX = event.changedTouches[0].clientX;
+    }, { passive: true });
+
+    lightbox?.addEventListener('touchend', (event) => {
+        if (touchStartX === null || !lightbox.classList.contains('persona-lightbox--visible')) {
+            return;
+        }
+        const touchEndX = event.changedTouches[0].clientX;
+        const delta = touchEndX - touchStartX;
+        touchStartX = null;
+
+        if (Math.abs(delta) > 40) {
+            changeLightboxSlide(delta < 0 ? 1 : -1);
+        }
+    });
 
     sliders.forEach((slider) => {
-        const slides = slider.querySelectorAll('.persona-slide');
-        const dots = slider.querySelectorAll('.persona-slider-dot');
+        const slides = Array.from(slider.querySelectorAll('.persona-slide'));
+        const dotsContainer = slider.querySelector('.persona-slider-dots');
+        const dots = [];
         const prevButton = slider.querySelector('.persona-slider-arrow--prev');
         const nextButton = slider.querySelector('.persona-slider-arrow--next');
         if (!slides.length) {
             return;
         }
 
+        const sliderLabel = slider.dataset.sliderId?.replace(/-/g, ' ') || 'persona';
+
+        if (dotsContainer) {
+            dotsContainer.innerHTML = '';
+            slides.forEach((_, index) => {
+                const dot = document.createElement('button');
+                dot.type = 'button';
+                dot.className = 'persona-slider-dot';
+                dot.dataset.index = index;
+                dot.setAttribute('aria-label', `Show ${sliderLabel} preview ${index + 1}`);
+                dotsContainer.appendChild(dot);
+                dots.push(dot);
+            });
+        }
+
         let currentIndex = 0;
-        let timerId = null;
 
         const showSlide = (nextIndex) => {
+            const targetIndex = Number(nextIndex);
+            if (Number.isNaN(targetIndex)) {
+                return;
+            }
             slides[currentIndex].classList.remove('active');
             dots[currentIndex]?.classList.remove('active');
 
-            currentIndex = (nextIndex + slides.length) % slides.length;
+            currentIndex = (targetIndex + slides.length) % slides.length;
 
             slides[currentIndex].classList.add('active');
             dots[currentIndex]?.classList.add('active');
         };
 
-        const startAutoPlay = () => {
-            stopAutoPlay();
-            timerId = setInterval(() => showSlide(currentIndex + 1), 5000);
+        slider._personaState = {
+            slides,
+            showSlide,
         };
 
-        const stopAutoPlay = () => {
-            if (timerId) {
-                clearInterval(timerId);
-                timerId = null;
+        slides.forEach((slide, slideIndex) => {
+            slide.dataset.personaSlideIndex = slideIndex;
+            const slideImage = slide.querySelector('.persona-slide__frame img');
+            if (slideImage) {
+                slideImage.setAttribute('role', 'button');
+                slideImage.setAttribute('tabindex', '0');
+                slideImage.setAttribute('aria-label', 'Expand preview in fullscreen');
+                slideImage.addEventListener('click', () => openLightbox(slider, slideIndex));
+                slideImage.addEventListener('keydown', (event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        openLightbox(slider, slideIndex);
+                    }
+                });
             }
-        };
+        });
 
         dots.forEach((dot) => {
             dot.addEventListener('click', () => {
                 const index = Number(dot.dataset.index);
                 showSlide(index);
-                startAutoPlay();
             });
         });
 
         prevButton?.addEventListener('click', () => {
             showSlide(currentIndex - 1);
-            startAutoPlay();
         });
 
         nextButton?.addEventListener('click', () => {
             showSlide(currentIndex + 1);
-            startAutoPlay();
         });
 
-        slider.addEventListener('mouseenter', stopAutoPlay);
-        slider.addEventListener('mouseleave', startAutoPlay);
-
         showSlide(0);
-        startAutoPlay();
     });
 });
 </script>
