@@ -8,23 +8,22 @@
     <div class="landing-band">
         <div class="row align-items-center g-5">
             <div class="col-lg-6">
-                <p class="landing-eyebrow text-uppercase mb-3">AI-powered coaching platform</p>
-                <h1 class="landing-title display-4 fw-bold mb-3">FitBase<span class="text-orange">AI</span> keeps your training in motion.</h1>
+                <p class="landing-eyebrow text-uppercase mb-3">Built for personal trainers</p>
+                <h1 class="landing-title display-4 fw-bold mb-3">The FitBase<span class="text-orange">AI</span> training command center for personal trainers.</h1>
                 <p class="lead mb-4">
-                    Dynamic programming, workout tracking, and trainer collaboration all in one workspace.
-                    Choose your path and let FitBaseAI become the smartest teammate in your gym bag.
+                    Save time on programming, stay on top of every client, and keep progress tracking automated from one workspace.
                 </p>
                 <div class="landing-cta-group">
-                    <a href="{{ url_for('plan_options') }}" class="btn btn-ignite btn-lg">Create Your Account</a>
+                    <a href="{{ url_for('plan_options') }}" class="btn btn-ignite btn-lg">Start Free Trainer Trial</a>
                     <a href="{{ url_for('login') }}" class="btn btn-outline-light btn-lg">Log In</a>
                 </div>
                 <p class="landing-trial-note mt-3 mb-0 text-center">
-                    Every new signup who completes the quick questionnaire unlocks a free 14-day trial automatically.
+                    Complete the quick questionnaire to unlock a free 14-day trial (trainer or solo).
                 </p>
-                <ul class="landing-hero-list list-unstyled mt-4">
-                    <li><i class="bi bi-lightning-charge-fill me-2 text-orange"></i>Personalized workouts in seconds</li>
-                    <li><i class="bi bi-calendar-event me-2 text-orange"></i>Schedule clarity for you and your trainer/clients</li>
-                    <li><i class="bi bi-shield-check me-2 text-orange"></i>Progress tracking across every session</li>
+                <ul class="landing-hero-list list-unstyled mt-5">
+                    <li><i class="bi bi-lightning-charge-fill me-2 text-orange"></i>Build programs in seconds, not hours</li>
+                    <li><i class="bi bi-calendar-event me-2 text-orange"></i>Track PRs, session notes, and workout history</li>
+                    <li><i class="bi bi-shield-check me-2 text-orange"></i>Injury-aware programming that keeps training safe</li>
                 </ul>
             </div>
             <div class="col-lg-6">
@@ -66,7 +65,7 @@
                         <hr>
                         <p class="fw-semibold mb-2 text-uppercase small text-muted text-center">What FitBaseAI handles for you</p>
                         <ul class="landing-checklist list-unstyled mb-0">
-                            <li class="landing-check"><i class="bi bi-check2-circle me-2"></i>Generates workouts around your goals and readiness</li>
+                            <li class="landing-check"><i class="bi bi-check2-circle me-2"></i>Generates workouts around goals and readiness</li>
                             <li class="landing-check"><i class="bi bi-check2-circle me-2"></i>Adapts every plan with injury-aware programming</li>
                             <li class="landing-check"><i class="bi bi-check2-circle me-2"></i>Tracks weights, reps, times, and progress automatically</li>
                         </ul>
@@ -77,133 +76,17 @@
     </div>
 </section>
 
-<section class="landing-paths py-5 glass-panel" style="margin-bottom: -2rem;">
+<section class="landing-paths py-5 glass-panel" style="margin-bottom: -1rem;">
     <div class="landing-band">
         <div class="landing-paths-intro text-center mb-5">
             <p class="landing-eyebrow text-uppercase mb-2">Choose your companion mode</p>
             <h2 class="landing-paths-title fw-bold mb-3">One platform, two journeys</h2>
-            <p class="landing-paths-copy mb-0">FitBaseAI adapts to how you train—whether you’re showing up for yourself or coaching a roster of clients.</p>
+            <p class="landing-paths-copy mb-0">FitBaseAI is built for coaches managing clients. Gym-goers can also use it solo—or alongside a trainer.</p>
         </div>
         <div class="row g-4">
             <div class="col-lg-6">
-                <article class="persona-card h-100">
-                    <span class="persona-pill persona-pill--member text-uppercase">For Gym-Goers</span>
-                    <h3 class="mt-3">Your personal trainer in your pocket</h3>
-                    <p class="text-muted">Answer a few intent questions and FitBaseAI builds adaptive workouts, tracks your progress, and keeps your wins organized.</p>
-                    <div class="persona-slider" data-slider-id="member">
-                        <div class="persona-slide active">
-                            <div class="persona-slide__content">
-                                <figure class="persona-slide__frame">
-                                    <img src="{{ url_for('static', filename='images/member_slider_welcome_home.png') }}" alt="Preview of the FitBaseAI workout builder interface" loading="lazy">
-                                </figure>
-                                <div class="persona-slide__details">
-                                    <div class="persona-slide__badge">Your Dashboard</div>
-                                    <p class="persona-slide__copy">Build custom workouts, track everything, and see your progress.</p>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="persona-slide">
-                            <div class="persona-slide__content">
-                                <figure class="persona-slide__frame">
-                                    <img src="{{ url_for('static', filename='images/member_slider_chart.png') }}" alt="Timeline view showing workout history and streaks" loading="lazy">
-                                </figure>
-                                <div class="persona-slide__details">
-                                    <div class="persona-slide__badge">Progress Charts</div>
-                                    <p class="persona-slide__copy">Visualize your workouts over time and celebrate every new personal best.</p>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="persona-slide">
-                            <div class="persona-slide__content">
-                                <figure class="persona-slide__frame">
-                                    <img src="{{ url_for('static', filename='images/member_slider_build_workout.png') }}" alt="Form showing readiness questions and personal notes" loading="lazy">
-                                </figure>
-                                <div class="persona-slide__details">
-                                    <div class="persona-slide__badge">Workout Generator</div>
-                                    <p class="persona-slide__copy">Build sessions <strong>in seconds</strong> around your equipment, goals, and time.</p>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="persona-slide">
-                            <div class="persona-slide__content">
-                                <figure class="persona-slide__frame">
-                                    <img src="{{ url_for('static', filename='images/member_slider_guidelines.png') }}" alt="Form showing readiness questions and personal notes" loading="lazy">
-                                </figure>
-                                <div class="persona-slide__details">
-                                    <div class="persona-slide__badge">Guidelines</div>
-                                    <p class="persona-slide__copy">Follow coaching cues tailored for your experience and target heart-rate zone.</p>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="persona-slide">
-                            <div class="persona-slide__content">
-                                <figure class="persona-slide__frame">
-                                    <img src="{{ url_for('static', filename='images/member_slider_workout_card1.png') }}" alt="Form showing readiness questions and personal notes" loading="lazy">
-                                </figure>
-                                <div class="persona-slide__details">
-                                    <div class="persona-slide__badge">Workout Cards</div>
-                                    <p class="persona-slide__copy">See start/finish photos plus demo videos for every move so you know what to do.</p>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="persona-slide">
-                            <div class="persona-slide__content">
-                                <figure class="persona-slide__frame">
-                                    <img src="{{ url_for('static', filename='images/member_slider_workout_card2.png') }}" alt="Form showing readiness questions and personal notes" loading="lazy">
-                                </figure>
-                                <div class="persona-slide__details">
-                                    <div class="persona-slide__badge">Exercise Logging</div>
-                                    <p class="persona-slide__copy">Track weights and reps, view descriptions, and write exercise notes.</p>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="persona-slide">
-                            <div class="persona-slide__content">
-                                <figure class="persona-slide__frame">
-                                    <img src="{{ url_for('static', filename='images/member_slider_stats1.png') }}" alt="Form showing readiness questions and personal notes" loading="lazy">
-                                </figure>
-                                <div class="persona-slide__details">
-                                    <div class="persona-slide__badge">Personal Stats</div>
-                                    <p class="persona-slide__copy">Focus on staying injury-free, and never lose your workout history.</p>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="persona-slide">
-                            <div class="persona-slide__content">
-                                <figure class="persona-slide__frame">
-                                    <img src="{{ url_for('static', filename='images/member_slider_stats2.png') }}" alt="Form showing readiness questions and personal notes" loading="lazy">
-                                </figure>
-                                <div class="persona-slide__details">
-                                    <div class="persona-slide__badge">Adaptive Goals</div>
-                                    <p class="persona-slide__copy">Adjust goals anytime so you can stay focused today and every day.</p>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="persona-slider-controls" aria-label="Member plan preview controls">
-                            <button type="button" class="persona-slider-arrow persona-slider-arrow--prev" aria-label="Previous member preview">
-                                <i class="bi bi-chevron-left"></i>
-                            </button>
-                            <div class="persona-slider-dots">
-                            </div>
-                            <button type="button" class="persona-slider-arrow persona-slider-arrow--next" aria-label="Next member preview">
-                                <i class="bi bi-chevron-right"></i>
-                            </button>
-                        </div>
-                    </div>
-                    <ul class="persona-list persona-list--center">
-                        <li><i class="bi bi-check-lg me-2"></i>AI-crafted strength and cardio sessions-always know your personal best</li>
-                        <li><i class="bi bi-check-lg me-2"></i>Guideline-based & injury-aware coaching</li>
-                        <li><i class="bi bi-check-lg me-2"></i>Digital training logs—no paper notebooks ever again</li>
-                    </ul>
-                    <div class="persona-actions persona-actions--center">
-                        <a href="{{ url_for('register') }}" class="btn btn-brand">Become a FitBaseAI Member</a>
-                        <a href="{{ url_for('login') }}" class="btn btn-link text-decoration-none">Already training? Log in</a>
-                    </div>
-                </article>
-            </div>
-            <div class="col-lg-6">
                 <article class="persona-card h-100 trainer-card">
-                    <span class="persona-pill persona-pill--trainer text-uppercase">For Trainers</span>
+                    <span class="persona-pill persona-pill--trainer text-uppercase">For Personal Trainers</span>
                     <h3 class="mt-3">A command center for every client</h3>
                     <p class="text-muted">Centralize programming, scheduling, messaging, and data summaries so you can coach more efficiently without adding hours to your week.</p>
                     <div class="persona-slider" data-slider-id="trainer">
@@ -306,6 +189,7 @@
                             </button>
                         </div>
                     </div>
+                    <p class="text-muted small mt-3">Includes every member feature plus...</p>
                     <ul class="persona-list persona-list--center">
                         <li><i class="bi bi-diagram-3 me-2"></i>Unified trainer dashboard with client insights and weekly scheduler</li>
                         <li><i class="bi bi-calendar-check me-2"></i>Syncs time-off, availability, and session history across every client</li>
@@ -317,11 +201,128 @@
                     </div>
                 </article>
             </div>
+            <div class="col-lg-6">
+                <article class="persona-card h-100">
+                    <span class="persona-pill persona-pill--member text-uppercase">For Gym-Goers (Solo or Trainer-Led)</span>
+                    <h3 class="mt-3">Your personal trainer in your pocket</h3>
+                    <p class="text-muted">Use trainer-built workouts or generate your own sessions—FitBaseAI tracks readiness, progress, and every win along the way.</p>
+                    <div class="persona-slider" data-slider-id="member">
+                        <div class="persona-slide active">
+                            <div class="persona-slide__content">
+                                <figure class="persona-slide__frame">
+                                    <img src="{{ url_for('static', filename='images/member_slider_welcome_home.png') }}" alt="Preview of the FitBaseAI workout builder interface" loading="lazy">
+                                </figure>
+                                <div class="persona-slide__details">
+                                    <div class="persona-slide__badge">Your Dashboard</div>
+                                    <p class="persona-slide__copy">Build custom workouts, track everything, and see your progress.</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="persona-slide">
+                            <div class="persona-slide__content">
+                                <figure class="persona-slide__frame">
+                                    <img src="{{ url_for('static', filename='images/member_slider_chart.png') }}" alt="Timeline view showing workout history and streaks" loading="lazy">
+                                </figure>
+                                <div class="persona-slide__details">
+                                    <div class="persona-slide__badge">Progress Charts</div>
+                                    <p class="persona-slide__copy">Visualize your workouts over time and celebrate every new personal best.</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="persona-slide">
+                            <div class="persona-slide__content">
+                                <figure class="persona-slide__frame">
+                                    <img src="{{ url_for('static', filename='images/member_slider_build_workout.png') }}" alt="Form showing readiness questions and personal notes" loading="lazy">
+                                </figure>
+                                <div class="persona-slide__details">
+                                    <div class="persona-slide__badge">Workout Generator</div>
+                                    <p class="persona-slide__copy">Build sessions <strong>in seconds</strong> around your equipment, goals, and time.</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="persona-slide">
+                            <div class="persona-slide__content">
+                                <figure class="persona-slide__frame">
+                                    <img src="{{ url_for('static', filename='images/member_slider_guidelines.png') }}" alt="Form showing readiness questions and personal notes" loading="lazy">
+                                </figure>
+                                <div class="persona-slide__details">
+                                    <div class="persona-slide__badge">Guidelines</div>
+                                    <p class="persona-slide__copy">Follow coaching cues tailored for your experience and target heart-rate zone.</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="persona-slide">
+                            <div class="persona-slide__content">
+                                <figure class="persona-slide__frame">
+                                    <img src="{{ url_for('static', filename='images/member_slider_workout_card1.png') }}" alt="Form showing readiness questions and personal notes" loading="lazy">
+                                </figure>
+                                <div class="persona-slide__details">
+                                    <div class="persona-slide__badge">Workout Cards</div>
+                                    <p class="persona-slide__copy">See start/finish photos plus demo videos for every move so you know what to do.</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="persona-slide">
+                            <div class="persona-slide__content">
+                                <figure class="persona-slide__frame">
+                                    <img src="{{ url_for('static', filename='images/member_slider_workout_card2.png') }}" alt="Form showing readiness questions and personal notes" loading="lazy">
+                                </figure>
+                                <div class="persona-slide__details">
+                                    <div class="persona-slide__badge">Exercise Logging</div>
+                                    <p class="persona-slide__copy">Track weights and reps, view descriptions, and write exercise notes.</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="persona-slide">
+                            <div class="persona-slide__content">
+                                <figure class="persona-slide__frame">
+                                    <img src="{{ url_for('static', filename='images/member_slider_stats1.png') }}" alt="Form showing readiness questions and personal notes" loading="lazy">
+                                </figure>
+                                <div class="persona-slide__details">
+                                    <div class="persona-slide__badge">Personal Stats</div>
+                                    <p class="persona-slide__copy">Focus on staying injury-free, and never lose your workout history.</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="persona-slide">
+                            <div class="persona-slide__content">
+                                <figure class="persona-slide__frame">
+                                    <img src="{{ url_for('static', filename='images/member_slider_stats2.png') }}" alt="Form showing readiness questions and personal notes" loading="lazy">
+                                </figure>
+                                <div class="persona-slide__details">
+                                    <div class="persona-slide__badge">Adaptive Goals</div>
+                                    <p class="persona-slide__copy">Adjust goals anytime so you can stay focused today and every day.</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="persona-slider-controls" aria-label="Member plan preview controls">
+                            <button type="button" class="persona-slider-arrow persona-slider-arrow--prev" aria-label="Previous member preview">
+                                <i class="bi bi-chevron-left"></i>
+                            </button>
+                            <div class="persona-slider-dots">
+                            </div>
+                            <button type="button" class="persona-slider-arrow persona-slider-arrow--next" aria-label="Next member preview">
+                                <i class="bi bi-chevron-right"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <p class="text-muted small mt-3">Member features include...</p>
+                    <ul class="persona-list persona-list--center">
+                        <li><i class="bi bi-check-lg me-2"></i>AI-crafted strength and cardio sessions-always know your personal best</li>
+                        <li><i class="bi bi-check-lg me-2"></i>Guideline-based & injury-aware coaching</li>
+                        <li><i class="bi bi-check-lg me-2"></i>Digital training logs—no paper notebooks ever again</li>
+                    </ul>
+                    <div class="persona-actions persona-actions--center">
+                        <a href="{{ url_for('register') }}" class="btn btn-brand">Become a FitBaseAI Member</a>
+                        <a href="{{ url_for('login') }}" class="btn btn-link text-decoration-none">Already training? Log in</a>
+                    </div>
+                </article>
+            </div>
         </div>
     </div>
 </section>
 
-<section class="landing-grid py-5 glass-panel mb-5">
+<section class="landing-grid py-5 glass-panel mt-3 mb-5">
     <div class="landing-band">
         <div class="row g-4">
             <div class="col-md-4">
@@ -352,10 +353,10 @@
 <section class="landing-cta-final text-light text-center py-5 glass-panel">
     <div class="landing-band">
         <p class="landing-eyebrow text-uppercase mb-2">Train aware. Live ready.</p>
-        <h2 class="fw-bold mb-3">Ready to experience FitBaseAI?</h2>
-        <p class="lead mb-4">Spin up your account in seconds and unlock programming intelligence that scales with you.</p>
+        <h2 class="fw-bold mb-3">Ready to coach with FitBaseAI?</h2>
+        <p class="lead mb-4">Create your trainer account and unlock a free 14-day trial after the questionnaire. Invite clients when you’re ready.</p>
         <div class="landing-cta-group justify-content-center">
-            <a href="{{ url_for('plan_options') }}" class="btn btn-ignite btn-lg">Create Account</a>
+            <a href="{{ url_for('plan_options') }}" class="btn btn-ignite btn-lg">Start Free Trainer Trial</a>
             <a href="{{ url_for('login') }}" class="btn btn-outline-light btn-lg">Log In</a>
         </div>
     </div>

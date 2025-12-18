@@ -41,7 +41,7 @@ from helpers import (
 )
 from collections import OrderedDict
 from dotenv import load_dotenv
-from datetime import datetime, date, timedelta, timezone, time
+from datetime import datetime, date, timedelta, timezone, time, tzinfo
 from zoneinfo import ZoneInfo
 from mail import (
     send_email,
@@ -1954,6 +1954,69 @@ def _resolve_local_zone(candidate_tz=None):
     return candidate_tz or timezone.utc
 
 
+def _resolve_request_timezone(session_prefix: str) -> tuple[tzinfo, str | None, int | None]:
+    """
+    Resolve a timezone for agenda-style views using request parameters or prior session hints.
+    Returns (tzinfo, timezone_name, offset_minutes_js_style).
+    """
+    tz_name_key = f'{session_prefix}_timezone'
+    tz_offset_key = f'{session_prefix}_tz_offset'
+
+    tz_param = (request.args.get('timezone') or '').strip()
+    tz_info = None
+    timezone_name = None
+    if tz_param:
+        try:
+            tz_info = ZoneInfo(tz_param)
+            timezone_name = tz_param
+        except Exception:
+            tz_info = None
+
+    if tz_info is not None:
+        session[tz_name_key] = timezone_name
+    else:
+        stored_name = session.get(tz_name_key)
+        if stored_name:
+            try:
+                tz_info = ZoneInfo(stored_name)
+                timezone_name = stored_name
+            except Exception:
+                session.pop(tz_name_key, None)
+
+    tz_offset_minutes = None
+    tz_offset_param = request.args.get('tz_offset')
+    if tz_offset_param not in (None, ''):
+        try:
+            tz_offset_minutes = int(tz_offset_param)
+            session[tz_offset_key] = tz_offset_minutes
+        except (TypeError, ValueError):
+            tz_offset_minutes = None
+    else:
+        stored_offset = session.get(tz_offset_key)
+        if isinstance(stored_offset, int):
+            tz_offset_minutes = stored_offset
+
+    if tz_info is None and tz_offset_minutes is not None:
+        try:
+            tz_info = timezone(timedelta(minutes=-tz_offset_minutes))
+        except Exception:
+            tz_info = None
+
+    if tz_info is None:
+        tz_info = datetime.now().astimezone().tzinfo or timezone.utc
+
+    if timezone_name is None:
+        timezone_name = getattr(tz_info, 'key', None)
+
+    if tz_offset_minutes is None:
+        now_in_zone = datetime.now(timezone.utc).astimezone(tz_info)
+        offset_td = now_in_zone.utcoffset()
+        if offset_td is not None:
+            tz_offset_minutes = int(-offset_td.total_seconds() // 60)
+
+    return tz_info, timezone_name, tz_offset_minutes
+
+
 def _shift_weekly_preserving_local(
     start_dt: datetime,
     end_dt: datetime,
@@ -3665,7 +3728,8 @@ def trainer_agenda():
     if selected_view != 'custom' and (start_date_raw or end_date_raw):
         selected_view = 'custom'
 
-    now_local = datetime.now().astimezone()
+    tz_info, timezone_name, tz_offset_minutes = _resolve_request_timezone('trainer_agenda')
+    now_local = datetime.now(timezone.utc).astimezone(tz_info)
     tz_info = now_local.tzinfo or timezone.utc
     today_local = now_local.date()
 
@@ -3965,6 +4029,8 @@ def trainer_agenda():
         quick_filters=quick_filters,
         selected_ids=selected_ids if request.method == 'POST' and not action_performed else [],
         bulk_action=bulk_action if request.method == 'POST' else '',
+        timezone_name=timezone_name,
+        tz_offset_minutes=tz_offset_minutes,
     )
 
 

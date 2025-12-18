@@ -35,6 +35,10 @@
         {% set view_query_param = selected_view if selected_view != 'upcoming' else None %}
         {% set start_query_param = start_date_input if is_custom_view and start_date_input else None %}
         {% set end_query_param = end_date_input if is_custom_view and end_date_input else None %}
+        {% set timezone_current = timezone_name | default('') %}
+        {% set tz_offset_current = tz_offset_minutes if tz_offset_minutes is not none else None %}
+        {% set timezone_query_param = timezone_current if timezone_current else None %}
+        {% set tz_offset_query_param = tz_offset_current %}
 
         <div class="surface-body">
             <div class="surface-section surface-section--flat agenda-card agenda-card-panel">
@@ -45,7 +49,7 @@
                                 <span class="text-uppercase small text-muted fw-semibold me-1 agenda-quick-label text-center text-lg-start">Quick View:</span>
                                 {% for filter in quick_filters %}
                                     <a class="btn btn-outline-primary btn-sm {% if selected_view == filter.key %}active{% endif %}"
-                                       href="{{ url_for('trainer_agenda', view=filter.key, per_page=per_page, page=1) }}#agendaTable"
+                                       href="{{ url_for('trainer_agenda', view=filter.key, per_page=per_page, page=1, timezone=timezone_query_param, tz_offset=tz_offset_query_param) }}#agendaTable"
                                        {% if selected_view == filter.key %}aria-current="true"{% endif %}>
                                         {{ filter.label }}
                                     </a>
@@ -61,6 +65,8 @@
                             <input type="hidden" name="view" value="custom">
                             <input type="hidden" name="per_page" value="{{ per_page }}">
                             <input type="hidden" name="page" value="1">
+                            <input type="hidden" name="timezone" value="{{ timezone_query_param or '' }}" data-timezone-input>
+                            <input type="hidden" name="tz_offset" value="{{ tz_offset_query_param if tz_offset_query_param is not none else '' }}" data-timezone-offset-input>
 
                             <div>
                                 <div class="text-uppercase small text-muted fw-semibold mb-2 text-center text-lg-start">Date Range</div>
@@ -80,7 +86,7 @@
                                     <div class="agenda-date-range__actions d-flex align-items-center gap-2 flex-wrap justify-content-center justify-content-lg-start">
                                         <button type="submit" class="btn btn-outline-primary btn-sm">Apply</button>
                                         <a class="btn btn-link btn-sm text-decoration-none"
-                                           href="{{ url_for('trainer_agenda') }}#agendaTable">
+                                           href="{{ url_for('trainer_agenda', view='upcoming', per_page=per_page, timezone=timezone_query_param, tz_offset=tz_offset_query_param) }}#agendaTable">
                                             Clear
                                         </a>
                                     </div>
@@ -124,7 +130,9 @@
                                              per_page=per_page,
                                              page=page,
                                              start_date=start_query_param,
-                                             end_date=end_query_param) }}#agendaTable"
+                                             end_date=end_query_param,
+                                             timezone=timezone_query_param,
+                                             tz_offset=tz_offset_query_param) }}#agendaTable"
                           class="d-flex flex-column gap-4">
                     <div class="table-responsive agenda-table-wrapper" id="agendaTable">
                         <table class="table table-hover align-middle agenda-table">
@@ -219,7 +227,9 @@
                                                                     per_page=per_page,
                                                                     view=view_query_param,
                                                                     start_date=start_query_param,
-                                                                    end_date=end_query_param) }}#agendaTable">
+                                                                    end_date=end_query_param,
+                                                                    timezone=timezone_query_param,
+                                                                    tz_offset=tz_offset_query_param) }}#agendaTable">
                                                     Previous
                                                 </a>
                                             {% endif %}
@@ -235,7 +245,9 @@
                                                                         per_page=per_page,
                                                                         view=view_query_param,
                                                                         start_date=start_query_param,
-                                                                        end_date=end_query_param) }}#agendaTable">
+                                                                        end_date=end_query_param,
+                                                                        timezone=timezone_query_param,
+                                                                        tz_offset=tz_offset_query_param) }}#agendaTable">
                                                         {{ number }}
                                                     </a>
                                                 {% endif %}
@@ -251,7 +263,9 @@
                                                                     per_page=per_page,
                                                                     view=view_query_param,
                                                                     start_date=start_query_param,
-                                                                    end_date=end_query_param) }}#agendaTable">
+                                                                    end_date=end_query_param,
+                                                                    timezone=timezone_query_param,
+                                                                    tz_offset=tz_offset_query_param) }}#agendaTable">
                                                     Next
                                                 </a>
                                             {% endif %}
@@ -278,6 +292,49 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', () => {
+    function syncAgendaTimezoneParams() {
+        let resolvedTimezone = '';
+        try {
+            resolvedTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+        } catch (err) {
+            resolvedTimezone = '';
+        }
+        const resolvedOffset = String(new Date().getTimezoneOffset());
+        const params = new URLSearchParams(window.location.search);
+        const paramTimezone = params.get('timezone') || '';
+        const paramOffset = params.get('tz_offset') || '';
+        const timezoneMismatch = resolvedTimezone && resolvedTimezone !== paramTimezone;
+        const offsetMismatch = paramOffset !== resolvedOffset;
+        if ((resolvedTimezone && !paramTimezone) || timezoneMismatch || offsetMismatch) {
+            if (resolvedTimezone) {
+                params.set('timezone', resolvedTimezone);
+            } else {
+                params.delete('timezone');
+            }
+            params.set('tz_offset', resolvedOffset);
+            const query = params.toString();
+            const hash = window.location.hash || '';
+            const target = query ? `${window.location.pathname}?${query}${hash}` : `${window.location.pathname}${hash}`;
+            window.location.replace(target);
+            return true;
+        }
+        document.querySelectorAll('[data-timezone-input]').forEach(input => {
+            if (resolvedTimezone) {
+                input.value = resolvedTimezone;
+            } else if (!input.value && paramTimezone) {
+                input.value = paramTimezone;
+            }
+        });
+        document.querySelectorAll('[data-timezone-offset-input]').forEach(input => {
+            input.value = resolvedOffset;
+        });
+        return false;
+    }
+
+    if (syncAgendaTimezoneParams()) {
+        return;
+    }
+
     const selectAll = document.getElementById('selectAllSessions');
     const bulkActionForm = document.getElementById('trainerAgendaBulkForm');
     const bulkActionSelect = document.getElementById('bulkActionSelect');

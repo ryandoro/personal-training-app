@@ -9,14 +9,14 @@
             <div class="surface-hero__icon">
                 <i class="bi bi-stars"></i>
             </div>
-            <h2 class="surface-hero__title">Select the plan that matches your journey</h2>
+            <h2 class="surface-hero__title">Choose your FitBaseAI mode</h2>
             {% if is_logged_in %}
                 <p class="surface-hero__subtitle">
                     You're already inside FitBaseAI. Choose the plan you want to keep after your trial. Switch tiers anytime.
                 </p>
             {% else %}
                 <p class="surface-hero__subtitle">
-                    Every new account unlocks a free 14-day trial once you complete the FitBaseAI training questionnaire. Pick the path that fits your goals.
+                    Start as a trainer (Pro) to manage clients, or choose Premium for solo training. Every new account unlocks a free 14-day trial after the questionnaire.
                 </p>
             {% endif %}
         </div>
@@ -24,60 +24,13 @@
 
     <div class="row g-4">
         <div class="col-lg-6">
-            <div class="surface-card plan-card plan-card--premium h-100" id="plan-premium">
-                <div class="surface-section surface-section--flat border-bottom pb-0 plan-header plan-header--premium mt-1 ms-1 me-1">
-                    <div class="plan-header__columns">
-                        <div class="plan-header__summary">
-                            <span class="badge text-bg-primary text-uppercase">Premium</span>
-                            <h3 class="mt-3 fw-bold mb-2">Member Plan</h3>
-                            <p class="text-muted mb-3">Unlimited workout generator access, progress tracking, and personalized programming.</p>
-                        </div>
-                        <div class="plan-header__meta text-end">
-                            {% if is_logged_in %}
-                                <div class="plan-eyebrow-wrapper mb-3">
-                                    <span class="badge plan-eyebrow text-uppercase">Stay a member after your trial</span>
-                                </div>
-                                <div class="plan-price-panel">
-                                    <p class="plan-meta__label mb-1">Continue plan for</p>
-                                    <p class="plan-price h2 fw-bold mb-0">$9.99<span>/month</span></p>
-                                </div>
-                            {% else %}
-                                <div class="plan-price-panel">
-                                    <p class="plan-meta__eyebrow mb-1">14-day free trial</p>
-                                    <p class="plan-meta__label mb-1">Continue plan for</p>
-                                    <p class="plan-price h2 fw-bold mb-0">$9.99<span>/month</span></p>
-                                </div>
-                            {% endif %}
-                        </div>
-                    </div>
-                </div>
-                <div class="surface-body plan-body">
-                    <ul class="list-unstyled mb-2">
-                        <li class="mb-2"><i class="bi bi-check2-circle text-success me-2"></i>Full access to all workout categories + AI personalization</li>
-                        <li class="mb-2"><i class="bi bi-check2-circle text-success me-2"></i>Workout history, goal setting, and progress charts</li>
-                        <li class="mb-2"><i class="bi bi-check2-circle text-success me-2"></i>Injury-aware adjustments and cardio preferences</li>
-                        <li class="mb-2"><i class="bi bi-check2-circle text-success me-2"></i>Email reminders + accountability nudges</li>
-                    </ul>
-                    <div class="d-grid gap-2">
-                        <a href="{{ premium_cta }}" class="btn btn-brand btn-lg">
-                            {% if is_logged_in %}Upgrade to Premium{% else %}Become a FitBaseAI Member{% endif %}
-                        </a>
-                        {% if not is_logged_in %}
-                            <a href="{{ url_for('login') }}" class="btn btn-outline-secondary">
-                                Already a member? Log in
-                            </a>
-                        {% endif %}
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="col-lg-6">
             <div class="surface-card plan-card plan-card--pro h-100 border-pro" id="plan-pro">
                 <div class="surface-section surface-section--flat border-bottom pb-0 plan-header plan-header--pro mt-1 ms-1 me-1">
                     <div class="plan-header__columns">
                         <div class="plan-header__summary">
                             <span class="badge text-bg-warning text-uppercase text-dark">Pro</span>
                             <h3 class="mt-3 fw-bold mb-2">Trainer Plan</h3>
+                            <p class="text-muted small mb-2">Best for coaches managing clients</p>
                             <p class="text-muted mb-3">Everything in Premium plus trainer dashboard, client profiles, scheduling, and roster management.</p>
                         </div>
                         <div class="plan-header__meta text-end">
@@ -108,11 +61,60 @@
                     </ul>
                     <div class="d-grid gap-2">
                         <a href="{{ pro_cta }}" class="btn btn-dark btn-lg">
-                            {% if is_logged_in %}Upgrade to Pro{% else %}Become a FitBaseAI Trainer{% endif %}
+                            {% if is_logged_in %}Upgrade to Pro{% else %}Start Pro Trial (Trainer){% endif %}
                         </a>
                         {% if not is_logged_in %}
                             <a href="{{ url_for('login') }}" class="btn btn-outline-secondary">
                                 Already have an account? Log in
+                            </a>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-6">
+            <div class="surface-card plan-card plan-card--premium h-100" id="plan-premium">
+                <div class="surface-section surface-section--flat border-bottom pb-0 plan-header plan-header--premium mt-1 ms-1 me-1">
+                    <div class="plan-header__columns">
+                        <div class="plan-header__summary">
+                            <span class="badge text-bg-primary text-uppercase">Premium</span>
+                            <h3 class="mt-3 fw-bold mb-2">Member Plan</h3>
+                            <p class="text-muted small mb-2">Best for training solo</p>
+                            <p class="text-muted mb-3">Unlimited workout generator access, progress tracking, and personalized programming.</p>
+                        </div>
+                        <div class="plan-header__meta text-end">
+                            {% if is_logged_in %}
+                                <div class="plan-eyebrow-wrapper mb-3">
+                                    <span class="badge plan-eyebrow text-uppercase">Stay a member after your trial</span>
+                                </div>
+                                <div class="plan-price-panel">
+                                    <p class="plan-meta__label mb-1">Continue plan for</p>
+                                    <p class="plan-price h2 fw-bold mb-0">$9.99<span>/month</span></p>
+                                </div>
+                            {% else %}
+                                <div class="plan-price-panel">
+                                    <p class="plan-meta__eyebrow mb-1">14-day free trial</p>
+                                    <p class="plan-meta__label mb-1">Continue plan for</p>
+                                    <p class="plan-price h2 fw-bold mb-0">$9.99<span>/month</span></p>
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                <div class="surface-body plan-body">
+                    <ul class="list-unstyled mb-2">
+                        <li class="mb-2"><i class="bi bi-check2-circle text-success me-2"></i>Full access to all workout categories + AI personalization</li>
+                        <li class="mb-2"><i class="bi bi-check2-circle text-success me-2"></i>Workout history, goal setting, and progress charts</li>
+                        <li class="mb-2"><i class="bi bi-check2-circle text-success me-2"></i>Injury-aware adjustments and cardio preferences</li>
+                        <li class="mb-2"><i class="bi bi-check2-circle text-success me-2"></i>Email reminders + accountability nudges</li>
+                    </ul>
+                    <div class="d-grid gap-2">
+                        <a href="{{ premium_cta }}" class="btn btn-brand btn-lg">
+                            {% if is_logged_in %}Upgrade to Premium{% else %}Start Premium Trial (Solo){% endif %}
+                        </a>
+                        {% if not is_logged_in %}
+                            <a href="{{ url_for('login') }}" class="btn btn-outline-secondary">
+                                Already a member? Log in
                             </a>
                         {% endif %}
                     </div>
