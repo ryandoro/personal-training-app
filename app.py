@@ -149,6 +149,8 @@ TRAINER_SESSION_BUCKETS = [
 TRAINER_CLIENT_BUCKET_CODES = {entry['code'] for entry in TRAINER_CLIENT_COUNT_BUCKETS}
 TRAINER_SESSION_BUCKET_CODES = {entry['code'] for entry in TRAINER_SESSION_BUCKETS}
 SCHEDULE_ACCESS_REQUIRED_MESSAGE = "Schedule access requires an active training plan."
+DEFAULT_CALENDAR_WINDOW = (5, 21)
+MIN_CALENDAR_WINDOW_HOURS = 5
 
 
 def _normalize_role_value(role_value, *, default=None):
@@ -201,6 +203,19 @@ def _resolve_user_role(*, user_id=None, conn=None, default='user'):
     if session.get('is_admin') != (normalized == 'admin'):
         session['is_admin'] = (normalized == 'admin')
     return normalized
+
+
+def _normalize_calendar_window(start_value, end_value, *, default_start=DEFAULT_CALENDAR_WINDOW[0], default_end=DEFAULT_CALENDAR_WINDOW[1]):
+    """Clamp calendar availability windows and enforce the minimum duration."""
+    try:
+        normalized_start = max(0, min(23, int(start_value)))
+        normalized_end = max(1, min(24, int(end_value)))
+    except (TypeError, ValueError):
+        return default_start, default_end
+    if normalized_end - normalized_start < MIN_CALENDAR_WINDOW_HOURS:
+        normalized_start = max(0, min(normalized_start, 24 - MIN_CALENDAR_WINDOW_HOURS))
+        normalized_end = normalized_start + MIN_CALENDAR_WINDOW_HOURS
+    return normalized_start, normalized_end
 
 
 def _enforce_session_version(user_id: int):
@@ -1405,7 +1420,17 @@ def training():
                 # Fetch grouped workouts
                 for category, group in categories.items():
                     placeholders = ",".join(["%s"] * len(group))
-                    query = f"SELECT name, description FROM workouts WHERE category IN ({placeholders})"
+                    query = f"""
+                        SELECT name, description
+                          FROM workouts
+                         WHERE category IN ({placeholders})
+                         ORDER BY CASE movement_type
+                                      WHEN 'compound' THEN 1
+                                      WHEN 'accessory' THEN 2
+                                      ELSE 3
+                                  END,
+                                  name
+                    """
                     cursor.execute(query, group)
                     grouped_workouts[category] = cursor.fetchall()
 
@@ -1440,7 +1465,17 @@ def training():
 
                     # Fetch workouts matching the user's level
                     cursor.execute(
-                        "SELECT name, description, category, subcategory FROM workouts WHERE level <= %s",
+                        """
+                        SELECT name, description, category, subcategory
+                          FROM workouts
+                         WHERE level <= %s
+                         ORDER BY CASE movement_type
+                                      WHEN 'compound' THEN 1
+                                      WHEN 'accessory' THEN 2
+                                      ELSE 3
+                                  END,
+                                  name
+                        """,
                         (user_level,)
                     )
                     all_workouts = cursor.fetchall()
@@ -1611,7 +1646,7 @@ def trainer_dashboard():
         'role': trainer.get('role'),
     }
 
-    schedule_prefs = {'view_start': 5, 'view_end': 21}
+    schedule_prefs = {'view_start': DEFAULT_CALENDAR_WINDOW[0], 'view_end': DEFAULT_CALENDAR_WINDOW[1]}
     with get_connection() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
             cursor.execute(
@@ -1620,13 +1655,11 @@ def trainer_dashboard():
             )
             row = cursor.fetchone()
             if row:
-                try:
-                    schedule_prefs['view_start'] = max(0, min(23, int(row.get('view_start', 5))))
-                    schedule_prefs['view_end'] = max(1, min(24, int(row.get('view_end', 21))))
-                    if schedule_prefs['view_end'] <= schedule_prefs['view_start']:
-                        schedule_prefs = {'view_start': 5, 'view_end': 21}
-                except (TypeError, ValueError):
-                    schedule_prefs = {'view_start': 5, 'view_end': 21}
+                start_hour, end_hour = _normalize_calendar_window(
+                    row.get('view_start'),
+                    row.get('view_end'),
+                )
+                schedule_prefs = {'view_start': start_hour, 'view_end': end_hour}
 
     return render_template(
         'trainer_dashboard.html',
@@ -1791,7 +1824,12 @@ def client_profile(client_id):
                         ON uep.workout_id = w.id
                        AND uep.user_id = %s
                      WHERE w.name ILIKE %s
-                     ORDER BY w.name
+                     ORDER BY CASE w.movement_type
+                                  WHEN 'compound' THEN 1
+                                  WHEN 'accessory' THEN 2
+                                  ELSE 3
+                              END,
+                              w.name
                      LIMIT 25
                     """,
                     (client_id, f"%{exercise_search_term}%"),
@@ -2082,7 +2120,7 @@ def _ensure_trainer_client_link(cursor, trainer_id: int, client_id: int, trainer
 
 
 def _trainer_time_off_conflict(cursor, trainer_id: int, start_dt: datetime, end_dt: datetime, exclude_id: int | None = None) -> bool:
-    params = [trainer_id, end_dt, start_dt]
+    params = [trainer_id, start_dt, end_dt]
     exclude_clause = ""
     if exclude_id is not None:
         exclude_clause = " AND id <> %s"
@@ -2103,7 +2141,7 @@ def _trainer_time_off_conflict(cursor, trainer_id: int, start_dt: datetime, end_
 
 
 def _schedule_conflicts(cursor, trainer_id: int, client_id: int, start_dt: datetime, end_dt: datetime, exclude_id: int | None = None) -> tuple[bool, str | None]:
-    params = [trainer_id, end_dt, start_dt]
+    params = [trainer_id, start_dt, end_dt]
     exclude_clause = ""
     if exclude_id is not None:
         exclude_clause = " AND id <> %s"
@@ -2126,7 +2164,7 @@ def _schedule_conflicts(cursor, trainer_id: int, client_id: int, start_dt: datet
     if _trainer_time_off_conflict(cursor, trainer_id, start_dt, end_dt):
         return True, 'Trainer has personal time blocked during that window.'
 
-    params = [client_id, end_dt, start_dt]
+    params = [client_id, start_dt, end_dt]
     if exclude_id is not None:
         params.append(exclude_id)
 
@@ -2158,7 +2196,7 @@ def _time_off_conflicts(cursor, trainer_id: int, start_dt: datetime, end_dt: dat
            AND start_time < %s
         LIMIT 1
         """,
-        (trainer_id, end_dt, start_dt),
+        (trainer_id, start_dt, end_dt),
     )
     if cursor.fetchone():
         return True, 'A client session is already booked during that time.'
@@ -2321,11 +2359,14 @@ def trainer_schedule_preferences():
                     "SELECT view_start, view_end FROM trainer_schedule_preferences WHERE trainer_id = %s",
                     (trainer_id,),
                 )
-                row = cursor.fetchone() or {}
-        view_start = max(0, min(23, int(row.get('view_start', 5)))) if row else 5
-        view_end = max(1, min(24, int(row.get('view_end', 21)))) if row else 21
-        if view_end <= view_start:
-            view_start, view_end = 5, 21
+                row = cursor.fetchone()
+        if row:
+            view_start, view_end = _normalize_calendar_window(
+                row.get('view_start'),
+                row.get('view_end'),
+            )
+        else:
+            view_start, view_end = DEFAULT_CALENDAR_WINDOW
         return jsonify({'success': True, 'view_start': view_start, 'view_end': view_end})
 
     data = request.get_json(silent=True) or {}
@@ -2337,8 +2378,8 @@ def trainer_schedule_preferences():
 
     if not (0 <= view_start <= 23 and 1 <= view_end <= 24):
         return jsonify({'success': False, 'error': 'Hours must be between 0 and 24.'}), 400
-    if view_end <= view_start:
-        return jsonify({'success': False, 'error': 'End hour must be after start hour.'}), 400
+    if view_end - view_start < MIN_CALENDAR_WINDOW_HOURS:
+        return jsonify({'success': False, 'error': f'Viewing window must span at least {MIN_CALENDAR_WINDOW_HOURS} hours.'}), 400
 
     with get_connection() as conn:
         with conn.cursor() as cursor:
@@ -2485,6 +2526,65 @@ def trainer_schedule_book():
         'workouts_completed': counts_row.get('workouts_completed') if counts_row else None,
     }
     return jsonify(payload)
+
+
+@app.route('/trainer/schedule/conflicts', methods=['POST'])
+@login_required
+def trainer_schedule_conflict_check():
+    trainer_id = session['user_id']
+    trainer = _require_trainer(trainer_id)
+    if not trainer:
+        return jsonify({'success': False, 'error': 'Trainer access required'}), 403
+
+    data = request.get_json(silent=True) or {}
+    start_raw = data.get('start_time')
+    end_raw = data.get('end_time')
+    exclude_id = data.get('exclude_id')
+    client_id = data.get('client_id')
+
+    if not start_raw or not end_raw:
+        return jsonify({'success': False, 'error': 'Start and end times are required.'}), 400
+
+    try:
+        start_dt = _parse_iso_datetime(start_raw, 'start time')
+        end_dt = _parse_iso_datetime(end_raw, 'end time')
+        _validate_time_window(start_dt, end_dt)
+    except ValueError as exc:
+        return jsonify({'success': False, 'error': str(exc)}), 400
+
+    resolved_client_id = None
+    if client_id is not None:
+        try:
+            resolved_client_id = int(client_id)
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'error': 'Invalid client id.'}), 400
+
+    if resolved_client_id is None:
+        if exclude_id is None:
+            return jsonify({'success': False, 'error': 'Client context is required.'}), 400
+        with get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "SELECT client_id FROM trainer_schedule WHERE id = %s AND trainer_id = %s",
+                    (exclude_id, trainer_id),
+                )
+                row = cursor.fetchone()
+                if not row:
+                    return jsonify({'success': False, 'error': 'Booking not found.'}), 404
+                resolved_client_id = row[0]
+
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+            conflict, message = _schedule_conflicts(
+                cursor,
+                trainer_id,
+                resolved_client_id,
+                start_dt,
+                end_dt,
+                exclude_id=exclude_id,
+            )
+
+    return jsonify({'success': True, 'conflict': bool(conflict), 'message': message})
 
 
 @app.route('/trainer/schedule/<int:event_id>', methods=['PATCH', 'DELETE'])
@@ -3126,7 +3226,8 @@ def trainer_client_agenda(client_id):
     if selected_view != 'custom' and (start_date_raw or end_date_raw):
         selected_view = 'custom'
 
-    now_local = datetime.now().astimezone()
+    tz_info, timezone_name, tz_offset_minutes = _resolve_request_timezone('client_agenda')
+    now_local = datetime.now(timezone.utc).astimezone(tz_info)
     tz_info = now_local.tzinfo or timezone.utc
     today_local = now_local.date()
 
@@ -3409,6 +3510,8 @@ def trainer_client_agenda(client_id):
         quick_filters=quick_filters,
         selected_ids=selected_ids if request.method == 'POST' and not action_performed else [],
         bulk_action=bulk_action if request.method == 'POST' else '',
+        timezone_name=timezone_name,
+        tz_offset_minutes=tz_offset_minutes,
     )
 
 
@@ -3454,7 +3557,8 @@ def client_self_agenda():
     if selected_view != 'custom' and (start_date_raw or end_date_raw):
         selected_view = 'custom'
 
-    now_local = datetime.now().astimezone()
+    tz_info, timezone_name, tz_offset_minutes = _resolve_request_timezone('client_agenda')
+    now_local = datetime.now(timezone.utc).astimezone(tz_info)
     tz_info = now_local.tzinfo or timezone.utc
     today_local = now_local.date()
 
@@ -3682,6 +3786,8 @@ def client_self_agenda():
         selected_ids=[],
         bulk_action='',
         view_only=True,
+        timezone_name=timezone_name,
+        tz_offset_minutes=tz_offset_minutes,
     )
 
 
@@ -4276,6 +4382,8 @@ def client_schedule_preferences():
         return jsonify({'success': False, 'error': 'Access denied'}), 403
 
     if request.method == 'GET':
+        source_start = DEFAULT_CALENDAR_WINDOW[0]
+        source_end = DEFAULT_CALENDAR_WINDOW[1]
         with get_connection() as conn:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
                 cursor.execute(
@@ -4299,19 +4407,13 @@ def client_schedule_preferences():
                         (trainer_id,),
                     )
                     trainer_pref = cursor.fetchone() or {}
-                    view_start = trainer_pref.get('view_start', 5)
-                    view_end = trainer_pref.get('view_end', 21)
+                    source_start = trainer_pref.get('view_start', source_start)
+                    source_end = trainer_pref.get('view_end', source_end)
                 else:
-                    view_start = pref_row.get('view_start', 5)
-                    view_end = pref_row.get('view_end', 21)
+                    source_start = pref_row.get('view_start', source_start)
+                    source_end = pref_row.get('view_end', source_end)
 
-        try:
-            view_start = max(0, min(23, int(view_start)))
-            view_end = max(1, min(24, int(view_end)))
-            if view_end <= view_start:
-                view_start, view_end = 5, 21
-        except (TypeError, ValueError):
-            view_start, view_end = 5, 21
+        view_start, view_end = _normalize_calendar_window(source_start, source_end)
 
         return jsonify({
             'success': True,
@@ -4330,8 +4432,8 @@ def client_schedule_preferences():
 
     if not (0 <= view_start <= 23 and 1 <= view_end <= 24):
         return jsonify({'success': False, 'error': 'Hours must be between 0 and 24.'}), 400
-    if view_end <= view_start:
-        return jsonify({'success': False, 'error': 'End hour must be after start hour.'}), 400
+    if view_end - view_start < MIN_CALENDAR_WINDOW_HOURS:
+        return jsonify({'success': False, 'error': f'Viewing window must span at least {MIN_CALENDAR_WINDOW_HOURS} hours.'}), 400
 
     with get_connection() as conn:
         with conn.cursor() as cursor:
@@ -5941,11 +6043,17 @@ def search():
                        uep.max_weight,
                        uep.max_reps,
                        uep.notes
-                  FROM workouts w
-             LEFT JOIN user_exercise_progress uep
-                    ON w.id = uep.workout_id
-                   AND uep.user_id = %s
-                 WHERE LOWER(w.name) LIKE LOWER(%s)
+                 FROM workouts w
+            LEFT JOIN user_exercise_progress uep
+                   ON w.id = uep.workout_id
+                  AND uep.user_id = %s
+                WHERE LOWER(w.name) LIKE LOWER(%s)
+                 ORDER BY CASE w.movement_type
+                              WHEN 'compound' THEN 1
+                              WHEN 'accessory' THEN 2
+                              ELSE 3
+                          END,
+                          w.name
                 """,
                 (session["user_id"], f"%{query}%"),
             )

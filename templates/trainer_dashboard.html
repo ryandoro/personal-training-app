@@ -199,7 +199,16 @@
                         </div>
                     </div>
                     <div class="calendar-controls__group">
-                        <div class="calendar-week-label fw-semibold" id="calendar-week-label"></div>
+                        <button type="button"
+                                class="calendar-week-label fw-semibold"
+                                id="calendar-week-label"
+                                aria-label="Select week to view"
+                                title="Tap to jump to another week">
+                            <span id="calendar-week-label-text"></span>
+                            <span class="calendar-week-label__icon" aria-hidden="true">
+                                <i class="bi bi-calendar-event"></i>
+                            </span>
+                        </button>
                     </div>
                     <div class="calendar-controls__group" id="trainer-calendar-nav">
                         <div class="calendar-controls__nav btn-group w-100" role="group" aria-label="Calendar navigation">
@@ -297,6 +306,9 @@
                 <label for="windowEnd" class="form-label">End hour</label>
                 <input type="time" class="form-control" id="windowEnd" step="900" value="21:00">
             </div>
+            <div class="col-12">
+                <div id="windowFormError" class="text-danger small" role="alert" hidden></div>
+            </div>
             <div class="col-12 text-end">
                 <button type="button" class="btn btn-outline-secondary me-2" id="windowCancel">Cancel</button>
                 <button type="submit" class="btn btn-primary">Apply</button>
@@ -305,22 +317,76 @@
     </div>
 </div>
 
+<div id="weekPickerModal" class="calendar-modal" hidden>
+    <div class="calendar-modal-content">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5 class="mb-0">Jump to Week</h5>
+            <button type="button" class="btn-close" id="weekPickerClose"></button>
+        </div>
+        <form id="weekPickerForm" class="row g-3">
+            <div class="col-12">
+                <label for="weekPickerInput" class="form-label fw-bold">Select a date</label>
+                <input type="date" class="form-control" id="weekPickerInput" required>
+            </div>
+            <div class="col-12">
+                <div id="weekPickerError" class="text-danger small" role="alert" hidden></div>
+            </div>
+            <div class="col-12 text-end">
+                <button type="button" class="btn btn-outline-secondary me-2" id="weekPickerCancel">Cancel</button>
+                <button type="submit" class="btn btn-primary">Go</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <div id="eventModal" class="calendar-modal" hidden>
     <div class="calendar-modal-content event-session-modal">
         <div class="event-session-modal__header">
-            <div class="event-session-modal__summary ms-4">
+            <div class="event-session-modal__summary ms-2">
                 <span class="event-session-modal__status" id="eventModalStatus">Booked</span>
                 <h4 class="event-session-modal__title" id="eventModalTitle">Session Details</h4>
-                <div class="event-session-modal__time" id="eventModalTime"></div>
+                <button type="button"
+                        class="event-session-modal__time"
+                        id="eventModalTime"
+                        aria-controls="eventReschedulePanel"
+                        aria-expanded="false">
+                    <span class="event-session-modal__time-display" id="eventModalTimeDisplay"></span>
+                </button>
             </div>
             <div class="event-session-modal__header-actions">
                 <button type="button" class="btn-close btn-close-white mt-1" id="eventModalClose" aria-label="Close"></button>
-                <a href="#" class="btn btn-outline-light btn-sm mt-4 me-4 event-session-modal__agenda-btn" id="eventViewAgenda" hidden>
+                <a href="#" class="btn btn-outline-light btn-sm mt-4 me-2 event-session-modal__agenda-btn" id="eventViewAgenda" hidden>
                     <i class="bi bi-calendar-week me-1"></i>Agenda
                 </a>
             </div>
         </div>
         <div class="event-session-modal__body">
+                <div class="event-session-modal__reschedule" id="eventReschedulePanel" hidden>
+                    <div class="event-session-modal__reschedule-header">
+                        <h6 class="mb-1">Reschedule Session</h6>
+                        <p class="mb-2 text-muted small">Choose the new date or time, then apply changes.</p>
+                    </div>
+                    <form id="eventRescheduleForm" class="row g-2" novalidate>
+                        <div class="col-12 col-sm-6">
+                            <label for="eventRescheduleDate" class="form-label mb-1">New Date</label>
+                            <input type="date" class="form-control" id="eventRescheduleDate" required>
+                        </div>
+                        <div class="col-12 col-sm-6">
+                            <label for="eventRescheduleTime" class="form-label mb-1">New Time</label>
+                            <input type="time" class="form-control" id="eventRescheduleTime" step="900" required>
+                        </div>
+                    <div class="col-12">
+                        <div class="d-flex flex-column flex-sm-row gap-2">
+                            <button type="submit" class="btn btn-primary flex-fill order-sm-2" id="eventRescheduleSubmit">
+                                <i class="bi bi-arrow-repeat me-1"></i>Update Session
+                            </button>
+                            <button type="button" class="btn btn-light flex-fill order-sm-1" id="eventRescheduleCancel">Cancel</button>
+                        </div>
+                        <div class="form-text text-danger mt-2 d-none" id="eventRescheduleError"></div>
+                    </div>
+                </form>
+            </div>
+
             <button type="button" class="btn btn-outline-primary w-100" id="eventViewProfile">
                 <i class="bi bi-person-bounding-box me-1"></i>View Client Profile
             </button>
@@ -507,6 +573,13 @@
     const columnsEl = document.getElementById('calendar-day-columns');
     const emptyState = document.getElementById('calendar-empty-state');
     const weekLabel = document.getElementById('calendar-week-label');
+    const weekLabelText = document.getElementById('calendar-week-label-text');
+    const weekPickerModal = document.getElementById('weekPickerModal');
+    const weekPickerClose = document.getElementById('weekPickerClose');
+    const weekPickerCancel = document.getElementById('weekPickerCancel');
+    const weekPickerForm = document.getElementById('weekPickerForm');
+    const weekPickerInput = document.getElementById('weekPickerInput');
+    const weekPickerError = document.getElementById('weekPickerError');
     const displaySelected = document.getElementById('selected-client-display');
     const selectedClientPill = document.getElementById('selected-client-pill');
     const prevWeekBtn = document.getElementById('calendar-prev-week');
@@ -521,15 +594,24 @@
     const windowForm = document.getElementById('windowForm');
     const windowStartInput = document.getElementById('windowStart');
     const windowEndInput = document.getElementById('windowEnd');
+    const windowFormError = document.getElementById('windowFormError');
     const eventTemplate = document.getElementById('calendar-event-template');
     const bookButtons = document.querySelectorAll('.book-client-btn');
     const eventModal = document.getElementById('eventModal');
     const eventModalClose = document.getElementById('eventModalClose');
     const eventModalTitle = document.getElementById('eventModalTitle');
     const eventModalTime = document.getElementById('eventModalTime');
+    const eventModalTimeDisplay = document.getElementById('eventModalTimeDisplay');
     const eventModalStatus = document.getElementById('eventModalStatus');
     const eventViewAgendaBtn = document.getElementById('eventViewAgenda');
     const eventViewProfileBtn = document.getElementById('eventViewProfile');
+    const eventReschedulePanel = document.getElementById('eventReschedulePanel');
+    const eventRescheduleForm = document.getElementById('eventRescheduleForm');
+    const eventRescheduleDateInput = document.getElementById('eventRescheduleDate');
+    const eventRescheduleTimeInput = document.getElementById('eventRescheduleTime');
+    const eventRescheduleCancel = document.getElementById('eventRescheduleCancel');
+    const eventRescheduleSubmit = document.getElementById('eventRescheduleSubmit');
+    const eventRescheduleError = document.getElementById('eventRescheduleError');
     const eventRepeatForm = document.getElementById('eventRepeatForm');
     const eventRepeatWeeksInput = document.getElementById('eventRepeatWeeks');
     const eventRepeatInfo = document.getElementById('eventRepeatInfo');
@@ -569,6 +651,7 @@
     const eventDeleteDefault = eventDeleteSession ? eventDeleteSession.innerHTML : '';
     const eventNoteSaveDefault = eventNoteSave ? eventNoteSave.innerHTML : '';
     const timeOffModalSaveDefault = timeOffModalSaveButton ? timeOffModalSaveButton.innerHTML : '';
+    const eventRescheduleSubmitDefault = eventRescheduleSubmit ? eventRescheduleSubmit.innerHTML : '';
     const globalToast = document.getElementById('globalToast');
     const toastMessageEl = document.getElementById('toastMessage');
     const toastVariants = ['toast-success', 'toast-warning', 'toast-danger', 'toast-info'];
@@ -722,6 +805,8 @@
         return entry.type || (entry.status === 'time_off' ? 'time_off' : 'session');
     }
 
+    const CONFLICT_MESSAGE = 'This time overlaps another booking or personal time block.';
+
     function hasBlockingConflict(start, end, entryType, excludeKey = null) {
         if (!start || !end) return false;
         return state.events.some(existing => {
@@ -737,6 +822,38 @@
             }
             return true;
         });
+    }
+
+    function checkScheduleConflictRemote(startDate, endDate) {
+        if (!state.modalEvent || !startDate || !endDate) {
+            return Promise.resolve(null);
+        }
+        const payload = {
+            start_time: startDate.toISOString(),
+            end_time: endDate.toISOString(),
+            exclude_id: state.modalEvent.id
+        };
+        if (state.modalEvent.client_id) {
+            payload.client_id = state.modalEvent.client_id;
+        }
+        return fetch('/trainer/schedule/conflicts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        })
+            .then(res => res.json())
+            .then(data => {
+                if (!data.success) {
+                    if (data.conflict) {
+                        return data.message || CONFLICT_MESSAGE;
+                    }
+                    throw new Error(data.error || 'Unable to check conflicts.');
+                }
+                if (data.conflict) {
+                    return data.message || CONFLICT_MESSAGE;
+                }
+                return null;
+            });
     }
 
     function handleDragPointerDown(evt, eventData, column) {
@@ -1080,6 +1197,75 @@
         }
     }
 
+    function setRescheduleAvailability(isAvailable) {
+        if (!eventModalTime) return;
+        const enabled = Boolean(isAvailable);
+        eventModalTime.disabled = !enabled;
+        eventModalTime.classList.toggle('event-session-modal__time--interactive', enabled);
+        if (!enabled) {
+            closeReschedulePanel();
+        }
+    }
+
+    function populateRescheduleInputs(startDate) {
+        if (eventRescheduleDateInput) {
+            if (startDate instanceof Date && !Number.isNaN(startDate.getTime())) {
+                eventRescheduleDateInput.value = formatDateInputValue(startDate);
+            } else {
+                eventRescheduleDateInput.value = '';
+            }
+        }
+        if (eventRescheduleTimeInput) {
+            if (startDate instanceof Date && !Number.isNaN(startDate.getTime())) {
+                eventRescheduleTimeInput.value = formatTimeInputValue(startDate);
+            } else {
+                eventRescheduleTimeInput.value = '';
+            }
+        }
+    }
+
+    function setRescheduleError(message = '') {
+        if (!eventRescheduleError) return;
+        if (message) {
+            eventRescheduleError.textContent = message;
+            eventRescheduleError.classList.remove('d-none');
+        } else {
+            eventRescheduleError.textContent = '';
+            eventRescheduleError.classList.add('d-none');
+        }
+    }
+
+    function openReschedulePanel() {
+        if (!eventReschedulePanel || !state.modalEvent) return;
+        if ((state.modalEvent.type || 'session') === 'time_off') return;
+        const start = new Date(state.modalEvent.start_time);
+        populateRescheduleInputs(start);
+        eventReschedulePanel.hidden = false;
+        setRescheduleError('');
+        if (eventModalTime) {
+            eventModalTime.setAttribute('aria-expanded', 'true');
+        }
+        setTimeout(() => {
+            try {
+                (eventRescheduleDateInput || eventRescheduleTimeInput)?.focus({ preventScroll: true });
+            } catch (_) {}
+        }, 60);
+    }
+
+    function closeReschedulePanel() {
+        if (eventReschedulePanel) {
+            eventReschedulePanel.hidden = true;
+        }
+        if (eventModalTime) {
+            eventModalTime.setAttribute('aria-expanded', 'false');
+        }
+        setRescheduleError('');
+        if (state.modalEvent && (state.modalEvent.type || 'session') !== 'time_off') {
+            const start = new Date(state.modalEvent.start_time);
+            populateRescheduleInputs(start);
+        }
+    }
+
     function refreshModalFromState() {
         if (!state.modalEvent) return;
         const modalData = state.modalEvent;
@@ -1095,10 +1281,22 @@
                 eventModalTitle.textContent = fullName || 'Client Session';
             }
         }
-        if (eventModalTime) {
-            const dateStr = start.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
-            const timeRange = `${formatTime(start)} – ${formatTime(end)}`;
+        const dateStr = start.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+        const timeRange = `${formatTime(start)} – ${formatTime(end)}`;
+        if (eventModalTimeDisplay) {
+            eventModalTimeDisplay.innerHTML = `${dateStr}<br><span class="event-session-modal__time-range">${timeRange}</span>`;
+        } else if (eventModalTime) {
             eventModalTime.innerHTML = `${dateStr}<br><span class="event-session-modal__time-range">${timeRange}</span>`;
+        }
+        if (eventModalTime) {
+            eventModalTime.setAttribute('aria-label', `Scheduled for ${dateStr} from ${timeRange}`);
+        }
+        if (eventType === 'time_off') {
+            populateRescheduleInputs(null);
+            setRescheduleAvailability(false);
+        } else {
+            populateRescheduleInputs(start);
+            setRescheduleAvailability(true);
         }
         const badgeStatus = eventType === 'time_off' ? 'time_off' : status;
         applyStatusBadge(badgeStatus);
@@ -1212,6 +1410,7 @@
                 ? 'time_off'
                 : (eventData.status || 'booked').toLowerCase()
         };
+        closeReschedulePanel();
         state.modalEvent.repeatInfo = undefined;
         if (eventDeleteSession) {
             eventDeleteSession.disabled = false;
@@ -1252,6 +1451,7 @@
             timeOffModalSaveButton.disabled = false;
             timeOffModalSaveButton.innerHTML = timeOffModalSaveDefault;
         }
+        closeReschedulePanel();
         updateNoteWrapperHighlight('');
         clearEventNoteStatus();
         state.modalEvent = null;
@@ -1298,6 +1498,21 @@
         return copy.toISOString();
     }
 
+    function formatDateInputValue(date) {
+        if (!(date instanceof Date)) return '';
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    }
+
+    function formatTimeInputValue(date) {
+        if (!(date instanceof Date)) return '';
+        const hours = String(date.getHours()).padStart(2, '0');
+        const minutes = String(date.getMinutes()).padStart(2, '0');
+        return `${hours}:${minutes}`;
+    }
+
     function clampHour(value) {
         return Math.min(24, Math.max(0, value));
     }
@@ -1330,16 +1545,69 @@
         end.setDate(end.getDate() + 6);
         const startYear = state.weekStart.getFullYear();
         const endYear = end.getFullYear();
-        if (startYear === endYear) {
-            const startText = state.weekStart.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-            const endText = end.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-            weekLabel.textContent = `${startText} – ${endText}, ${startYear}`;
-        } else {
-            const startText = state.weekStart.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-            const endText = end.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-            weekLabel.textContent = `${startText} – ${endText}`;
+        const labelTarget = weekLabelText || weekLabel;
+        if (labelTarget) {
+            if (startYear === endYear) {
+                const startText = state.weekStart.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+                const endText = end.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+                labelTarget.textContent = `${startText} – ${endText}, ${startYear}`;
+            } else {
+                const startText = state.weekStart.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+                const endText = end.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+                labelTarget.textContent = `${startText} – ${endText}`;
+            }
         }
+    if (weekPickerInput) {
+        weekPickerInput.value = formatDateInputValue(state.weekStart);
     }
+}
+
+function setWeekPickerError(message = '') {
+    if (!weekPickerError) return;
+    if (message) {
+        weekPickerError.textContent = message;
+        weekPickerError.hidden = false;
+    } else {
+        weekPickerError.textContent = '';
+        weekPickerError.hidden = true;
+    }
+}
+
+function openWeekPicker() {
+    if (!weekPickerModal) return;
+    setWeekPickerError('');
+    weekPickerModal.hidden = false;
+    if (weekPickerInput) {
+        weekPickerInput.value = formatDateInputValue(state.weekStart);
+        weekPickerInput.focus();
+    }
+}
+
+function closeWeekPicker() {
+    if (!weekPickerModal) return;
+    weekPickerModal.hidden = true;
+    setWeekPickerError('');
+}
+
+function applyWeekPicker(event) {
+    event.preventDefault();
+    if (!weekPickerInput) return;
+    const value = weekPickerInput.value;
+    if (!value) {
+        setWeekPickerError('Please select a date.');
+        return;
+    }
+    const selected = new Date(`${value}T00:00:00`);
+    if (Number.isNaN(selected.getTime())) {
+        setWeekPickerError('Invalid date selected.');
+        return;
+    }
+    state.weekStart = startOfWeek(selected);
+    closeWeekPicker();
+    rebuildGrid();
+    updateWeekLabel();
+    fetchEvents();
+}
 
     function renderHeaders() {
         dayHeaderEl.innerHTML = '';
@@ -1439,6 +1707,25 @@
             scrollWrap.scrollLeft = targetLeft;
         }
         return true;
+    }
+
+    function focusEventInCalendar(eventData) {
+        if (!eventData || typeof eventData.id === 'undefined') return;
+        const entryType = getEntryType(eventData);
+        const selector = `.calendar-event[data-id="${eventData.id}"][data-type="${entryType}"]`;
+        const attemptFocus = (retries = 6) => {
+            const target = columnsEl.querySelector(selector);
+            if (!target) {
+                if (retries > 0) {
+                    setTimeout(() => attemptFocus(retries - 1), 90);
+                }
+                return;
+            }
+            target.classList.add('calendar-event--flash');
+            target.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+            setTimeout(() => target.classList.remove('calendar-event--flash'), 1500);
+        };
+        requestAnimationFrame(() => attemptFocus());
     }
 
     function renderEvents() {
@@ -1601,7 +1888,7 @@
         const end = new Date(state.weekStart);
         end.setDate(end.getDate() + 7);
         const endIso = toISODate(end);
-        fetch(`/trainer/schedule/data?start=${encodeURIComponent(startIso)}&end=${encodeURIComponent(endIso)}`)
+        return fetch(`/trainer/schedule/data?start=${encodeURIComponent(startIso)}&end=${encodeURIComponent(endIso)}`)
             .then(res => res.json())
             .then(data => {
                 if (!data.success) throw new Error(data.error || 'Failed to load schedule.');
@@ -2153,6 +2440,94 @@
             });
     }
 
+    async function handleRescheduleSubmit(event) {
+        if (event) event.preventDefault();
+        if (!state.modalEvent || (state.modalEvent.type || 'session') === 'time_off') return;
+        if (!eventRescheduleDateInput || !eventRescheduleTimeInput || !eventRescheduleSubmit) return;
+        const dateValue = (eventRescheduleDateInput.value || '').trim();
+        const timeValue = (eventRescheduleTimeInput.value || '').trim();
+        if (!dateValue || !timeValue) {
+            setRescheduleError('Select both a date and time.');
+            return;
+        }
+        const startDate = new Date(`${dateValue}T${timeValue}`);
+        if (Number.isNaN(startDate.getTime())) {
+            setRescheduleError('Use a valid date and time.');
+            return;
+        }
+        const originalStart = new Date(state.modalEvent.start_time);
+        const originalEnd = new Date(state.modalEvent.end_time);
+        const durationMs = Math.max(15 * 60 * 1000, Math.max(0, originalEnd.getTime() - originalStart.getTime()));
+        const endDate = new Date(startDate.getTime() + durationMs);
+        const currentKey = eventKey(state.modalEvent);
+        if (hasBlockingConflict(startDate, endDate, 'session', currentKey)) {
+            setRescheduleError(CONFLICT_MESSAGE);
+            return;
+        }
+        try {
+            const remoteConflictMessage = await checkScheduleConflictRemote(startDate, endDate);
+            if (remoteConflictMessage) {
+                setRescheduleError(remoteConflictMessage);
+                return;
+            }
+        } catch (err) {
+            console.error(err);
+            setRescheduleError(err?.message || 'Unable to verify schedule conflicts right now.');
+            return;
+        }
+
+        setRescheduleError('');
+        eventRescheduleSubmit.disabled = true;
+        eventRescheduleSubmit.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Updating...';
+
+        try {
+            const response = await fetch(`/trainer/schedule/${state.modalEvent.id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    start_time: startDate.toISOString(),
+                    end_time: endDate.toISOString()
+                })
+            });
+            const data = await response.json();
+            if (!data.success || !data.event) {
+                setRescheduleError(data.error || 'Unable to update session time.');
+                return;
+            }
+            const updatedEvent = data.event;
+            const focusPayload = { ...updatedEvent };
+            const newStartDate = new Date(updatedEvent.start_time);
+            const validStart = !Number.isNaN(newStartDate.getTime());
+            const newWeekStart = validStart ? startOfWeek(newStartDate) : null;
+            const weekChanged = Boolean(newWeekStart) &&
+                state.weekStart.getTime() !== newWeekStart.getTime();
+
+            if (weekChanged && newWeekStart) {
+                state.weekStart = newWeekStart;
+                rebuildGrid();
+                updateWeekLabel();
+                await fetchEvents();
+            } else {
+                upsertEvent(updatedEvent);
+                sortEvents();
+                renderEvents();
+            }
+
+            closeReschedulePanel();
+            closeEventModal();
+            focusEventInCalendar(focusPayload);
+            showDashboardToast('Session rescheduled.', 'success');
+        } catch (fetchErr) {
+            console.error(fetchErr);
+            setRescheduleError('Network error updating session.');
+        } finally {
+            if (eventRescheduleSubmit) {
+                eventRescheduleSubmit.disabled = false;
+                eventRescheduleSubmit.innerHTML = eventRescheduleSubmitDefault;
+            }
+        }
+    }
+
     function handleStatusUpdate(event) {
         if (event) event.preventDefault();
         if (!state.modalEvent || !eventStatusSelect || !eventStatusUpdate) return;
@@ -2554,24 +2929,42 @@
             });
     }
 
+    function setWindowError(message = '') {
+        if (!windowFormError) return;
+        if (message) {
+            windowFormError.textContent = message;
+            windowFormError.hidden = false;
+            windowStartInput.classList.add('is-invalid');
+            windowEndInput.classList.add('is-invalid');
+        } else {
+            windowFormError.textContent = '';
+            windowFormError.hidden = true;
+            windowStartInput.classList.remove('is-invalid');
+            windowEndInput.classList.remove('is-invalid');
+        }
+    }
+
     function openWindowModal() {
         windowStartInput.value = `${String(state.viewStart).padStart(2, '0')}:00`;
         windowEndInput.value = `${String(state.viewEnd).padStart(2, '0')}:00`;
+        setWindowError('');
         windowModal.hidden = false;
     }
 
     function closeWindowModal() {
         windowModal.hidden = true;
+        setWindowError('');
     }
 
     function applyWindow(event) {
         event.preventDefault();
+        setWindowError('');
         const startValue = (windowStartInput.value || '05:00').split(':')[0];
         const endValue = (windowEndInput.value || '21:00').split(':')[0];
         const start = clampHour(parseInt(startValue, 10));
         const end = clampHour(parseInt(endValue, 10));
-        if (end <= start) {
-            showDashboardToast('End hour must be after start hour.', 'danger');
+        if (end - start < 5) {
+            setWindowError('Viewing window must span at least 5 hours.');
             return;
         }
         state.viewStart = start;
@@ -2688,6 +3081,31 @@
         windowModalClose.addEventListener('click', closeWindowModal);
         windowCancel.addEventListener('click', closeWindowModal);
         windowForm.addEventListener('submit', applyWindow);
+        if (windowStartInput) {
+            windowStartInput.addEventListener('input', () => setWindowError(''));
+        }
+        if (windowEndInput) {
+            windowEndInput.addEventListener('input', () => setWindowError(''));
+        }
+        if (weekLabel) {
+            weekLabel.addEventListener('click', openWeekPicker);
+        }
+        if (weekPickerForm) {
+            weekPickerForm.addEventListener('submit', applyWeekPicker);
+        }
+        if (weekPickerCancel) {
+            weekPickerCancel.addEventListener('click', closeWeekPicker);
+        }
+        if (weekPickerClose) {
+            weekPickerClose.addEventListener('click', closeWeekPicker);
+        }
+        if (weekPickerModal) {
+            weekPickerModal.addEventListener('click', (evt) => {
+                if (evt.target === weekPickerModal) {
+                    closeWeekPicker();
+                }
+            });
+        }
 
         if (eventModalClose) {
             eventModalClose.addEventListener('click', closeEventModal);
@@ -2697,6 +3115,25 @@
                 if (evt.target === eventModal) {
                     closeEventModal();
                 }
+            });
+        }
+        if (eventModalTime) {
+            eventModalTime.addEventListener('click', () => {
+                if (!state.modalEvent || (state.modalEvent.type || 'session') === 'time_off') return;
+                if (!eventReschedulePanel) return;
+                if (eventReschedulePanel.hidden) {
+                    openReschedulePanel();
+                } else {
+                    closeReschedulePanel();
+                }
+            });
+        }
+        if (eventRescheduleForm) {
+            eventRescheduleForm.addEventListener('submit', handleRescheduleSubmit);
+        }
+        if (eventRescheduleCancel) {
+            eventRescheduleCancel.addEventListener('click', () => {
+                closeReschedulePanel();
             });
         }
         if (eventRepeatForm) {

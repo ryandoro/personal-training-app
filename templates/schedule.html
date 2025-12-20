@@ -51,7 +51,16 @@
                         </div>
                     </div>
                     <div class="calendar-controls__group">
-                        <div class="calendar-week-label fw-semibold" id="client-week-label"></div>
+                        <button type="button"
+                                class="calendar-week-label fw-semibold"
+                                id="client-week-label"
+                                aria-label="Select week to view"
+                                title="Tap to jump to another week">
+                            <span id="client-week-label-text"></span>
+                            <span class="calendar-week-label__icon" aria-hidden="true">
+                                <i class="bi bi-calendar-event"></i>
+                            </span>
+                        </button>
                     </div>
                     <div class="calendar-controls__group">
                         <div class="calendar-controls__nav btn-group w-100" role="group" aria-label="Calendar navigation">
@@ -100,9 +109,34 @@
                 <label for="clientWindowEnd" class="form-label">End hour</label>
                 <input type="time" class="form-control" id="clientWindowEnd" step="900" value="21:00">
             </div>
+            <div class="col-12">
+                <div id="clientWindowError" class="text-danger small" role="alert" hidden></div>
+            </div>
             <div class="col-12 text-end">
                 <button type="button" class="btn btn-outline-secondary me-2" id="clientWindowCancel">Cancel</button>
                 <button type="submit" class="btn btn-primary">Apply</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div id="clientWeekPickerModal" class="calendar-modal" hidden>
+    <div class="calendar-modal-content">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5 class="mb-0">Jump to Week</h5>
+            <button type="button" class="btn-close" id="clientWeekPickerClose"></button>
+        </div>
+        <form id="clientWeekPickerForm" class="row g-3">
+            <div class="col-12">
+                <label for="clientWeekPickerInput" class="form-label fw-bold">Select a date</label>
+                <input type="date" class="form-control" id="clientWeekPickerInput" required>
+            </div>
+            <div class="col-12">
+                <div id="clientWeekPickerError" class="text-danger small" role="alert" hidden></div>
+            </div>
+            <div class="col-12 text-end">
+                <button type="button" class="btn btn-outline-secondary me-2" id="clientWeekPickerCancel">Cancel</button>
+                <button type="submit" class="btn btn-primary">Go</button>
             </div>
         </form>
     </div>
@@ -131,6 +165,13 @@
     const columnsEl = document.getElementById('client-day-columns');
     const emptyState = document.getElementById('client-calendar-empty');
     const weekLabel = document.getElementById('client-week-label');
+    const weekLabelText = document.getElementById('client-week-label-text');
+    const weekPickerModal = document.getElementById('clientWeekPickerModal');
+    const weekPickerClose = document.getElementById('clientWeekPickerClose');
+    const weekPickerCancel = document.getElementById('clientWeekPickerCancel');
+    const weekPickerForm = document.getElementById('clientWeekPickerForm');
+    const weekPickerInput = document.getElementById('clientWeekPickerInput');
+    const weekPickerError = document.getElementById('clientWeekPickerError');
     const eventDetails = document.getElementById('client-event-details');
     const scrollWrap = document.getElementById('client-calendar-scroll');
     const scrollHint = document.getElementById('client-scroll-hint');
@@ -146,6 +187,7 @@
     const windowForm = document.getElementById('clientWindowForm');
     const windowStartInput = document.getElementById('clientWindowStart');
     const windowEndInput = document.getElementById('clientWindowEnd');
+    const windowError = document.getElementById('clientWindowError');
     const eventTemplate = document.getElementById('client-calendar-event');
     const VIEW_MODE_STORAGE_KEY = 'client-calendar-view-mode';
 
@@ -262,20 +304,81 @@
         return STATUS_LABELS[(status || 'booked').toLowerCase()] || 'Booked';
     }
 
+    function formatDateInputValue(date) {
+        if (!(date instanceof Date)) return '';
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    }
+
     function updateWeekLabel() {
         const end = new Date(state.weekStart);
         end.setDate(end.getDate() + 6);
         const startYear = state.weekStart.getFullYear();
         const endYear = end.getFullYear();
-        if (startYear === endYear) {
-            const startText = state.weekStart.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-            const endText = end.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-            weekLabel.textContent = `${startText} – ${endText}, ${startYear}`;
-        } else {
-            const startText = state.weekStart.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-            const endText = end.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-            weekLabel.textContent = `${startText} – ${endText}`;
+        const labelTarget = weekLabelText || weekLabel;
+        if (labelTarget) {
+            if (startYear === endYear) {
+                const startText = state.weekStart.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+                const endText = end.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+                labelTarget.textContent = `${startText} – ${endText}, ${startYear}`;
+            } else {
+                const startText = state.weekStart.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+                const endText = end.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+                labelTarget.textContent = `${startText} – ${endText}`;
+            }
         }
+        if (weekPickerInput) {
+            weekPickerInput.value = formatDateInputValue(state.weekStart);
+        }
+    }
+
+    function setWeekPickerError(message = '') {
+        if (!weekPickerError) return;
+        if (message) {
+            weekPickerError.textContent = message;
+            weekPickerError.hidden = false;
+        } else {
+            weekPickerError.textContent = '';
+            weekPickerError.hidden = true;
+        }
+    }
+
+    function openWeekPicker() {
+        if (!weekPickerModal) return;
+        setWeekPickerError('');
+        weekPickerModal.hidden = false;
+        if (weekPickerInput) {
+            weekPickerInput.value = formatDateInputValue(state.weekStart);
+            weekPickerInput.focus();
+        }
+    }
+
+    function closeWeekPicker() {
+        if (!weekPickerModal) return;
+        weekPickerModal.hidden = true;
+        setWeekPickerError('');
+    }
+
+    function applyWeekPicker(event) {
+        event.preventDefault();
+        if (!weekPickerInput) return;
+        const value = weekPickerInput.value;
+        if (!value) {
+            setWeekPickerError('Please select a date.');
+            return;
+        }
+        const selected = new Date(`${value}T00:00:00`);
+        if (Number.isNaN(selected.getTime())) {
+            setWeekPickerError('Invalid date selected.');
+            return;
+        }
+        state.weekStart = startOfWeek(selected);
+        closeWeekPicker();
+        rebuild();
+        updateWeekLabel();
+        fetchEvents();
     }
 
    function renderHeaders() {
@@ -357,6 +460,24 @@
                 column.appendChild(slot);
             }
         });
+    }
+
+    function focusTodayColumn(options = {}) {
+        const { smooth = false } = options;
+        if (!dayHeaderEl || !scrollWrap) return false;
+        const todayHeader = dayHeaderEl.querySelector('.calendar-day-header--today');
+        if (!todayHeader) return false;
+        const desiredLeft = todayHeader.offsetLeft - Math.max(0, (scrollWrap.clientWidth - todayHeader.offsetWidth) / 2);
+        const targetLeft = Math.max(0, desiredLeft);
+        if (typeof scrollWrap.scrollTo === 'function') {
+            scrollWrap.scrollTo({
+                left: targetLeft,
+                behavior: smooth ? 'smooth' : 'auto'
+            });
+        } else {
+            scrollWrap.scrollLeft = targetLeft;
+        }
+        return true;
     }
 
     function renderEvents() {
@@ -447,22 +568,40 @@
             });
     }
 
+    function setWindowError(message = '') {
+        if (!windowError) return;
+        if (message) {
+            windowError.textContent = message;
+            windowError.hidden = false;
+            windowStartInput.classList.add('is-invalid');
+            windowEndInput.classList.add('is-invalid');
+        } else {
+            windowError.textContent = '';
+            windowError.hidden = true;
+            windowStartInput.classList.remove('is-invalid');
+            windowEndInput.classList.remove('is-invalid');
+        }
+    }
+
     function openWindowModal() {
         windowStartInput.value = `${String(state.viewStart).padStart(2, '0')}:00`;
         windowEndInput.value = `${String(state.viewEnd).padStart(2, '0')}:00`;
+        setWindowError('');
         windowModal.hidden = false;
     }
 
     function closeWindowModal() {
         windowModal.hidden = true;
+        setWindowError('');
     }
 
     function applyWindow(evt) {
         evt.preventDefault();
+        setWindowError('');
         const startHour = clampHour(parseInt((windowStartInput.value || '05:00').split(':')[0], 10));
         const endHour = clampHour(parseInt((windowEndInput.value || '21:00').split(':')[0], 10));
-        if (endHour <= startHour) {
-            alert('End hour must be after start hour.');
+        if (endHour - startHour < 5) {
+            setWindowError('Viewing window must span at least 5 hours.');
             return;
         }
         state.viewStart = startHour;
@@ -506,11 +645,14 @@
             .catch(() => alert('Unable to save preferences right now.'));
     }
 
-    function rebuild() {
+    function rebuild(options = {}) {
+        const { focusToday = false, smooth = false } = options;
         renderHeaders();
         renderTimes();
         renderSlots();
-        const scrollWrap = document.getElementById('client-calendar-scroll');
+        if (focusToday && focusTodayColumn({ smooth })) {
+            return;
+        }
         if (scrollWrap) scrollWrap.scrollLeft = 0;
     }
 
@@ -558,7 +700,7 @@
         });
         todayBtn.addEventListener('click', () => {
             state.weekStart = startOfWeek(new Date());
-            rebuild();
+            rebuild({ focusToday: true, smooth: true });
             updateWeekLabel();
             fetchEvents();
         });
@@ -581,6 +723,31 @@
         windowModalClose.addEventListener('click', closeWindowModal);
         windowCancel.addEventListener('click', closeWindowModal);
         windowForm.addEventListener('submit', applyWindow);
+        if (windowStartInput) {
+            windowStartInput.addEventListener('input', () => setWindowError(''));
+        }
+        if (windowEndInput) {
+            windowEndInput.addEventListener('input', () => setWindowError(''));
+        }
+        if (weekLabel) {
+            weekLabel.addEventListener('click', openWeekPicker);
+        }
+        if (weekPickerForm) {
+            weekPickerForm.addEventListener('submit', applyWeekPicker);
+        }
+        if (weekPickerCancel) {
+            weekPickerCancel.addEventListener('click', closeWeekPicker);
+        }
+        if (weekPickerClose) {
+            weekPickerClose.addEventListener('click', closeWeekPicker);
+        }
+        if (weekPickerModal) {
+            weekPickerModal.addEventListener('click', (evt) => {
+                if (evt.target === weekPickerModal) {
+                    closeWeekPicker();
+                }
+            });
+        }
     }
 
     init();

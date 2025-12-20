@@ -2,6 +2,7 @@ from functools import wraps
 from flask import session, redirect, url_for, flash
 import os, psycopg2, re, json
 import hmac, secrets, hashlib, math
+import logging
 from psycopg2 import connect
 from psycopg2.extras import RealDictCursor, Json
 from urllib.parse import urlparse
@@ -11,6 +12,7 @@ from decimal import Decimal
 from datetime import datetime, timedelta, timezone
 
 load_dotenv()
+logger = logging.getLogger(__name__)
 
 def get_connection():
     return psycopg2.connect(os.getenv("DATABASE_URL"))
@@ -736,7 +738,8 @@ def generate_workout(
                         w.image_exercise_end,
                         uep.max_weight,
                         uep.max_reps,
-                        uep.notes
+                        uep.notes,
+                        w.movement_type
                     FROM workouts w
                     LEFT JOIN user_exercise_progress uep
                         ON w.id = uep.workout_id AND uep.user_id = %s
@@ -752,7 +755,32 @@ def generate_workout(
                 """
                 params.append(n)
                 cursor.execute(query, params)
-                exercises = cursor.fetchall()
+                results = cursor.fetchall()
+                ordered_results = []
+                compounds = []
+                accessories = []
+                others = []
+                for row in results:
+                    movement_type = (row[-1] or '').lower()
+                    if movement_type == 'compound':
+                        compounds.append(row)
+                    elif movement_type == 'accessory':
+                        accessories.append(row)
+                    else:
+                        others.append(row)
+                ordered_results.extend(compounds)
+                ordered_results.extend(accessories)
+                ordered_results.extend(others)
+                if ordered_results:
+                    first_type = (ordered_results[0][-1] or '').lower()
+                    has_compound = bool(compounds)
+                    if has_compound and first_type != 'compound':
+                        logger.warning(
+                            "Compound ordering sanity check failed for %s (first=%s)",
+                            subcategory_key or subcategory,
+                            first_type or 'unknown',
+                        )
+                exercises = [row[:-1] for row in ordered_results]
                 if not exercises and subcategory_key in excluded_categories:
                     skipped['subcategories'].add(subcategory_key)
                     continue

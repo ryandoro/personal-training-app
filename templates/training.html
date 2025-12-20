@@ -858,7 +858,8 @@
             const completeWorkoutCard = document.getElementById('complete-workout-card');
             const completeWorkoutBtn = document.getElementById('complete-workout-btn');
             const progressTrackingNote = document.getElementById('progress-tracking-note');
-            const toastGenerate = document.getElementById('toastGenerate');
+            const workoutStack = document.getElementById('workout-stack');
+            let toastSuccess = null;
             const durationHiddenInput = document.getElementById('duration-input');
             const customWorkoutInput = document.getElementById('custom-workout-input');
             const customWorkoutControls = document.getElementById('custom-workout-controls');
@@ -909,7 +910,11 @@
             let draftCustomSelection = new Set();
             let draftEquipmentSelection = new Set();
 
-            let toastGenerateTimeout;
+            let toastSuccessTimeout;
+
+            document.addEventListener('DOMContentLoaded', () => {
+                toastSuccess = document.getElementById('toastSuccess');
+            });
 
             function normalizeCustomSelection(values) {
                 const seen = new Set();
@@ -1286,15 +1291,25 @@
                 content.addEventListener('transitionend', onTransitionEnd);
             }
 
+            function scrollToWorkoutCards() {
+                if (!workoutStack) return;
+                requestAnimationFrame(() => {
+                    workoutStack.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                });
+            }
+
             function showGenerateToast(message) {
-                if (!toastGenerate) return;
-                toastGenerate.textContent = message;
-                toastGenerate.style.display = 'block';
-                if (toastGenerateTimeout) {
-                    clearTimeout(toastGenerateTimeout);
+                if (!toastSuccess) return;
+                toastSuccess.textContent = message;
+                toastSuccess.style.display = 'block';
+                toastSuccess.style.background = '#d1e7dd';
+                toastSuccess.style.color = '#0f5132';
+                toastSuccess.style.border = '1px solid #5cb85c';
+                if (toastSuccessTimeout) {
+                    clearTimeout(toastSuccessTimeout);
                 }
-                toastGenerateTimeout = setTimeout(() => {
-                    toastGenerate.style.display = 'none';
+                toastSuccessTimeout = setTimeout(() => {
+                    toastSuccess.style.display = 'none';
                 }, 2500);
             }
 
@@ -1629,7 +1644,8 @@
                             data.workout,
                             { customCategories: data.custom_categories, homeEquipment: data.home_equipment }
                         );
-                        showGenerateToast(`⚡ New ${data.category || selectedCategory} workout generated.`);
+                        scrollToWorkoutCards();
+                        showGenerateToast('Workout Generated!');
                         updateInjuryAlertBanner(data.skipped);
                         syncSelectStyle();
                         syncGenerateButtonState();
@@ -1888,10 +1904,6 @@
         <!-- Success Toast -->
         <div id="toastSuccess" class="toast-floating toast-success">
             Max updated!
-        </div>
-
-        <div id="toastGenerate" class="toast-floating toast-info">
-            ⚡ Workout ready!
         </div>
 
         <!-- Max Update Modal -->
