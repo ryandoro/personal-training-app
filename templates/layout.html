@@ -3,14 +3,30 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <link rel="canonical" href="https://fitbaseai.com/">
+
     <!-- SEO -->
-    <title>{% block title %}FitBaseAI | Train aware. Live ready.{% endblock %}</title>
-    <meta name="description" content="FitBaseAI is the AI-powered training command center for personal trainers and gym-goers. Build programs in seconds, manage every client, and keep progress tracking automated—Train Aware. Live Ready.">
+    <title>{% block title %}FitBaseAI | Train Aware. Live Ready.{% endblock %}</title>
+    <meta name="description" content="FitBaseAI helps personal trainers and gym members build workouts, track progress, and stay consistent with AI-powered training tools.">
     <meta name="google-site-verification" content="_zkb0OYKwt-Z5L18n3TvGKQ2t40Opq9qHacQpsuO9U4" />
-    
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="FitBaseAI | Train Aware. Live Ready.">
+    <meta property="og:description" content="FitBaseAI helps personal trainers and gym members build workouts, track progress, and stay consistent with AI-powered training tools.">
+    <meta property="og:url" content="https://fitbaseai.com/">
+    <meta property="og:image" content="{{ url_for('static', filename='images/logo_monogram_top_text_bottom.png', _external=True) }}">
+    <meta property="og:image:alt" content="FitBaseAI logo and wordmark">
+
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="FitBaseAI | Train Aware. Live Ready.">
+    <meta name="twitter:description" content="FitBaseAI helps personal trainers and gym members build workouts, track progress, and stay consistent with AI-powered training tools.">
+    <meta name="twitter:image" content="{{ url_for('static', filename='images/logo_monogram_top_text_bottom.png', _external=True) }}">
+
     <!-- Favicon -->
-    <link rel="icon" type="image/png" href="{{ url_for('static', filename='images/favicon.png') }}">
-    <link rel="icon" type="image/png" sizes="192x192" href="{{ url_for('static', filename='favicon.png') }}">
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='favicon.png') }}">
     <link rel="apple-touch-icon" href="{{ url_for('static', filename='favicon.png') }}">
 
     <!-- Include Bootstrap CSS -->
