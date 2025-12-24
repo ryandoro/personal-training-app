@@ -5524,6 +5524,242 @@ iframe.fullscreen-sim {
   box-shadow: 0 16px 32px rgba(247, 147, 26, 0.12);
 }
 
+.training-container .exercise-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.training-container .exercise-card.drag-enabled {
+  cursor: grab;
+}
+
+.training-container .exercise-card-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 3rem;
+  padding: 0;
+  align-self: center;
+  justify-content: center;
+}
+
+.training-container .workout-toggle-bar {
+  margin-bottom: 1rem;
+}
+
+.training-container .workout-toggle-text {
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+  color: #1ea4e6;
+}
+
+.training-container .workout-cards-switch .form-check-input {
+  width: 3rem;
+  height: 1.5rem;
+  cursor: pointer;
+  border-color: rgba(30, 164, 230, 0.45);
+  background-color: rgba(255, 255, 255, 0.6);
+  box-shadow: none;
+}
+
+.training-container .workout-cards-switch .form-check-input:checked {
+  background-color: #1ea4e6;
+  border-color: #1ea4e6;
+}
+
+.training-container .exercise-card-toggle {
+  flex: 1 1 auto;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+}
+
+.training-container .exercise-card-toggle:focus-visible {
+  outline: 0;
+  box-shadow: 0 0 0 0.15rem rgba(30, 164, 230, 0.4);
+  border-radius: 12px;
+}
+
+.training-container .exercise-card-toggle .exercise-name {
+  margin-bottom: 0;
+  flex: 1;
+  text-align: center;
+  display: block;
+}
+
+.training-container .exercise-card-toggle .exercise-name::after {
+  margin: 0.4rem 0 0 0;
+  width: 58px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.training-container .exercise-card-toggle-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.35rem;
+  color: #f7931a;
+  transition: transform 0.2s ease;
+}
+
+.training-container .exercise-card-toggle-icon .bi {
+  font-size: 1.05rem;
+}
+
+.training-container .exercise-drag-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.2rem 0.35rem;
+  min-width: 1.75rem;
+  min-height: 2.5rem;
+  color: rgba(30, 164, 230, 0.8);
+  background: rgba(30, 164, 230, 0.08);
+  border-radius: 10px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease, background 0.2s ease, min-width 0.2s ease, min-height 0.2s ease;
+}
+
+.training-container .exercise-drag-handle .bi {
+  font-size: 1.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+
+.training-container .exercise-card.drag-enabled .exercise-drag-handle {
+  opacity: 1;
+  pointer-events: auto;
+  min-width: 2.5rem;
+  min-height: 3.5rem;
+}
+
+.training-container .exercise-refresh-btn {
+  background: transparent;
+  color: #20c997;
+  border-radius: 999px;
+  border: 0;
+  box-shadow: none;
+  width: 2.35rem;
+  height: 2.35rem;
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s ease, transform 0.2s ease;
+}
+
+.training-container .exercise-refresh-btn:hover,
+.training-container .exercise-refresh-btn:focus-visible {
+  color: #159a74;
+  transform: scale(1.05);
+}
+
+.training-container .exercise-refresh-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.training-container .exercise-refresh-btn.is-refreshing i {
+  animation: exercise-refresh-spin 0.85s linear infinite;
+}
+
+@keyframes exercise-refresh-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 576px) {
+  .training-container .exercise-card-header {
+    align-items: center;
+    gap: 0.35rem;
+  }
+
+  .training-container .exercise-card-toggle {
+    text-align: left;
+  }
+
+  .training-container .exercise-card-controls {
+    flex-direction: column;
+    align-items: center;
+    gap: 0.45rem;
+    align-self: stretch;
+  }
+
+  .training-container .exercise-card-controls .exercise-drag-handle {
+    order: -1;
+    width: 38px;
+    min-width: auto;
+    min-height: 54px;
+  }
+
+  .training-container .exercise-card-controls .exercise-refresh-btn {
+    width: 32px;
+    height: 32px;
+  }
+}
+
+.training-container .exercise-list {
+  margin: 0;
+  padding: 0;
+}
+
+.training-container .exercise-list-item {
+  list-style: none;
+}
+
+.training-container .exercise-list-item.is-dragging {
+  opacity: 0.7;
+}
+
+.training-container .exercise-list-item.is-dragging .exercise-card {
+  box-shadow: 0 20px 25px rgba(15, 81, 50, 0.15);
+}
+
+.exercise-card-drag-preview {
+  border-radius: 18px;
+  opacity: 1;
+  pointer-events: none;
+  z-index: 10000;
+}
+
+.exercise-card-drag-preview .exercise-card-body {
+  display: none !important;
+}
+
+.training-container .exercise-card-body {
+  margin-top: 1.25rem;
+  max-height: 9999px;
+  transition: max-height 0.3s ease, opacity 0.3s ease, margin-top 0.3s ease;
+  overflow: hidden;
+}
+
+.training-container .exercise-card-collapsed .exercise-card-body {
+  max-height: 0;
+  opacity: 0;
+  margin-top: 0;
+  pointer-events: none;
+}
+
+.training-container .exercise-card:not(.exercise-card-collapsed) .exercise-card-toggle-icon {
+  transform: rotate(180deg);
+}
+
 .training-container .exercise-name {
   color: #f7931a;
   text-transform: uppercase;
@@ -6215,10 +6451,15 @@ body.persona-lightbox-open {
   outline: none;
 }
 
+.persona-lightbox__arrows-stack {
+  display: flex;
+  justify-content: center;
+  gap: 0.85rem;
+  margin-top: 0.75rem;
+  width: 100%;
+}
+
 .persona-lightbox__arrow {
-  position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
   width: 46px;
   height: 46px;
   border-radius: 50%;
@@ -6230,21 +6471,12 @@ body.persona-lightbox-open {
   justify-content: center;
   cursor: pointer;
   transition: background 0.2s ease, transform 0.2s ease;
-  z-index: 5;
-}
-
-.persona-lightbox__arrow--prev {
-  left: calc(-1 * var(--persona-lightbox-arrow-offset));
-}
-
-.persona-lightbox__arrow--next {
-  right: calc(-1 * var(--persona-lightbox-arrow-offset));
 }
 
 .persona-lightbox__arrow:hover,
 .persona-lightbox__arrow:focus-visible {
   background: #1ea4e6;
-  transform: translateY(-50%) scale(1.05);
+  transform: scale(1.05);
   outline: none;
 }
 
@@ -6258,25 +6490,28 @@ body.persona-lightbox-open {
     top: -0.5rem;
     right: -0.5rem;
   }
-
-  .persona-lightbox__arrow {
-    width: 40px;
-    height: 40px;
-  }
 }
 
 @media (min-width: 768px) {
-  .persona-lightbox__arrow--prev {
-    left: calc(-1 * var(--persona-lightbox-arrow-offset));
-  }
-
-  .persona-lightbox__arrow--next {
-    right: calc(-1 * var(--persona-lightbox-arrow-offset));
-  }
-
   .persona-lightbox__close {
     top: -1.1rem;
     right: -1.1rem;
+  }
+
+  .persona-lightbox--exercise .persona-lightbox__arrows-stack {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    width: 100%;
+    transform: translateY(-50%);
+    padding: 0 var(--persona-lightbox-arrow-offset);
+    margin-top: 0;
+    justify-content: space-between;
+    pointer-events: none;
+  }
+
+  .persona-lightbox--exercise .persona-lightbox__arrow {
+    pointer-events: auto;
   }
 }
 

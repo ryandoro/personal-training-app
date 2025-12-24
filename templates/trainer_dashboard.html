@@ -405,6 +405,9 @@
                         <i class="bi bi-check2-circle me-1"></i>Apply
                     </button>
                 </form>
+                <div class="form-text mt-2 text-muted" id="eventStatusInfo" role="status" aria-live="polite">
+                    Status changes update client balances immediately.
+                </div>
             </div>
 
             <div class="event-session-modal__section d-none" id="timeOffEditSection">
@@ -659,6 +662,9 @@
     let eventNoteStatusTimer = null;
     const trainerSessionsCompletedEls = document.querySelectorAll('.trainer-sessions-completed-value');
     const trainerStats = JSON.parse('{{ {"totalClients": trainer_stats.total_clients|default(0, true), "sessionsCompleted": trainer_stats.sessions_completed|default(0, true)} | tojson | safe }}');
+    const STATUS_INFO_DEFAULT_SESSION = 'Status changes update client balances immediately.';
+    const STATUS_INFO_DEFAULT_TIME_OFF = 'Personal time blocks prevent new sessions during this window.';
+    const STATUS_INFO_DEFAULT_VARIANT = 'muted';
 
     function setTrainerSessionsCompleted(value) {
         const numeric = Number(value);
@@ -962,6 +968,40 @@
                 globalToast.style.display = 'none';
             }, 4000);
         }
+    }
+
+    function setEventStatusInfoMessage(message, variant = STATUS_INFO_DEFAULT_VARIANT) {
+        if (!eventStatusInfo) return;
+        const text = message ? String(message) : '';
+        const showMessage = Boolean(text);
+        eventStatusInfo.textContent = text;
+        eventStatusInfo.classList.toggle('d-none', !showMessage);
+        eventStatusInfo.classList.remove('text-muted', 'text-danger', 'text-success');
+        if (!showMessage) {
+            eventStatusInfo.classList.add('text-muted');
+            return;
+        }
+        if (variant === 'danger') {
+            eventStatusInfo.classList.add('text-danger');
+        } else if (variant === 'success') {
+            eventStatusInfo.classList.add('text-success');
+        } else {
+            eventStatusInfo.classList.add('text-muted');
+        }
+    }
+
+    function rememberEventStatusDefault(message, variant = STATUS_INFO_DEFAULT_VARIANT) {
+        if (!eventStatusInfo) return;
+        eventStatusInfo.dataset.defaultMessage = message || '';
+        eventStatusInfo.dataset.defaultVariant = variant || STATUS_INFO_DEFAULT_VARIANT;
+        setEventStatusInfoMessage(message, variant);
+    }
+
+    function resetEventStatusInfoMessage() {
+        if (!eventStatusInfo) return;
+        const defaultMessage = eventStatusInfo.dataset.defaultMessage || STATUS_INFO_DEFAULT_SESSION;
+        const defaultVariant = eventStatusInfo.dataset.defaultVariant || STATUS_INFO_DEFAULT_VARIANT;
+        setEventStatusInfoMessage(defaultMessage, defaultVariant);
     }
 
     function updateStatusSelectAppearance(status) {
@@ -1329,9 +1369,10 @@
             updateStatusSelectAppearance(selectStatus);
         }
         if (eventStatusInfo) {
-            eventStatusInfo.textContent = eventType === 'time_off'
-                ? 'Personal time blocks prevent new sessions during this window.'
-                : 'Status changes update client balances immediately.';
+            const statusMessage = eventType === 'time_off'
+                ? STATUS_INFO_DEFAULT_TIME_OFF
+                : STATUS_INFO_DEFAULT_SESSION;
+            rememberEventStatusDefault(statusMessage);
         }
         if (eventStatusUpdate) {
             eventStatusUpdate.disabled = false;
@@ -2302,10 +2343,11 @@ function applyWeekPicker(event) {
                         }
                         if (wasCompleted) {
                             payload.sessions_completed = Math.max((state.selectedClient.sessionsCompleted || 1) - 1, 0);
+                            const currentWorkouts = Number(state.selectedClient.workoutsCompleted || 0);
+                            payload.workouts_completed = Math.max(currentWorkouts - 1, 0);
                             hasUpdate = true;
                         }
                         payload.sessions_remaining = state.selectedClient.sessions;
-                        payload.workouts_completed = state.selectedClient.workoutsCompleted || 0;
                     } else {
                         const buttonRef = document.querySelector(`.book-client-btn[data-client-id="${targetClientId}"]`);
                         if (buttonRef) {
@@ -2317,10 +2359,11 @@ function applyWeekPicker(event) {
                             if (wasCompleted) {
                                 const completedValue = Number(buttonRef.dataset.sessionsCompleted || '1');
                                 payload.sessions_completed = Math.max(completedValue - 1, 0);
+                                const workoutsValue = Number(buttonRef.dataset.workoutsCompleted || '0');
+                                payload.workouts_completed = Math.max(workoutsValue - 1, 0);
                                 hasUpdate = true;
                             }
                             payload.sessions_remaining = buttonRef.dataset.sessions === '' ? null : Number(buttonRef.dataset.sessions || '0');
-                            payload.workouts_completed = Number(buttonRef.dataset.workoutsCompleted || '0');
                         }
                     }
                     if (hasUpdate) {
@@ -2556,6 +2599,7 @@ function applyWeekPicker(event) {
             .then(data => {
                 if (!data.success) {
                     showDashboardToast(data.error || 'Unable to update session status.', 'danger');
+                    setEventStatusInfoMessage(data.error || 'Unable to update session status.', 'danger');
                     if (eventStatusUpdate) {
                         eventStatusUpdate.disabled = false;
                         eventStatusUpdate.innerHTML = eventStatusUpdateDefault;
@@ -2629,6 +2673,7 @@ function applyWeekPicker(event) {
             })
             .catch(() => {
                 showDashboardToast('Unable to update session status right now.', 'danger');
+                setEventStatusInfoMessage('Unable to update session status right now.', 'danger');
             })
             .finally(() => {
                 if (eventStatusUpdate) {
@@ -3146,6 +3191,7 @@ function applyWeekPicker(event) {
             eventStatusSelect.addEventListener('change', () => {
                 const nextStatus = (eventStatusSelect.value || '').toLowerCase();
                 updateStatusSelectAppearance(nextStatus);
+                resetEventStatusInfoMessage();
             });
         }
         if (eventNoteForm) {

@@ -1,0 +1,182 @@
+{% if exercise_loop_index is not defined %}
+    {% set exercise_loop_index = 0 %}
+{% endif %}
+{% if client_id is not defined %}
+    {% set client_id = None %}
+{% endif %}
+{% if client_id and exercise.workout_id %}
+    {% set refresh_url = url_for('trainer_refresh_client_workout_exercise', client_id=client_id, workout_id=exercise.workout_id) %}
+{% else %}
+    {% set refresh_url = '' %}
+{% endif %}
+{% set exercise_name = exercise.name or '' %}
+{% set subcategory_label = subcategory_name or '' %}
+{% set is_cardio = subcategory_label|lower == 'cardio' %}
+{% set is_bodyweight = 'bodyweight' in exercise_name|lower %}
+{% if is_bodyweight or is_cardio %}
+    {% set weight_display = 'Bodyweight' %}
+{% elif exercise.max_weight is not none %}
+    {% set weight_display = (exercise.max_weight|string) ~ ' lbs' %}
+{% else %}
+    {% set weight_display = '—' %}
+{% endif %}
+{% if exercise.max_reps is not none %}
+    {% set reps_unit = ' min' if is_cardio else ' reps' %}
+    {% set reps_display = (exercise.max_reps|string) ~ reps_unit %}
+{% else %}
+    {% set reps_display = '—' %}
+{% endif %}
+{% set notes_text = exercise.notes or '' %}
+{% set has_notes = notes_text|trim %}
+{% set start_raw = exercise.image_exercise_start %}
+{% if start_raw %}
+    {% if start_raw[:4]|lower == 'http' %}
+        {% set start_src = start_raw %}
+    {% elif start_raw.startswith('/static/') %}
+        {% set start_src = start_raw %}
+    {% elif '/' in start_raw %}
+        {% set start_src = url_for('static', filename=start_raw.lstrip('/')) %}
+    {% else %}
+        {% set start_src = url_for('static', filename='images/' ~ start_raw) %}
+    {% endif %}
+{% else %}
+    {% set start_src = None %}
+{% endif %}
+{% set end_raw = exercise.image_exercise_end %}
+{% if end_raw %}
+    {% if end_raw[:4]|lower == 'http' %}
+        {% set end_src = end_raw %}
+    {% elif end_raw.startswith('/static/') %}
+        {% set end_src = end_raw %}
+    {% elif '/' in end_raw %}
+        {% set end_src = url_for('static', filename=end_raw.lstrip('/')) %}
+    {% else %}
+        {% set end_src = url_for('static', filename='images/' ~ end_raw) %}
+    {% endif %}
+{% else %}
+    {% set end_src = None %}
+{% endif %}
+{% set exercise_key = exercise.workout_id or (exercise_name ~ '-' ~ exercise_loop_index) %}
+{% set exercise_dom_id = 'exercise-body-' ~ (exercise_key|string)|replace(' ', '-') %}
+{% set desc_dom_id = 'desc-' ~ (exercise.workout_id or exercise_key) %}
+<li class="mb-4 exercise-list-item"
+    data-subcategory="{{ subcategory_label }}"
+    data-workout-id="{{ exercise.workout_id }}">
+    <div class="card shadow text-center w-100 exercise-card"
+         data-workout-card="{{ exercise.workout_id }}">
+        <div class="exercise-card-header">
+            <button class="exercise-card-toggle"
+                    type="button"
+                    aria-expanded="true"
+                    aria-controls="{{ exercise_dom_id }}">
+                <span class="exercise-name">{{ exercise_name }}</span>
+                <span class="exercise-card-toggle-icon" aria-hidden="true">
+                    <i class="bi bi-chevron-down"></i>
+                </span>
+            </button>
+            <div class="exercise-card-controls">
+                <button type="button"
+                        class="exercise-refresh-btn"
+                        data-subcategory="{{ subcategory_label }}"
+                        data-refresh-url="{{ refresh_url }}"
+                        data-workout-id="{{ exercise.workout_id }}"
+                        aria-label="Swap exercise">
+                    <i class="bi bi-arrow-repeat"></i>
+                </button>
+                <span class="exercise-drag-handle"
+                      title="Drag to reorder"
+                      aria-hidden="true">
+                    <i class="bi bi-grip-vertical"></i>
+                </span>
+            </div>
+        </div>
+        <div id="{{ exercise_dom_id }}" class="exercise-card-body">
+            {% if start_src or end_src %}
+                <div class="exercise-media-row d-flex justify-content-center flex-nowrap mb-3 px-2">
+                    {% if start_src %}
+                        <div class="d-flex flex-column align-items-center">
+                            <p class="exercise-media-label mb-2">Start:</p>
+                            <img src="{{ start_src }}"
+                                 alt="{{ exercise_name }} start"
+                                 class="clickable-img exercise-media-image"
+                                 data-group="{{ exercise_name|replace(' ', '-') }}-{{ exercise_loop_index }}"
+                                 data-index="0">
+                        </div>
+                    {% endif %}
+                    {% if end_src %}
+                        <div class="d-flex flex-column align-items-center">
+                            <p class="exercise-media-label mb-2">End:</p>
+                            <img src="{{ end_src }}"
+                                 alt="{{ exercise_name }} end"
+                                 class="clickable-img exercise-media-image"
+                                 data-group="{{ exercise_name|replace(' ', '-') }}-{{ exercise_loop_index }}"
+                                 data-index="1">
+                        </div>
+                    {% endif %}
+                </div>
+            {% endif %}
+            {% if exercise.youtube_id %}
+                <p class="exercise-media-label mb-2">Video Demonstration:</p>
+                <div class="exercise-video-wrapper mb-4">
+                    <div class="exercise-video-shell">
+                        <iframe class="exercise-video-frame"
+                                src="https://www.youtube.com/embed/{{ exercise.youtube_id }}?mute=1&playsinline=1"
+                                title="{{ exercise_name }} tutorial"
+                                allow="autoplay; encrypted-media"
+                                allowfullscreen></iframe>
+                    </div>
+                </div>
+            {% endif %}
+            <div class="d-flex flex-column align-items-center gap-3 max-actions">
+                <div class="personal-best max-summary"
+                     data-id="{{ exercise.workout_id }}"
+                     data-category="{{ subcategory_label }}">
+                    <span class="max-label text-uppercase fw-semibold">Client Max</span>
+                    <div class="max-pill-row">
+                        <span class="max-pill max-pill-weight">{{ weight_display }}</span>
+                        <span class="max-times">×</span>
+                        <span class="max-pill max-pill-reps">{{ reps_display }}</span>
+                    </div>
+                    <span class="personal-max-text d-none">Client Max: {{ weight_display }} × {{ reps_display }}</span>
+                </div>
+                <div class="d-flex flex-wrap justify-content-center gap-2 max-action-buttons">
+                    <button class="btn btn-outline-secondary btn-sm max-action-btn update-pr-link"
+                            data-id="{{ exercise.workout_id }}"
+                            data-category="{{ subcategory_label }}">
+                        Update Max
+                    </button>
+                    <button class="btn btn-outline-primary btn-sm max-action-btn toggle-description"
+                            type="button"
+                            data-id="{{ desc_dom_id }}"
+                            data-label-show="View Description"
+                            data-label-hide="Hide Description">
+                        View Description
+                    </button>
+                </div>
+            </div>
+            <div id="{{ desc_dom_id }}"
+                 class="exercise-description mt-3 text-center"
+                 style="display: none;">
+                <p class="small text-muted mb-0">{{ exercise.description or 'No description available.' }}</p>
+            </div>
+            <div class="exercise-notes mt-3 text-start">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <i class="bi bi-journal-text text-primary"></i>
+                    <button class="btn btn-outline-info btn-sm edit-notes-btn"
+                            data-id="{{ exercise.workout_id }}"
+                            data-category="{{ subcategory_label }}"
+                            data-notes="{{ notes_text|urlencode }}">
+                        {{ 'Edit Notes' if has_notes else 'Add Notes' }}
+                    </button>
+                </div>
+                <div class="notes-body small" data-id="{{ exercise.workout_id }}">
+                    {% if has_notes %}
+                        {{ notes_text|replace('\n', '<br>')|safe }}
+                    {% else %}
+                        <span class="text-muted">{{ notes_placeholder }}</span>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</li>

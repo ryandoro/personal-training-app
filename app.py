@@ -35,6 +35,7 @@ from helpers import (
     CUSTOM_WORKOUT_CATEGORIES,
     CUSTOM_WORKOUT_SELECTION_LIMITS,
     HOME_EQUIPMENT_OPTIONS,
+    build_home_equipment_clause,
     normalize_custom_workout_categories,
     normalize_home_equipment_selection,
     custom_selection_bounds,
@@ -131,6 +132,7 @@ HISTORY_WINDOW_DELTAS = {
     'all': None,
 }
 DEFAULT_HISTORY_WINDOW = '90d'
+WORKOUT_NOTES_PLACEHOLDER = "No notes yet."
 
 TRAINER_CLIENT_COUNT_BUCKETS = [
     {'code': 1, 'label': '0-5 active clients', 'min': 0, 'max': 5},
@@ -1931,7 +1933,7 @@ def client_profile(client_id):
         premium_generation_allowed=premium_generation_allowed,
         sessions_booked=client.get('sessions_booked') if client else 0,
         sessions_completed=sessions_completed_count,
-        NOTES_PLACEHOLDER='No notes yet.',
+        NOTES_PLACEHOLDER=WORKOUT_NOTES_PLACEHOLDER,
     )
 
 
@@ -2212,6 +2214,21 @@ def _adjust_sessions_booked(cursor, client_id: int, delta: int) -> None:
            SET sessions_booked = CASE
                  WHEN %s >= 0 THEN COALESCE(sessions_booked, 0) + %s
                  ELSE GREATEST(COALESCE(sessions_booked, 0) + %s, 0)
+             END
+         WHERE id = %s
+        """,
+        (delta, delta, delta, client_id),
+    )
+
+def _adjust_workouts_completed(cursor, client_id: int, delta: int) -> None:
+    if not delta:
+        return
+    cursor.execute(
+        """
+        UPDATE users
+           SET workouts_completed = CASE
+                 WHEN %s >= 0 THEN COALESCE(workouts_completed, 0) + %s
+                 ELSE GREATEST(COALESCE(workouts_completed, 0) + %s, 0)
              END
          WHERE id = %s
         """,
@@ -2609,6 +2626,8 @@ def trainer_schedule_modify(event_id):
                 prior_status = (row.get('status') or 'booked').lower()
                 if prior_status == 'booked':
                     _adjust_sessions_booked(cursor, client_id, -1)
+                if prior_status == 'completed':
+                    _adjust_workouts_completed(cursor, client_id, -1)
                 conn.commit()
         return jsonify({'success': True})
 
@@ -2739,17 +2758,7 @@ def trainer_schedule_modify(event_id):
                     return jsonify({'success': False, 'error': 'Booking not found.'}), 404
         if workout_delta:
             with conn.cursor() as cursor:
-                cursor.execute(
-                    """
-                    UPDATE users
-                       SET workouts_completed = CASE
-                             WHEN %s > 0 THEN COALESCE(workouts_completed, 0) + %s
-                             ELSE GREATEST(COALESCE(workouts_completed, 0) + %s, 0)
-                         END
-                     WHERE id = %s
-                    """,
-                    (workout_delta, workout_delta, workout_delta, client_id),
-                )
+                _adjust_workouts_completed(cursor, client_id, workout_delta)
 
         conn.commit()
 
@@ -3347,6 +3356,7 @@ def trainer_client_agenda(client_id):
                 else:
                     if bulk_action == 'delete':
                         booked_count = sum(1 for ev in events if (ev.get('status') or 'booked').lower() == 'booked')
+                        completed_count = sum(1 for ev in events if (ev.get('status') or 'booked').lower() == 'completed')
                         with conn.cursor() as cursor:
                             cursor.execute(
                                 "DELETE FROM trainer_schedule WHERE trainer_id = %s AND client_id = %s AND id = ANY(%s)",
@@ -3354,6 +3364,8 @@ def trainer_client_agenda(client_id):
                             )
                             if booked_count:
                                 _adjust_sessions_booked(cursor, client_id, -booked_count)
+                            if completed_count:
+                                _adjust_workouts_completed(cursor, client_id, -completed_count)
                             conn.commit()
                         flash(f"Removed {len(events)} session(s).", "success")
                         action_performed = True
@@ -3937,6 +3949,7 @@ def trainer_agenda():
                         client_ids: set[int] = set()
                         if bulk_action == 'delete':
                             booked_count_map: dict[int, int] = {}
+                            completed_count_map: dict[int, int] = {}
                             for ev in events:
                                 status = (ev.get('status') or 'booked').lower()
                                 cid = ev.get('client_id')
@@ -3945,12 +3958,16 @@ def trainer_agenda():
                                 client_ids.add(cid)
                                 if status == 'booked':
                                     booked_count_map[cid] = booked_count_map.get(cid, 0) + 1
+                                elif status == 'completed':
+                                    completed_count_map[cid] = completed_count_map.get(cid, 0) + 1
                             cursor.execute(
                                 "DELETE FROM trainer_schedule WHERE trainer_id = %s AND id = ANY(%s)",
                                 (trainer_id, selected_ids),
                             )
                             for cid, delta in booked_count_map.items():
                                 _adjust_sessions_booked(cursor, cid, -delta)
+                            for cid, delta in completed_count_map.items():
+                                _adjust_workouts_completed(cursor, cid, -delta)
                             conn.commit()
                             flash(f"Removed {len(events)} session(s).", "success")
                             action_performed = True
@@ -5660,6 +5677,277 @@ def _complete_workout_for_user(user_id: int) -> tuple[bool, str | None]:
     return True, None
 
 
+def _exercise_entry_workout_id(entry):
+    if isinstance(entry, dict):
+        return entry.get('workout_id')
+    if isinstance(entry, (list, tuple)) and entry:
+        return entry[0]
+    return None
+
+
+def _apply_formatted_exercise(entry, formatted_exercise):
+    fields = [
+        formatted_exercise.get('workout_id'),
+        formatted_exercise.get('name'),
+        formatted_exercise.get('description'),
+        formatted_exercise.get('youtube_id'),
+        formatted_exercise.get('image_exercise_start'),
+        formatted_exercise.get('image_exercise_end'),
+        formatted_exercise.get('max_weight'),
+        formatted_exercise.get('max_reps'),
+        formatted_exercise.get('notes'),
+    ]
+    if isinstance(entry, dict):
+        updated = dict(entry)
+        updated.update({
+            'workout_id': fields[0],
+            'name': fields[1],
+            'description': fields[2],
+            'youtube_id': fields[3],
+            'image_exercise_start': fields[4],
+            'image_exercise_end': fields[5],
+            'max_weight': fields[6],
+            'max_reps': fields[7],
+            'notes': fields[8],
+        })
+        return updated
+    if isinstance(entry, list):
+        entry_list = list(entry)
+        while len(entry_list) < len(fields):
+            entry_list.append(None)
+        for idx, value in enumerate(fields):
+            entry_list[idx] = value
+        return entry_list
+    return fields
+
+
+@app.post('/trainer/clients/<int:client_id>/workout/reorder')
+@login_required
+def trainer_reorder_client_workout_exercises(client_id):
+    trainer_id = session['user_id']
+    trainer = _require_trainer(trainer_id)
+    if not trainer:
+        return jsonify({'success': False, 'error': 'Trainer access required.'}), 403
+
+    payload = request.get_json(silent=True) or {}
+    subcategory = (payload.get('subcategory') or '').strip()
+    order_list = payload.get('order')
+    if not subcategory or not isinstance(order_list, list) or not order_list:
+        return jsonify({'success': False, 'error': 'Invalid reorder payload.'}), 400
+
+    sanitized_order = []
+    for value in order_list:
+        key = str(value).strip()
+        if not key:
+            continue
+        sanitized_order.append(key)
+    if len(sanitized_order) != len(order_list):
+        return jsonify({'success': False, 'error': 'Invalid exercise identifiers provided.'}), 400
+    if len(set(sanitized_order)) != len(sanitized_order):
+        return jsonify({'success': False, 'error': 'Duplicate exercise identifiers provided.'}), 400
+
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            cursor.execute("SELECT trainer_id FROM users WHERE id = %s", (client_id,))
+            client_row = cursor.fetchone()
+    if not client_row:
+        return jsonify({'success': False, 'error': 'Client not found.'}), 404
+    is_admin = (trainer.get('role') or '').lower() == 'admin'
+    if client_row.get('trainer_id') != trainer_id and not is_admin:
+        return jsonify({'success': False, 'error': 'You do not have access to that client.'}), 403
+
+    active = get_active_workout(client_id)
+    if not active:
+        return jsonify({'success': False, 'error': 'No active workout to update.'}), 404
+    workout_payload = active.get('workout_data') or {}
+    plan = workout_payload.get('plan')
+    if not isinstance(plan, list):
+        return jsonify({'success': False, 'error': 'Active workout plan is missing.'}), 400
+
+    target_label = subcategory.lower()
+    target_block = None
+    for block in plan:
+        label = str(block.get('subcategory') or '').strip()
+        if label.lower() == target_label:
+            target_block = block
+            break
+    if not target_block:
+        return jsonify({'success': False, 'error': 'Workout category not found.'}), 404
+
+    exercises = target_block.get('exercises') or []
+    if len(exercises) != len(sanitized_order):
+        return jsonify({'success': False, 'error': 'Exercise count mismatch. Refresh and try again.'}), 400
+
+    lookup = {}
+    for entry in exercises:
+        workout_id = _exercise_entry_workout_id(entry)
+        if workout_id is None:
+            return jsonify({'success': False, 'error': 'An exercise is missing its identifier.'}), 400
+        key = str(workout_id)
+        lookup[key] = entry
+    if set(lookup.keys()) != set(sanitized_order):
+        return jsonify({'success': False, 'error': 'Invalid exercise order submitted.'}), 400
+
+    target_block['exercises'] = [lookup[wid] for wid in sanitized_order]
+
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE active_workouts
+                   SET workout_data = %s
+                 WHERE user_id = %s
+                """,
+                (psycopg2.extras.Json(workout_payload), client_id),
+            )
+            conn.commit()
+
+    return jsonify({'success': True})
+
+
+@app.post('/trainer/clients/<int:client_id>/workout/exercises/<int:workout_id>/refresh')
+@login_required
+def trainer_refresh_client_workout_exercise(client_id, workout_id):
+    trainer_id = session['user_id']
+    trainer = _require_trainer(trainer_id)
+    if not trainer:
+        return jsonify({'success': False, 'error': 'Trainer access required.'}), 403
+
+    payload = request.get_json(silent=True) or {}
+    subcategory = (payload.get('subcategory') or '').strip()
+    if not subcategory:
+        return jsonify({'success': False, 'error': 'Workout category is required.'}), 400
+
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            cursor.execute(
+                "SELECT trainer_id, exercise_history FROM users WHERE id = %s",
+                (client_id,),
+            )
+            client_row = cursor.fetchone()
+    if not client_row:
+        return jsonify({'success': False, 'error': 'Client not found.'}), 404
+    is_admin = (trainer.get('role') or '').lower() == 'admin'
+    if client_row.get('trainer_id') != trainer_id and not is_admin:
+        return jsonify({'success': False, 'error': 'You do not have access to that client.'}), 403
+
+    active = get_active_workout(client_id)
+    if not active:
+        return jsonify({'success': False, 'error': 'No active workout to update.'}), 404
+    workout_payload = active.get('workout_data') or {}
+    plan = workout_payload.get('plan')
+    if not isinstance(plan, list):
+        return jsonify({'success': False, 'error': 'Active workout plan is missing.'}), 400
+
+    normalized_subcategory = subcategory.lower()
+    target_block = None
+    for block in plan:
+        label = str(block.get('subcategory') or '').strip()
+        if label.lower() == normalized_subcategory:
+            target_block = block
+            break
+    if not target_block:
+        return jsonify({'success': False, 'error': 'Workout category not found.'}), 404
+
+    exercises = target_block.get('exercises') or []
+    if not exercises:
+        return jsonify({'success': False, 'error': 'No exercises available for this category.'}), 400
+
+    existing_ids = set()
+    replacement_index = None
+    for idx, entry in enumerate(exercises):
+        entry_id = _exercise_entry_workout_id(entry)
+        if entry_id is None:
+            return jsonify({'success': False, 'error': 'An exercise is missing its identifier.'}), 400
+        try:
+            entry_int = int(entry_id)
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'error': 'Invalid exercise identifier detected.'}), 400
+        existing_ids.add(entry_int)
+        if entry_int == workout_id:
+            replacement_index = idx
+    if replacement_index is None:
+        return jsonify({'success': False, 'error': 'Exercise not found in this workout.'}), 404
+
+    user_level = get_user_level(client_row.get('exercise_history'))
+    equipment_tokens = []
+    raw_equipment = workout_payload.get('home_equipment')
+    if raw_equipment:
+        equipment_tokens = normalize_home_equipment_selection(raw_equipment)
+    equipment_clause = ""
+    equipment_params = []
+    if equipment_tokens:
+        equipment_clause, equipment_params = build_home_equipment_clause(equipment_tokens)
+
+    query = """
+        SELECT
+            w.id AS workout_id,
+            w.name,
+            w.description,
+            w.youtube_id,
+            w.image_exercise_start,
+            w.image_exercise_end,
+            uep.max_weight,
+            uep.max_reps,
+            uep.notes
+        FROM workouts w
+        LEFT JOIN user_exercise_progress uep
+            ON w.id = uep.workout_id AND uep.user_id = %s
+        WHERE w.category = %s
+          AND w.level <= %s
+    """
+    params = [client_id, subcategory, user_level]
+    excluded_ids = sorted(existing_ids)
+    if excluded_ids:
+        placeholders = ','.join(['%s'] * len(excluded_ids))
+        query += f" AND w.id NOT IN ({placeholders})"
+        params.extend(excluded_ids)
+    if equipment_clause:
+        query += f" AND {equipment_clause}"
+        params.extend(equipment_params)
+    query += " ORDER BY RANDOM() LIMIT 1"
+
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            cursor.execute(query, params)
+            replacement_row = cursor.fetchone()
+        if not replacement_row:
+            return jsonify({'success': False, 'error': "No alternates match this client's level or equipment setup right now."}), 404
+
+        formatted_exercise = _format_exercise(subcategory, replacement_row)
+        exercises[replacement_index] = _apply_formatted_exercise(
+            exercises[replacement_index],
+            formatted_exercise,
+        )
+
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE active_workouts
+                   SET workout_data = %s
+                 WHERE user_id = %s
+                """,
+                (psycopg2.extras.Json(workout_payload), client_id),
+            )
+        conn.commit()
+
+    card_html = render_template(
+        'components/exercise_card.html',
+        exercise=formatted_exercise,
+        subcategory_name=target_block.get('subcategory') or subcategory,
+        exercise_loop_index=replacement_index,
+        notes_placeholder=WORKOUT_NOTES_PLACEHOLDER,
+        client_id=client_id,
+    )
+
+    return jsonify({
+        'success': True,
+        'exercise': formatted_exercise,
+        'workout_id': formatted_exercise.get('workout_id'),
+        'card_html': card_html,
+    })
+
+
 @app.get('/exercise_progress/<int:workout_id>')
 @login_required
 def get_exercise_progress_route(workout_id):
@@ -6063,7 +6351,7 @@ def search():
         "search_results.html",
         query=query,
         results=results,
-        NOTES_PLACEHOLDER="No notes yet.",
+        NOTES_PLACEHOLDER=WORKOUT_NOTES_PLACEHOLDER,
     )
 
 

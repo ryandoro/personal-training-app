@@ -100,8 +100,8 @@ HOME_EQUIPMENT_OPTIONS = [
     {"token": "BARBELL", "label": "Barbell"},
     {"token": "STABILITY_BALL", "label": "Stability Ball"},
     {"token": "PULL_UP_BAR", "label": "Pull-Up Bar"},
-    {"token": "FREEWEIGHT_FLAT_BENCH", "label": "Freeweight Flat Bench"},
-    {"token": "FREEWEIGHT_ADJUSTABLE_BENCH", "label": "Freeweight Adjustable Bench"},
+    {"token": "FREEWEIGHT_FLAT_BENCH", "label": "Flat Bench"},
+    {"token": "FREEWEIGHT_ADJUSTABLE_BENCH", "label": "Adjustable Bench"},
 ]
 
 HOME_EQUIPMENT_FILTERS = {
@@ -131,6 +131,13 @@ HOME_EQUIPMENT_FILTERS = {
     },
 }
 HOME_EQUIPMENT_TOKEN_SET = {option["token"] for option in HOME_EQUIPMENT_OPTIONS}
+
+# Prefix lookup so both leg press machine families can be identified quickly
+LEG_PRESS_MACHINE_PREFIXES = {
+    "LIFE_FITNESS": "life fitness leg press machine",
+    "HAMMER_STRENGTH": "hammer strength leg press machine",
+}
+LEG_PRESS_FETCH_BUFFER = 4
 
 
 def normalize_home_equipment_selection(values) -> list[str]:
@@ -629,6 +636,88 @@ def get_user_level(exercise_history: str | None) -> int:
     return LEVEL_MAP.get(exercise_history, 1)
 
 
+def identify_leg_press_machine(name: str | None) -> str | None:
+    """Return the normalized machine key for any leg press variation."""
+    if not name:
+        return None
+    normalized = name.strip().lower()
+    for key, prefix in LEG_PRESS_MACHINE_PREFIXES.items():
+        if normalized.startswith(prefix):
+            return key
+    return None
+
+
+def filter_leg_press_rows(rows, forced_machine: str | None = None):
+    """
+    Remove rows that belong to both machine families, keeping only the requested
+    machine (or the first encountered machine when not forced).
+    """
+    machine_key = forced_machine
+    filtered = []
+    for row in rows or []:
+        machine = identify_leg_press_machine(row[1] if len(row) > 1 else None)
+        if not machine:
+            filtered.append(row)
+            continue
+        if machine_key and machine != machine_key:
+            continue
+        if not machine_key:
+            machine_key = machine
+        filtered.append(row)
+    return filtered, machine_key
+
+
+def group_leg_press_rows(rows, forced_machine: str | None = None):
+    """Ensure all selected leg press exercises remain contiguous."""
+    machine_key = forced_machine
+    machine_rows = []
+    non_machine_rows = []
+    insertion_idx = None
+
+    for row in rows or []:
+        machine = identify_leg_press_machine(row[1] if len(row) > 1 else None)
+        if machine:
+            if machine_key and machine != machine_key:
+                continue
+            if not machine_key:
+                machine_key = machine
+            if machine == machine_key:
+                if insertion_idx is None:
+                    insertion_idx = len(non_machine_rows)
+                machine_rows.append(row)
+            continue
+        non_machine_rows.append(row)
+
+    if not machine_rows:
+        if len(non_machine_rows) == len(rows):
+            return rows, machine_key
+        return non_machine_rows, machine_key
+
+    if insertion_idx is None:
+        insertion_idx = len(non_machine_rows)
+
+    grouped = non_machine_rows[:]
+    grouped[insertion_idx:insertion_idx] = machine_rows
+    return grouped, machine_key
+
+
+def prioritize_movement_types(rows):
+    """Return exercises ordered Compound → Accessory → Other."""
+    compounds = []
+    accessories = []
+    others = []
+    for row in rows or []:
+        movement_type = (row[-1] or '').lower()
+        if movement_type == 'compound':
+            compounds.append(row)
+        elif movement_type == 'accessory':
+            accessories.append(row)
+        else:
+            others.append(row)
+    ordered = compounds + accessories + others
+    return ordered, bool(compounds)
+
+
 def generate_workout(
     selected_category,
     user_level,
@@ -753,28 +842,40 @@ def generate_workout(
                     ORDER BY RANDOM()
                     LIMIT %s
                 """
-                params.append(n)
+                fetch_limit = n
+                include_leg_press_buffer = subcategory_key == 'LEGS' and n > 0
+                if include_leg_press_buffer:
+                    fetch_limit += LEG_PRESS_FETCH_BUFFER
+                params.append(fetch_limit)
                 cursor.execute(query, params)
                 results = cursor.fetchall()
-                ordered_results = []
-                compounds = []
-                accessories = []
-                others = []
-                for row in results:
-                    movement_type = (row[-1] or '').lower()
-                    if movement_type == 'compound':
-                        compounds.append(row)
-                    elif movement_type == 'accessory':
-                        accessories.append(row)
-                    else:
-                        others.append(row)
-                ordered_results.extend(compounds)
-                ordered_results.extend(accessories)
-                ordered_results.extend(others)
-                if ordered_results:
+                selected_rows = list(results[:n])
+                extras = list(results[n:]) if include_leg_press_buffer else []
+                chosen_machine = None
+                if subcategory_key == 'LEGS':
+                    selected_rows, chosen_machine = filter_leg_press_rows(selected_rows)
+                if extras and len(selected_rows) < n:
+                    selected_ids = {row[0] for row in selected_rows}
+                    for row in extras:
+                        if row[0] in selected_ids:
+                            continue
+                        if subcategory_key == 'LEGS':
+                            machine = identify_leg_press_machine(row[1] if len(row) > 1 else None)
+                            if machine:
+                                if chosen_machine and machine != chosen_machine:
+                                    continue
+                                if not chosen_machine:
+                                    chosen_machine = machine
+                        selected_rows.append(row)
+                        selected_ids.add(row[0])
+                        if len(selected_rows) >= n:
+                            break
+                ordered_results, has_compound = prioritize_movement_types(selected_rows)
+                if subcategory_key == 'LEGS':
+                    ordered_results, chosen_machine = group_leg_press_rows(ordered_results, chosen_machine)
+                if ordered_results and has_compound:
                     first_type = (ordered_results[0][-1] or '').lower()
-                    has_compound = bool(compounds)
-                    if has_compound and first_type != 'compound':
+                    if first_type != 'compound':
                         logger.warning(
                             "Compound ordering sanity check failed for %s (first=%s)",
                             subcategory_key or subcategory,
