@@ -460,6 +460,9 @@
                 <button type="button" class="btn btn-danger w-100 mt-3" id="eventDeleteSession">
                     <i class="bi bi-trash me-1"></i>Delete Session
                 </button>
+                <button type="button" class="btn btn-outline-danger w-100 mt-2" id="eventDeleteSeries" hidden>
+                    <i class="bi bi-calendar-x me-1"></i>Delete All Sessions
+                </button>
             </div>
         </div>
     </div>
@@ -626,6 +629,7 @@
     const eventStatusUpdate = document.getElementById('eventStatusUpdate');
     const eventStatusInfo = document.getElementById('eventStatusInfo');
     const eventDeleteSession = document.getElementById('eventDeleteSession');
+    const eventDeleteSeries = document.getElementById('eventDeleteSeries');
     const eventStatusSection = eventStatusForm ? eventStatusForm.closest('.event-session-modal__section') : null;
     const timeOffForm = document.getElementById('timeOffForm');
     const timeOffStartInput = document.getElementById('timeOffStart');
@@ -652,6 +656,7 @@
     const eventRepeatSubmitDefault = eventRepeatSubmit ? eventRepeatSubmit.innerHTML : '';
     const eventStatusUpdateDefault = eventStatusUpdate ? eventStatusUpdate.innerHTML : '';
     const eventDeleteDefault = eventDeleteSession ? eventDeleteSession.innerHTML : '';
+    const eventDeleteSeriesDefault = eventDeleteSeries ? eventDeleteSeries.innerHTML : '';
     const eventNoteSaveDefault = eventNoteSave ? eventNoteSave.innerHTML : '';
     const timeOffModalSaveDefault = timeOffModalSaveButton ? timeOffModalSaveButton.innerHTML : '';
     const eventRescheduleSubmitDefault = eventRescheduleSubmit ? eventRescheduleSubmit.innerHTML : '';
@@ -685,6 +690,36 @@
     }
 
     setTrainerSessionsCompleted(trainerStats.sessionsCompleted || 0);
+
+    function getWeekdayLabel(date) {
+        if (!(date instanceof Date) || Number.isNaN(date.getTime())) return null;
+        try {
+            return date.toLocaleDateString(undefined, { weekday: 'long' });
+        } catch (_) {
+            return null;
+        }
+    }
+
+    function formatTimeRangeLabel(startDate, endDate) {
+        const hasStart = startDate instanceof Date && !Number.isNaN(startDate.getTime());
+        const hasEnd = endDate instanceof Date && !Number.isNaN(endDate.getTime());
+        if (!hasStart) return '';
+        if (!hasEnd) {
+            return formatTime(startDate);
+        }
+        return `${formatTime(startDate)} – ${formatTime(endDate)}`;
+    }
+
+    function getModalClientName() {
+        if (!state.modalEvent) return null;
+        const first = (state.modalEvent.client_name || '').trim();
+        const last = (state.modalEvent.client_last_name || '').trim();
+        const username = (state.modalEvent.client_username || '').trim();
+        const full = `${first} ${last}`.trim();
+        if (full) return full;
+        if (username) return username;
+        return null;
+    }
 
     if (eventRepeatWeeksInput) {
         const sanitizeRepeatWeeks = () => {
@@ -1110,6 +1145,32 @@
         });
     }
 
+    function removeEventsByIds(ids, entryType) {
+        if (!Array.isArray(ids) || !ids.length) return;
+        const normalizedType = entryType === 'time_off' ? 'time_off' : 'session';
+        const numericSet = new Set();
+        const stringSet = new Set();
+        ids.forEach(val => {
+            if (val === null || typeof val === 'undefined') return;
+            const numeric = Number(val);
+            if (Number.isFinite(numeric)) {
+                numericSet.add(numeric);
+            }
+            stringSet.add(String(val));
+        });
+        if (!numericSet.size && !stringSet.size) return;
+        state.events = state.events.filter(ev => {
+            if (getEntryType(ev) !== normalizedType) {
+                return true;
+            }
+            const eventIdNumeric = Number(ev.id);
+            if (Number.isFinite(eventIdNumeric) && numericSet.has(eventIdNumeric)) {
+                return false;
+            }
+            return !stringSet.has(String(ev.id));
+        });
+    }
+
     function syncClientSessionCounts(clientId, counts = {}) {
         const {
             sessions_booked: bookedValue,
@@ -1427,6 +1488,32 @@
             }
             eventDeleteSession.disabled = false;
         }
+        if (eventDeleteSeries) {
+            const weekdayLabel = getWeekdayLabel(start);
+            const timeRangeLabel = formatTimeRangeLabel(start, end);
+            const isTimeOff = eventType === 'time_off';
+            const showSeriesDelete = Boolean(
+                weekdayLabel &&
+                timeRangeLabel &&
+                (isTimeOff || status === 'booked')
+            );
+            if (showSeriesDelete) {
+                const nounLabel = isTimeOff ? 'Time Off' : 'Sessions';
+                eventDeleteSeries.innerHTML = `<i class="bi bi-calendar-x me-1"></i>Delete All ${weekdayLabel} ${timeRangeLabel} ${nounLabel}`;
+                eventDeleteSeries.hidden = false;
+                eventDeleteSeries.disabled = false;
+                eventDeleteSeries.dataset.weekdayLabel = weekdayLabel;
+                eventDeleteSeries.dataset.timeRangeLabel = timeRangeLabel;
+                eventDeleteSeries.dataset.entryType = isTimeOff ? 'time_off' : 'session';
+            } else {
+                eventDeleteSeries.hidden = true;
+                eventDeleteSeries.disabled = true;
+                eventDeleteSeries.dataset.weekdayLabel = '';
+                eventDeleteSeries.dataset.timeRangeLabel = '';
+                eventDeleteSeries.dataset.entryType = '';
+                eventDeleteSeries.innerHTML = eventDeleteSeriesDefault;
+            }
+        }
         if (eventNoteInput) {
             eventNoteInput.value = modalData.note ?? '';
             updateNoteWrapperHighlight(eventNoteInput.value);
@@ -1457,6 +1544,14 @@
             eventDeleteSession.disabled = false;
             eventDeleteSession.innerHTML = eventDeleteDefault;
         }
+        if (eventDeleteSeries) {
+            eventDeleteSeries.hidden = true;
+            eventDeleteSeries.disabled = false;
+            eventDeleteSeries.innerHTML = eventDeleteSeriesDefault;
+            eventDeleteSeries.dataset.weekdayLabel = '';
+            eventDeleteSeries.dataset.timeRangeLabel = '';
+            eventDeleteSeries.dataset.entryType = '';
+        }
         refreshModalFromState();
         if (eventRepeatWeeksInput) {
             eventRepeatWeeksInput.value = '';
@@ -1483,6 +1578,14 @@
         if (eventDeleteSession) {
             eventDeleteSession.disabled = false;
             eventDeleteSession.innerHTML = eventDeleteDefault;
+        }
+        if (eventDeleteSeries) {
+            eventDeleteSeries.hidden = true;
+            eventDeleteSeries.disabled = false;
+            eventDeleteSeries.innerHTML = eventDeleteSeriesDefault;
+            eventDeleteSeries.dataset.weekdayLabel = '';
+            eventDeleteSeries.dataset.timeRangeLabel = '';
+            eventDeleteSeries.dataset.entryType = '';
         }
         if (eventNoteSave) {
             eventNoteSave.disabled = false;
@@ -2756,10 +2859,18 @@ function applyWeekPicker(event) {
         if (!state.modalEvent || !eventDeleteSession || eventDeleteSession.disabled) return;
         const eventType = state.modalEvent.type || 'session';
         const isTimeOff = eventType === 'time_off';
-        const confirmMessage = isTimeOff ? 'Delete this personal time block?' : 'Delete this session permanently?';
+        const clientLabel = getModalClientName();
+        const confirmMessage = isTimeOff
+            ? 'Delete this personal time block?'
+            : clientLabel
+                ? `Delete this session permanently for ${clientLabel}?`
+                : 'Delete this session permanently?';
         if (!confirm(confirmMessage)) return;
         eventDeleteSession.disabled = true;
         eventDeleteSession.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Deleting...';
+        if (eventDeleteSeries) {
+            eventDeleteSeries.disabled = true;
+        }
         const targetId = state.modalEvent.id;
         deleteEvent(targetId, eventType, { skipConfirm: true })
             .then(success => {
@@ -2769,6 +2880,116 @@ function applyWeekPicker(event) {
                 } else if (eventDeleteSession) {
                     eventDeleteSession.disabled = false;
                     eventDeleteSession.innerHTML = eventDeleteDefault;
+                    if (eventDeleteSeries) {
+                        eventDeleteSeries.disabled = false;
+                    }
+                }
+            });
+    }
+
+    function handleDeleteSeries() {
+        if (!state.modalEvent || !eventDeleteSeries || eventDeleteSeries.disabled) return;
+        const eventType = state.modalEvent.type || 'session';
+        const normalizedType = eventType === 'time_off' ? 'time_off' : 'session';
+        const status = (state.modalEvent.status || 'booked').toLowerCase();
+        if (normalizedType !== 'time_off' && status !== 'booked') {
+            showDashboardToast('Only booked sessions can be deleted in a series.', 'warning');
+            return;
+        }
+        const startDate = new Date(state.modalEvent.start_time);
+        const endDate = new Date(state.modalEvent.end_time);
+        const datasetWeekday = eventDeleteSeries.dataset.weekdayLabel;
+        const datasetTimeRange = eventDeleteSeries.dataset.timeRangeLabel;
+        const weekdayLabel = datasetWeekday || getWeekdayLabel(startDate) || 'selected';
+        const timeRangeLabel = datasetTimeRange || formatTimeRangeLabel(startDate, endDate) || '';
+        const descriptorParts = [weekdayLabel, timeRangeLabel].filter(Boolean);
+        const descriptorLabel = descriptorParts.join(' ').trim() || 'selected time';
+        const clientLabel = getModalClientName();
+        const prompt = normalizedType === 'time_off'
+            ? `Delete all ${descriptorLabel} personal time blocks permanently?`
+            : clientLabel
+                ? `Delete all ${descriptorLabel} sessions permanently for ${clientLabel}?`
+                : `Delete all ${descriptorLabel} sessions permanently?`;
+        if (!window.confirm(prompt)) {
+            return;
+        }
+        const previousSeriesLabel = eventDeleteSeries.innerHTML;
+        eventDeleteSeries.disabled = true;
+        eventDeleteSeries.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Deleting...';
+        eventDeleteSeries.dataset.previousLabel = previousSeriesLabel;
+        if (eventDeleteSession) {
+            eventDeleteSession.disabled = true;
+            eventDeleteSession.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Deleting...';
+        }
+        const timezoneName = Intl.DateTimeFormat().resolvedOptions().timeZone || null;
+        const timezoneOffsetMinutes = new Date().getTimezoneOffset();
+        const endpoint = normalizedType === 'time_off'
+            ? `/trainer/time-off/${state.modalEvent.id}/delete-weekday`
+            : `/trainer/schedule/${state.modalEvent.id}/delete-weekday`;
+        fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                timezone: timezoneName,
+                timezone_offset_minutes: timezoneOffsetMinutes
+            })
+        })
+            .then(res => res.json())
+            .then(data => {
+                if (!data.success) {
+                    showDashboardToast(data.error || 'Unable to delete that series.', 'danger');
+                    return;
+                }
+                const deletedIds = Array.isArray(data.deleted_ids) ? data.deleted_ids : [];
+                if (deletedIds.length) {
+                    removeEventsByIds(deletedIds, normalizedType);
+                    renderEvents();
+                } else {
+                    fetchEvents();
+                }
+                if (normalizedType !== 'time_off') {
+                    syncClientSessionCounts(data.client_id, {
+                        sessions_booked: data.sessions_booked,
+                        sessions_remaining: data.sessions_remaining,
+                        sessions_completed: data.sessions_completed,
+                        workouts_completed: data.workouts_completed
+                    });
+                }
+                const labelPieces = [];
+                if (data.day_name) labelPieces.push(data.day_name);
+                if (data.time_range_label) labelPieces.push(data.time_range_label);
+                if (!labelPieces.length) {
+                    if (weekdayLabel) labelPieces.push(weekdayLabel);
+                    if (timeRangeLabel) labelPieces.push(timeRangeLabel);
+                }
+                const descriptor = labelPieces.join(' ').trim();
+                const labelPrefix = descriptor ? `${descriptor} ` : '';
+                const noun = normalizedType === 'time_off' ? 'time off block' : 'session';
+                const deletedCount = data.deleted_count || deletedIds.length;
+                const pluralLabel = deletedCount === 1 ? noun : `${noun}s`;
+                showDashboardToast(`Deleted ${deletedCount} ${labelPrefix}${pluralLabel}.`, 'success');
+                closeEventModal();
+                fetchEvents();
+            })
+            .catch(() => {
+                showDashboardToast('Unable to delete that series right now.', 'danger');
+            })
+            .finally(() => {
+                const restoreLabel = eventDeleteSeries?.dataset?.previousLabel;
+                if (state.modalEvent) {
+                    refreshModalFromState();
+                } else {
+                    if (eventDeleteSeries) {
+                        eventDeleteSeries.disabled = false;
+                        eventDeleteSeries.innerHTML = restoreLabel || eventDeleteSeriesDefault;
+                    }
+                    if (eventDeleteSession) {
+                        eventDeleteSession.disabled = false;
+                        eventDeleteSession.innerHTML = eventDeleteDefault;
+                    }
+                }
+                if (eventDeleteSeries) {
+                    eventDeleteSeries.dataset.previousLabel = '';
                 }
             });
     }
@@ -3204,6 +3425,9 @@ function applyWeekPicker(event) {
         }
         if (eventDeleteSession) {
             eventDeleteSession.addEventListener('click', handleDeleteEntry);
+        }
+        if (eventDeleteSeries) {
+            eventDeleteSeries.addEventListener('click', handleDeleteSeries);
         }
         if (timeOffModalForm) {
             timeOffModalForm.addEventListener('submit', handleTimeOffModalSubmit);

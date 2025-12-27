@@ -308,6 +308,16 @@ def _coerce_float(value):
         return None
 
 
+def _is_plank_exercise(name):
+    if not name:
+        return False
+    try:
+        normalized = str(name).strip().lower()
+    except Exception:
+        return False
+    return 'plank' in normalized
+
+
 def _estimate_one_rep_max(weight, reps):
     weight_val = _coerce_float(weight)
     reps_val = _coerce_float(reps)
@@ -1964,6 +1974,59 @@ def _validate_time_window(start_dt: datetime, end_dt: datetime) -> None:
         raise ValueError("Duration must be a multiple of 15 minutes.")
 
 
+def _ensure_aware_datetime(dt: datetime | None) -> datetime | None:
+    """Ensure a datetime value carries timezone info."""
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+def _timezone_from_payload(payload: dict | None) -> tzinfo:
+    """Resolve a timezone from a request payload or fall back to UTC."""
+    if not isinstance(payload, dict):
+        payload = {}
+    tz_name_raw = payload.get('timezone')
+    tz_offset_raw = payload.get('timezone_offset_minutes')
+    tz_info = None
+    if isinstance(tz_name_raw, str):
+        tz_name = tz_name_raw.strip()
+        if tz_name:
+            try:
+                tz_info = ZoneInfo(tz_name)
+            except Exception:
+                tz_info = None
+    if tz_info is None and tz_offset_raw not in (None, ''):
+        try:
+            offset_minutes = int(tz_offset_raw)
+            tz_info = timezone(timedelta(minutes=-offset_minutes))
+        except Exception:
+            tz_info = None
+    if tz_info is None:
+        tz_info = timezone.utc
+    return tz_info
+
+
+def _format_local_time_label(dt: datetime | None) -> str | None:
+    if not dt:
+        return None
+    label = dt.strftime("%I:%M %p")
+    return label.lstrip('0')
+
+
+def _format_local_time_range(start_dt: datetime | None, end_dt: datetime | None) -> tuple[str | None, str | None, str | None]:
+    start_label = _format_local_time_label(start_dt)
+    end_label = _format_local_time_label(end_dt)
+    if start_label and end_label:
+        return start_label, end_label, f"{start_label} – {end_label}"
+    if start_label:
+        return start_label, None, start_label
+    if end_label:
+        return None, end_label, end_label
+    return None, None, None
+
+
 def _resolve_local_zone(candidate_tz=None):
     """
     Try to resolve a timezone with DST rules. Prefer:
@@ -2808,6 +2871,148 @@ def trainer_schedule_modify(event_id):
     return jsonify(payload)
 
 
+@app.route('/trainer/schedule/<int:event_id>/delete-weekday', methods=['POST'])
+@login_required
+def trainer_schedule_delete_weekday(event_id):
+    trainer_id = session['user_id']
+    trainer = _require_trainer(trainer_id)
+    if not trainer:
+        return jsonify({'success': False, 'error': 'Trainer access required'}), 403
+
+    payload = request.get_json(silent=True) or {}
+    tz_info = _timezone_from_payload(payload)
+    rows: list[dict[str, object]] = []
+
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            cursor.execute(
+                """
+                SELECT id, client_id, status, start_time, end_time
+                  FROM trainer_schedule
+                 WHERE id = %s AND trainer_id = %s
+                """,
+                (event_id, trainer_id),
+            )
+            base_event = cursor.fetchone()
+            if not base_event:
+                return jsonify({'success': False, 'error': 'Booking not found.'}), 404
+
+            base_status = (base_event.get('status') or 'booked').lower()
+            if base_status != 'booked':
+                return jsonify({'success': False, 'error': 'Only booked sessions can be deleted in bulk.'}), 400
+            client_id = base_event.get('client_id')
+            if not client_id:
+                return jsonify({'success': False, 'error': 'Session is missing client information.'}), 400
+            base_start = _ensure_aware_datetime(base_event.get('start_time'))
+            base_end = _ensure_aware_datetime(base_event.get('end_time'))
+            if not base_start:
+                return jsonify({'success': False, 'error': 'Session start time is missing.'}), 400
+            if not base_end:
+                return jsonify({'success': False, 'error': 'Session end time is missing.'}), 400
+            local_start = base_start.astimezone(tz_info)
+            local_end = base_end.astimezone(tz_info)
+            target_isodow = local_start.isoweekday()
+            weekday_label = local_start.strftime('%A')
+            target_start_hour = local_start.hour
+            target_start_minute = local_start.minute
+            target_end_hour = local_end.hour
+            target_end_minute = local_end.minute
+            _, _, time_range_label = _format_local_time_range(local_start, local_end)
+
+            cursor.execute(
+                """
+                SELECT id, start_time, end_time
+                  FROM trainer_schedule
+                 WHERE trainer_id = %s
+                   AND client_id = %s
+                   AND status = 'booked'
+                """,
+                (trainer_id, client_id),
+            )
+            rows = cursor.fetchall() or []
+
+    matching_ids: list[int] = []
+    for row in rows:
+        start_dt = _ensure_aware_datetime(row.get('start_time'))
+        end_dt = _ensure_aware_datetime(row.get('end_time'))
+        if not start_dt or not end_dt:
+            continue
+        if start_dt < base_start:
+            continue
+        start_local = start_dt.astimezone(tz_info)
+        end_local = end_dt.astimezone(tz_info)
+        if (
+            start_local.isoweekday() == target_isodow
+            and start_local.hour == target_start_hour
+            and start_local.minute == target_start_minute
+            and end_local.hour == target_end_hour
+            and end_local.minute == target_end_minute
+        ):
+            matching_ids.append(row['id'])
+
+    if not matching_ids:
+        return jsonify({'success': False, 'error': 'No booked sessions found for that weekday and time.'}), 404
+
+    deleted_ids: list[int] = []
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            cursor.execute(
+                """
+                DELETE FROM trainer_schedule
+                 WHERE trainer_id = %s
+                   AND client_id = %s
+                   AND status = 'booked'
+                   AND id = ANY(%s)
+                RETURNING id
+                """,
+                (trainer_id, client_id, matching_ids),
+            )
+            deleted_rows = cursor.fetchall() or []
+            deleted_ids = [row['id'] for row in deleted_rows]
+            deleted_count = len(deleted_ids)
+            if not deleted_count:
+                conn.rollback()
+                return jsonify({'success': False, 'error': 'No booked sessions were removed.'}), 409
+
+            _adjust_sessions_booked(cursor, client_id, -deleted_count)
+
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            cursor.execute(
+                "SELECT sessions_remaining, sessions_booked, workouts_completed FROM users WHERE id = %s",
+                (client_id,),
+            )
+            counts_row = cursor.fetchone() or {}
+
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT COUNT(*) 
+                  FROM trainer_schedule
+                 WHERE trainer_id = %s
+                   AND client_id = %s
+                   AND status = 'completed'
+                """,
+                (trainer_id, client_id),
+            )
+            completed_count = cursor.fetchone()[0]
+
+        conn.commit()
+
+    response_payload = {
+        'success': True,
+        'deleted_ids': deleted_ids,
+        'deleted_count': len(deleted_ids),
+        'day_name': weekday_label,
+        'time_range_label': time_range_label,
+        'client_id': client_id,
+        'sessions_booked': counts_row.get('sessions_booked'),
+        'sessions_remaining': counts_row.get('sessions_remaining'),
+        'sessions_completed': completed_count,
+        'workouts_completed': counts_row.get('workouts_completed'),
+    }
+    return jsonify(response_payload)
+
+
 @app.route('/trainer/time-off', methods=['POST'])
 @login_required
 def trainer_time_off_create():
@@ -2968,6 +3173,94 @@ def trainer_time_off_modify(block_id):
 
     block = _serialize_time_off_row(refreshed) if refreshed else None
     return jsonify({'success': True, 'block': block})
+
+
+@app.route('/trainer/time-off/<int:block_id>/delete-weekday', methods=['POST'])
+@login_required
+def trainer_time_off_delete_weekday(block_id):
+    trainer_id = session['user_id']
+    trainer = _require_trainer(trainer_id)
+    if not trainer:
+        return jsonify({'success': False, 'error': 'Trainer access required'}), 403
+
+    payload = request.get_json(silent=True) or {}
+    tz_info = _timezone_from_payload(payload)
+    rows: list[dict[str, object]] = []
+
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            cursor.execute(
+                "SELECT id, start_time, end_time FROM trainer_time_off WHERE id = %s AND trainer_id = %s",
+                (block_id, trainer_id),
+            )
+            base_block = cursor.fetchone()
+            if not base_block:
+                return jsonify({'success': False, 'error': 'Personal time block not found.'}), 404
+            base_start = _ensure_aware_datetime(base_block.get('start_time'))
+            base_end = _ensure_aware_datetime(base_block.get('end_time'))
+            if not base_start:
+                return jsonify({'success': False, 'error': 'Personal time block start time is missing.'}), 400
+            if not base_end:
+                return jsonify({'success': False, 'error': 'Personal time block end time is missing.'}), 400
+            local_start = base_start.astimezone(tz_info)
+            local_end = base_end.astimezone(tz_info)
+            target_isodow = local_start.isoweekday()
+            weekday_label = local_start.strftime('%A')
+            target_start_hour = local_start.hour
+            target_start_minute = local_start.minute
+            target_end_hour = local_end.hour
+            target_end_minute = local_end.minute
+            _, _, time_range_label = _format_local_time_range(local_start, local_end)
+
+            cursor.execute(
+                "SELECT id, start_time, end_time FROM trainer_time_off WHERE trainer_id = %s",
+                (trainer_id,),
+            )
+            rows = cursor.fetchall() or []
+
+    matching_ids: list[int] = []
+    for row in rows:
+        start_dt = _ensure_aware_datetime(row.get('start_time'))
+        end_dt = _ensure_aware_datetime(row.get('end_time'))
+        if not start_dt or not end_dt:
+            continue
+        if start_dt < base_start:
+            continue
+        start_local = start_dt.astimezone(tz_info)
+        end_local = end_dt.astimezone(tz_info)
+        if (
+            start_local.isoweekday() == target_isodow
+            and start_local.hour == target_start_hour
+            and start_local.minute == target_start_minute
+            and end_local.hour == target_end_hour
+            and end_local.minute == target_end_minute
+        ):
+            matching_ids.append(row['id'])
+
+    if not matching_ids:
+        return jsonify({'success': False, 'error': 'No personal time blocks found for that weekday and time.'}), 404
+
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            cursor.execute(
+                "DELETE FROM trainer_time_off WHERE trainer_id = %s AND id = ANY(%s) RETURNING id",
+                (trainer_id, matching_ids),
+            )
+            deleted_rows = cursor.fetchall() or []
+            deleted_ids = [row['id'] for row in deleted_rows]
+            deleted_count = len(deleted_ids)
+            if not deleted_count:
+                conn.rollback()
+                return jsonify({'success': False, 'error': 'No personal time blocks were removed.'}), 409
+            conn.commit()
+
+    return jsonify({
+        'success': True,
+        'deleted_ids': deleted_ids,
+        'deleted_count': deleted_count,
+        'day_name': weekday_label,
+        'time_range_label': time_range_label,
+    })
 
 
 @app.route('/trainer/time-off/<int:block_id>/repeat', methods=['POST'])
@@ -6187,6 +6480,7 @@ def exercise_history_data():
             if not workout_row:
                 return jsonify({'success': False, 'error': 'Workout not found'}), 404
 
+            workout_name = workout_row.get('name')
             history_query = [
                 "SELECT weight, reps, recorded_at",
                 "  FROM user_exercise_history",
@@ -6237,6 +6531,7 @@ def exercise_history_data():
 
     category_label = (workout_row.get('category') or '').strip()
     is_cardio = category_label.lower() == 'cardio'
+    is_time_hold = _is_plank_exercise(workout_name)
     history_payload = []
     best_value = None
 
@@ -6245,10 +6540,18 @@ def exercise_history_data():
         reps_numeric = _coerce_float(row.get('reps'))
         reps_value = None
         if reps_numeric is not None:
-            reps_value = reps_numeric if is_cardio else int(round(reps_numeric))
+            if is_cardio:
+                reps_value = reps_numeric
+            elif is_time_hold:
+                reps_value = int(round(reps_numeric))
+            else:
+                reps_value = int(round(reps_numeric))
 
         est_one_rm = None if is_cardio else _estimate_one_rep_max(weight_val, reps_value)
-        display_value = reps_value if is_cardio else est_one_rm
+        if is_cardio or is_time_hold:
+            display_value = reps_value
+        else:
+            display_value = est_one_rm
 
         recorded_at = row.get('recorded_at')
         if recorded_at and hasattr(recorded_at, 'isoformat'):
@@ -6273,7 +6576,7 @@ def exercise_history_data():
         if display_value is not None:
             if best_value is None:
                 best_value = display_value
-            elif is_cardio:
+            elif is_cardio or is_time_hold:
                 best_value = max(best_value, display_value)
             else:
                 best_value = max(best_value, display_value)
@@ -6292,8 +6595,18 @@ def exercise_history_data():
             'best_value': best_value,
         }
 
-    chart_label = "Time (min)" if is_cardio else "Estimated 1RM (lbs)"
-    chart_unit = "min" if is_cardio else "lbs"
+    if is_cardio:
+        chart_label = "Time (min)"
+        chart_unit = "min"
+        value_mode = "cardio"
+    elif is_time_hold:
+        chart_label = "Hold Time"
+        chart_unit = "seconds"
+        value_mode = "time_hold"
+    else:
+        chart_label = "Estimated 1RM (lbs)"
+        chart_unit = "lbs"
+        value_mode = "strength"
 
     return jsonify({
         'success': True,
@@ -6303,6 +6616,8 @@ def exercise_history_data():
             'category': workout_row.get('category'),
         },
         'is_cardio': is_cardio,
+        'is_time_hold': is_time_hold,
+        'value_mode': value_mode,
         'chart_label': chart_label,
         'chart_unit': chart_unit,
         'history': history_payload,

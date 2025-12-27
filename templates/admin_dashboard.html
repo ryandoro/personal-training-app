@@ -103,19 +103,19 @@
                                         </a>
                                     </td>
                                     <td class="text-center">
-                                        <span class="badge 
-                                            {% if user[7] == 'admin' %}bg-danger
-                                            {% elif user[7] == 'trainer' %}bg-primary
-                                            {% else %}bg-secondary
+                                        <span class="badge badge-glass
+                                            {% if user[7] == 'admin' %} bg-danger
+                                            {% elif user[7] == 'trainer' %} bg-primary
+                                            {% else %} bg-secondary
                                             {% endif %} mb-1">
                                             {{ user[7]|capitalize }}
                                         </span>
                                     </td>
                                     <td class="text-center">
-                                        <span class="badge 
-                                            {% if user[5] == 'premium' %}bg-success
-                                            {% elif user[5] == 'pro' %}bg-warning text-dark
-                                            {% else %}bg-secondary
+                                        <span class="badge badge-glass
+                                            {% if user[5] == 'premium' %} bg-success
+                                            {% elif user[5] == 'pro' %} bg-warning text-dark
+                                            {% else %} bg-secondary
                                             {% endif %} mb-1">
                                             {{ user[5]|capitalize }}
                                         </span>
@@ -129,9 +129,9 @@
                                     </td>
                                     <td class="text-center align-middle">
                                         {% if user[8] %}
-                                            <span class="badge bg-success">Yes</span>
+                                            <span class="badge badge-glass bg-success">Yes</span>
                                         {% else %}
-                                            <span class="badge bg-secondary">No</span>
+                                            <span class="badge badge-glass bg-secondary">No</span>
                                         {% endif %}
                                     </td>
                                     <td class="text-center align-middle">

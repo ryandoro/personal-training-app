@@ -1,3 +1,4 @@
+{% import 'components/duration_macros.html' as duration_macros %}
 {% if exercise_loop_index is not defined %}
     {% set exercise_loop_index = 0 %}
 {% endif %}
@@ -10,9 +11,11 @@
     {% set refresh_url = '' %}
 {% endif %}
 {% set exercise_name = exercise.name or '' %}
+{% set normalized_name = exercise_name|lower %}
 {% set subcategory_label = subcategory_name or '' %}
 {% set is_cardio = subcategory_label|lower == 'cardio' %}
-{% set is_bodyweight = 'bodyweight' in exercise_name|lower %}
+{% set is_bodyweight = 'bodyweight' in normalized_name %}
+{% set is_plank = 'plank' in normalized_name %}
 {% if is_bodyweight or is_cardio %}
     {% set weight_display = 'Bodyweight' %}
 {% elif exercise.max_weight is not none %}
@@ -21,8 +24,13 @@
     {% set weight_display = '—' %}
 {% endif %}
 {% if exercise.max_reps is not none %}
-    {% set reps_unit = ' min' if is_cardio else ' reps' %}
-    {% set reps_display = (exercise.max_reps|string) ~ reps_unit %}
+    {% if is_cardio %}
+        {% set reps_display = (exercise.max_reps|string) ~ ' min' %}
+    {% elif is_plank %}
+        {% set reps_display = duration_macros.format_hold_time(exercise.max_reps) %}
+    {% else %}
+        {% set reps_display = (exercise.max_reps|string) ~ ' reps' %}
+    {% endif %}
 {% else %}
     {% set reps_display = '—' %}
 {% endif %}
@@ -130,7 +138,9 @@
             <div class="d-flex flex-column align-items-center gap-3 max-actions">
                 <div class="personal-best max-summary"
                      data-id="{{ exercise.workout_id }}"
-                     data-category="{{ subcategory_label }}">
+                     data-category="{{ subcategory_label }}"
+                     data-bodyweight="{{ 'true' if is_bodyweight and not is_cardio else 'false' }}"
+                     data-plank="{{ 'true' if is_plank else 'false' }}">
                     <span class="max-label text-uppercase fw-semibold">Client Max</span>
                     <div class="max-pill-row">
                         <span class="max-pill max-pill-weight">{{ weight_display }}</span>
@@ -142,7 +152,8 @@
                 <div class="d-flex flex-wrap justify-content-center gap-2 max-action-buttons">
                     <button class="btn btn-outline-secondary btn-sm max-action-btn update-pr-link"
                             data-id="{{ exercise.workout_id }}"
-                            data-category="{{ subcategory_label }}">
+                            data-category="{{ subcategory_label }}"
+                            data-plank="{{ 'true' if is_plank else 'false' }}">
                         Update Max
                     </button>
                     <button class="btn btn-outline-primary btn-sm max-action-btn toggle-description"

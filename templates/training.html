@@ -735,11 +735,11 @@
                             {% endif %}
                         {% endif %}
                     </select>
-                    <div id="custom-workout-controls" class="custom-workout-controls mt-3 text-center" hidden>
-                        <button type="button" id="custom-workout-button" class="btn btn-outline-primary btn-sm fw-semibold px-3">
+                    <div id="custom-workout-controls" class="custom-workout-controls custom-selector-group mt-3 text-center" hidden>
+                        <button type="button" id="custom-workout-button" class="btn custom-selector-btn">
                             Choose Categories
                         </button>
-                        <div id="custom-workout-summary" class="small fw-semibold text-primary mt-1 d-none"></div>
+                        <div id="custom-workout-summary" class="custom-selector-summary d-none"></div>
                     </div>
                     <input type="hidden"
                            id="custom-workout-input"
@@ -748,12 +748,14 @@
                            data-custom-limits='{{ custom_workout_limits | tojson }}'
                            value="[]">
                 </div>
-                <div id="home-equipment-controls" class="home-equipment-controls mb-3 text-center" hidden>
-                    <button type="button" id="home-equipment-button" class="btn btn-outline-primary btn-sm fw-semibold px-3">
-                        Choose Equipment
-                    </button>
-                    <div id="home-equipment-feedback" class="small text-muted mt-2 d-none"></div>
-                    <div id="home-equipment-summary" class="small fw-semibold text-primary mt-1 d-none"></div>
+                <div class="w-100 d-flex justify-content-center mb-3">
+                    <div id="home-equipment-controls" class="home-equipment-controls custom-selector-group text-center" hidden>
+                        <button type="button" id="home-equipment-button" class="btn custom-selector-btn">
+                            Choose Equipment
+                        </button>
+                        <div id="home-equipment-feedback" class="custom-selector-summary d-none"></div>
+                        <div id="home-equipment-summary" class="custom-selector-summary d-none"></div>
+                    </div>
                 </div>
                 <input type="hidden" id="home-equipment-input" data-options='{{ home_equipment_options | tojson }}' value="[]">
                 <div class="text-center mb-3">
@@ -1100,31 +1102,34 @@
                 const tokens = Array.isArray(selection) ? selection : getHomeEquipmentSelection();
                 if (!isHomeSelected()) {
                     homeEquipmentFeedback.classList.add('d-none');
-                    homeEquipmentFeedback.classList.remove('text-danger');
+                    homeEquipmentFeedback.classList.remove('text-danger', 'custom-selector-summary--empty');
                     homeEquipmentFeedback.textContent = '';
                     if (homeEquipmentSummary) {
                         homeEquipmentSummary.classList.add('d-none');
+                        homeEquipmentSummary.classList.remove('text-danger', 'custom-selector-summary--empty');
                         homeEquipmentSummary.textContent = '';
                     }
                     return;
                 }
                 if (!tokens.length) {
-                    homeEquipmentFeedback.classList.add('text-danger');
-                    homeEquipmentFeedback.innerHTML = '<span class="fw-semibold">No equipment selected yet.</span>';
                     homeEquipmentFeedback.classList.remove('d-none');
+                    homeEquipmentFeedback.classList.add('text-danger', 'custom-selector-summary--empty');
+                    homeEquipmentFeedback.textContent = 'No equipment selected yet.';
                     if (homeEquipmentSummary) {
                         homeEquipmentSummary.classList.add('d-none');
+                        homeEquipmentSummary.classList.remove('text-danger', 'custom-selector-summary--empty');
                         homeEquipmentSummary.textContent = '';
                     }
                     return;
                 }
-                homeEquipmentFeedback.classList.remove('text-danger');
                 homeEquipmentFeedback.classList.add('d-none');
+                homeEquipmentFeedback.classList.remove('text-danger', 'custom-selector-summary--empty');
                 homeEquipmentFeedback.textContent = '';
                 if (homeEquipmentSummary) {
                     const pretty = tokens.map((token) => formatEquipmentLabel(token)).join(', ');
                     homeEquipmentSummary.textContent = `Selected: ${pretty}`;
                     homeEquipmentSummary.classList.remove('d-none');
+                    homeEquipmentSummary.classList.remove('text-danger', 'custom-selector-summary--empty');
                 }
             }
 
@@ -1140,7 +1145,7 @@
                 if (!homeEquipmentControls) return;
                 const isHome = isHomeSelected();
                 homeEquipmentControls.hidden = !isHome;
-                homeEquipmentControls.style.display = isHome ? 'block' : 'none';
+                homeEquipmentControls.style.display = isHome ? 'flex' : 'none';
                 homeEquipmentControls.style.pointerEvents = isHome ? 'auto' : 'none';
                 if (homeEquipmentButton) {
                     homeEquipmentButton.disabled = !isHome;
@@ -1238,7 +1243,7 @@
                 if (!customWorkoutControls) return;
                 const isActive = requiresCategorySelection();
                 customWorkoutControls.hidden = !isActive;
-                customWorkoutControls.style.display = isActive ? 'block' : 'none';
+                customWorkoutControls.style.display = isActive ? 'flex' : 'none';
                 customWorkoutControls.style.pointerEvents = isActive ? 'auto' : 'none';
                 if (customWorkoutButton) {
                     customWorkoutButton.disabled = !isActive;
@@ -1263,15 +1268,17 @@
                 }
 
                 if (customWorkoutSummary) {
-                    customWorkoutSummary.classList.remove('d-none');
+                    customWorkoutSummary.classList.remove('d-none', 'text-muted', 'custom-selector-summary--empty');
+                    customWorkoutSummary.classList.remove('text-danger');
                     if (!selection.length) {
                         customWorkoutSummary.textContent = 'No categories selected yet.';
-                        customWorkoutSummary.classList.add('text-muted');
+                        customWorkoutSummary.classList.add('text-danger', 'custom-selector-summary--empty');
                     } else {
                         customWorkoutSummary.textContent = `Selected: ${selection.map(formatCategoryLabel).join(', ')}`;
-                        customWorkoutSummary.classList.remove('text-muted');
+                        if (!withinBounds) {
+                            customWorkoutSummary.classList.add('text-danger');
+                        }
                     }
-                    customWorkoutSummary.classList.toggle('text-danger', selection.length > 0 && !withinBounds);
                 }
             }
 
@@ -1479,11 +1486,41 @@
                     .replace(/'/g, '&#39;');
             }
 
+            function formatHoldDuration(seconds) {
+                const parsed = Number(seconds);
+                if (!Number.isFinite(parsed) || parsed <= 0) {
+                    return '—';
+                }
+                const rounded = Math.round(parsed);
+                const minutes = Math.floor(rounded / 60);
+                const remaining = rounded % 60;
+                const secLabel = remaining < 10 ? `0${remaining}` : `${remaining}`;
+                return `${minutes}:${secLabel}`;
+            }
+
+            function parseDurationDisplay(text) {
+                if (!text || text.includes('—')) {
+                    return { minutes: '', seconds: '' };
+                }
+                const parts = text.split(':').map((part) => part.trim());
+                if (parts.length !== 2) {
+                    return { minutes: '', seconds: '' };
+                }
+                const minutes = Number.parseInt(parts[0], 10);
+                const seconds = Number.parseInt(parts[1], 10);
+                return {
+                    minutes: Number.isFinite(minutes) ? Math.max(0, minutes) : '',
+                    seconds: Number.isFinite(seconds) ? Math.min(59, Math.max(0, seconds)) : '',
+                };
+            }
+
             function buildExerciseHtml(subcategoryName, exercise, index) {
                 const exerciseName = exercise.name || '';
                 const safeExerciseName = escapeHtml(exerciseName);
+                const normalizedName = exerciseName.toLowerCase();
                 const isCardio = (subcategoryName || '').toLowerCase() === 'cardio';
-                const isBodyweight = exerciseName.toLowerCase().includes('bodyweight');
+                const isBodyweight = normalizedName.includes('bodyweight');
+                const isPlank = normalizedName.includes('plank');
                 const uniqueKey = exercise.workout_id ?? `${subcategoryName}-${index}`;
                 const sanitizedKey = String(uniqueKey).replace(/[^a-zA-Z0-9_-]/g, '-');
                 const descId = `desc-${sanitizedKey}`;
@@ -1495,9 +1532,11 @@
                     ? 'Bodyweight'
                     : (Number.isFinite(weightValue) ? `${weightValue.toFixed(1)} lbs` : (hasWeight ? `${exercise.max_weight} lbs` : '—'));
                 const repsDisplay = hasReps
-                    ? (isCardio ? `${exercise.max_reps} min` : `${exercise.max_reps} reps`)
+                    ? (isCardio
+                        ? `${exercise.max_reps} min`
+                        : (isPlank ? formatHoldDuration(exercise.max_reps) : `${exercise.max_reps} reps`))
                     : '—';
-                const summaryValue = (isBodyweight || isCardio)
+                const summaryValue = (isBodyweight || isCardio || isPlank)
                     ? `Bodyweight × ${repsDisplay}`
                     : `${weightDisplay} × ${repsDisplay}`;
                 const youtubeSection = exercise.youtube_id ? `
@@ -1554,7 +1593,7 @@
                                 </div>
                                 ${youtubeSection}
                                 <div class="d-flex flex-column align-items-center gap-3 max-actions">
-                                    <div class="personal-best max-summary" data-id="${workoutIdAttr}" data-category="${categoryAttr}">
+                                    <div class="personal-best max-summary" data-id="${workoutIdAttr}" data-category="${categoryAttr}" data-bodyweight="${isBodyweight && !isCardio}" data-plank="${isPlank}">
                                         <span class="max-label text-uppercase fw-semibold">Your Max</span>
                                         <div class="max-pill-row">
                                             <span class="max-pill max-pill-weight">${weightDisplay}</span>
@@ -1566,7 +1605,8 @@
                                     <div class="d-flex flex-wrap justify-content-center gap-2 max-action-buttons">
                                         <button class="btn btn-outline-secondary btn-sm max-action-btn update-pr-link"
                                             data-id="${workoutIdAttr}"
-                                            data-category="${categoryAttr}">
+                                            data-category="${categoryAttr}"
+                                            data-plank="${isPlank}">
                                             Update Max
                                         </button>
                                         <button class="btn btn-outline-primary btn-sm max-action-btn toggle-description"
@@ -2065,7 +2105,17 @@
                 <button id="prModalClose" class="btn-close"></button>
                 <h5 class="mb-3">Update Max</h5>
                 <input type="number" id="maxWeightInput" class="form-control mb-2" placeholder="Max Weight (lbs)" title="Bodyweight exercises do not require a weight entry">
-                <input type="number" id="maxRepsInput" class="form-control mb-3" placeholder="Max Reps">
+                <div id="maxRepsInputGroup" class="mb-3">
+                    <input type="number" id="maxRepsInput" class="form-control" placeholder="Max Reps">
+                </div>
+                <div id="maxTimeInputGroup" class="row g-2 mb-3" style="display: none;">
+                    <div class="col">
+                        <input type="number" id="maxMinutesInput" class="form-control" placeholder="Min" min="0" step="1">
+                    </div>
+                    <div class="col">
+                        <input type="number" id="maxSecondsInput" class="form-control" placeholder="Sec" min="0" max="59" step="1">
+                    </div>
+                </div>
                 <button id="submitPrBtn" class="btn btn-brand w-100 mb-2">Save</button>
             </div>
         </div>
@@ -2270,16 +2320,50 @@
         // Update Max JS 
         document.addEventListener('DOMContentLoaded', function () {
             let currentWorkoutId = null;
+            const prModal = document.getElementById('prModal');
+            const maxWeightInput = document.getElementById('maxWeightInput');
+            const maxRepsInput = document.getElementById('maxRepsInput');
+            const maxMinutesInput = document.getElementById('maxMinutesInput');
+            const maxSecondsInput = document.getElementById('maxSecondsInput');
+            const maxRepsGroup = document.getElementById('maxRepsInputGroup');
+            const maxTimeGroup = document.getElementById('maxTimeInputGroup');
 
-            // Open modal when clicking "Update Max"
+            if (!prModal || !maxWeightInput || !maxRepsInput) {
+                return;
+            }
+
+            const toggleTimeInputs = (showTime) => {
+                if (maxRepsGroup) maxRepsGroup.style.display = showTime ? 'none' : '';
+                if (maxTimeGroup) maxTimeGroup.style.display = showTime ? '' : 'none';
+            };
+
+            const resetModalFields = () => {
+                maxWeightInput.value = '';
+                maxWeightInput.disabled = false;
+                maxWeightInput.placeholder = 'Max Weight (lbs)';
+                maxWeightInput.title = maxWeightInput.placeholder;
+                maxRepsInput.value = '';
+                maxRepsInput.placeholder = 'Max Reps';
+                maxRepsInput.title = maxRepsInput.placeholder;
+                if (maxMinutesInput) maxMinutesInput.value = '';
+                if (maxSecondsInput) maxSecondsInput.value = '';
+                toggleTimeInputs(false);
+                delete prModal.dataset.cardio;
+                delete prModal.dataset.plank;
+            };
+
             document.addEventListener('click', function (e) {
-                if (e.target && e.target.classList.contains('update-pr-link')) {
+                const trigger = e.target.closest('.update-pr-link');
+                if (trigger) {
                     e.preventDefault();
-
-                    currentWorkoutId = e.target.dataset.id;
+                    currentWorkoutId = trigger.dataset.id;
                     const bestWrapper = document.querySelector(`.personal-best[data-id="${currentWorkoutId}"]`);
-                    const categoryLabel = (e.target.dataset.category || '').toLowerCase();
+                    const categoryLabel = (trigger.dataset.category || '').toLowerCase();
                     const isCardio = categoryLabel === 'cardio';
+                    const isPlank = trigger.dataset.plank === 'true' || bestWrapper?.dataset.plank === 'true';
+                    prModal.dataset.cardio = isCardio ? '1' : '0';
+                    prModal.dataset.plank = isPlank ? '1' : '0';
+
                     const weightSpan = bestWrapper?.querySelector('.max-pill-weight');
                     const repsSpan = bestWrapper?.querySelector('.max-pill-reps');
                     const weightText = weightSpan ? weightSpan.textContent.trim() : '';
@@ -2287,85 +2371,145 @@
                     const isBodyweight = weightText.toLowerCase().includes('bodyweight');
                     const treatAsBodyweight = isBodyweight || isCardio;
 
-                    const weightInput = document.getElementById('maxWeightInput');
                     const numericWeight = parseFloat(weightText.replace(/[^0-9.]+/g, ''));
-                    weightInput.value = (!treatAsBodyweight && Number.isFinite(numericWeight)) ? numericWeight : '';
-                    weightInput.disabled = treatAsBodyweight;
+                    maxWeightInput.value = (!treatAsBodyweight && Number.isFinite(numericWeight)) ? numericWeight : '';
+                    maxWeightInput.disabled = treatAsBodyweight;
                     if (treatAsBodyweight) {
-                        weightInput.placeholder = isCardio ? 'Cardio exercise' : 'Bodyweight exercise';
+                        maxWeightInput.placeholder = 'Bodyweight';
                     } else {
-                        weightInput.placeholder = 'Max Weight (lbs)';
+                        maxWeightInput.placeholder = 'Max Weight (lbs)';
                     }
-                    weightInput.title = weightInput.placeholder;
+                    maxWeightInput.title = maxWeightInput.placeholder;
 
-                    const repsInput = document.getElementById('maxRepsInput');
-                    const numericReps = parseInt(repsText.replace(/[^0-9]+/g, ''), 10);
-                    repsInput.value = Number.isFinite(numericReps) ? numericReps : '';
-                    repsInput.placeholder = isCardio ? 'Minutes' : 'Reps';
-                    repsInput.title = repsInput.placeholder;
+                    if (isPlank) {
+                        toggleTimeInputs(true);
+                        if (maxMinutesInput && maxSecondsInput) {
+                            const parsed = parseDurationDisplay(repsText);
+                            maxMinutesInput.value = parsed.minutes !== '' ? parsed.minutes : '';
+                            maxSecondsInput.value = parsed.seconds !== '' ? parsed.seconds : '';
+                        }
+                    } else {
+                        toggleTimeInputs(false);
+                        const numericReps = parseInt(repsText.replace(/[^0-9]+/g, ''), 10);
+                        maxRepsInput.value = Number.isFinite(numericReps) ? numericReps : '';
+                        maxRepsInput.placeholder = isCardio ? 'Minutes' : 'Reps';
+                        maxRepsInput.title = maxRepsInput.placeholder;
+                    }
 
-                    const modal = document.getElementById('prModal');
-                    modal.classList.add('show');
-                    modal.style.display = 'flex';
+                    prModal.classList.add('show');
+                    prModal.style.display = 'flex';
+                    return;
                 }
 
-                // Close modal when clicking the "X" button
                 if (e.target.id === 'prModalClose') {
-                    const modal = document.getElementById('prModal');
-                    modal.classList.remove('show');
-                    modal.style.display = 'none';
+                    prModal.classList.remove('show');
+                    prModal.style.display = 'none';
+                    resetModalFields();
                 }
             });
 
-            // Handle modal "Save" button
             document.getElementById('submitPrBtn').addEventListener('click', function () {
-                const maxWeightInput = document.getElementById('maxWeightInput');
-                const maxRepsInput = document.getElementById('maxRepsInput');
-
-                const maxWeight = parseFloat(maxWeightInput.value);
-                const maxReps = parseInt(maxRepsInput.value);
-                const isCardio = document.getElementById('maxRepsInput').placeholder.toLowerCase().includes('minute');
-
-                // Validation: allow 0 weight if it's a bodyweight exercise (disabled input)
-                if (isNaN(maxReps) || (maxWeightInput.disabled === false && isNaN(maxWeight))) {
-                    alert("Please enter valid values.");
+                if (!currentWorkoutId) {
                     return;
+                }
+                const isCardio = prModal.dataset.cardio === '1';
+                const isPlank = prModal.dataset.plank === '1';
+
+                let maxRepsValue = null;
+                if (isPlank) {
+                    const minutesValue = maxMinutesInput ? parseInt(maxMinutesInput.value, 10) : 0;
+                    const secondsValue = maxSecondsInput ? parseInt(maxSecondsInput.value, 10) : 0;
+                    const safeMinutes = Number.isFinite(minutesValue) ? Math.max(0, minutesValue) : 0;
+                    const safeSeconds = Number.isFinite(secondsValue) ? Math.min(59, Math.max(0, secondsValue)) : 0;
+                    maxRepsValue = safeMinutes * 60 + safeSeconds;
+                    if (!Number.isFinite(maxRepsValue) || maxRepsValue <= 0) {
+                        alert('Please enter a hold time greater than zero.');
+                        return;
+                    }
+                } else {
+                    const parsedReps = parseInt(maxRepsInput.value, 10);
+                    if (!Number.isFinite(parsedReps)) {
+                        alert('Please enter valid values.');
+                        return;
+                    }
+                    maxRepsValue = parsedReps;
+                }
+
+                let maxWeightValue = null;
+                if (!maxWeightInput.disabled) {
+                    maxWeightValue = parseFloat(maxWeightInput.value);
+                    if (!Number.isFinite(maxWeightValue)) {
+                        alert('Please enter valid values.');
+                        return;
+                    }
+                }
+
+                const payload = {
+                    workout_id: currentWorkoutId,
+                    max_reps: maxRepsValue
+                };
+                if (maxWeightValue !== null) {
+                    payload.max_weight = maxWeightValue;
                 }
 
                 fetch('/update_pr', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        workout_id: currentWorkoutId,
-                        max_weight: maxWeight,
-                        max_reps: maxReps
-                    })
+                    body: JSON.stringify(payload)
                 })
                 .then(res => res.json())
                 .then(data => {
                     if (data.success) {
+                        const returnedWeight = data.max_weight;
+                        const returnedReps = data.max_reps;
                         const bestWrapper = document.querySelector(`.personal-best[data-id="${currentWorkoutId}"]`);
                         if (bestWrapper) {
                             const weightSpan = bestWrapper.querySelector('.max-pill-weight');
                             const repsSpan = bestWrapper.querySelector('.max-pill-reps');
                             const hiddenSummary = bestWrapper.querySelector('.personal-max-text');
-                            const displayReps = isCardio
-                                ? `${maxReps} min`
-                                : `${maxReps} reps`;
-                            const weightLabel = maxWeightInput.disabled
-                                ? 'Bodyweight'
-                                : `${parseFloat(maxWeight).toFixed(1)} lbs`;
+                            const blockCategory = (bestWrapper.dataset.category || '').toLowerCase();
+                            const blockIsPlank = bestWrapper.dataset.plank === 'true';
+                            const treatAsBodyweight = bestWrapper.dataset.bodyweight === 'true' || blockCategory === 'cardio';
 
-                            if (weightSpan) weightSpan.textContent = weightLabel;
-                            if (repsSpan) repsSpan.textContent = displayReps;
-                            if (hiddenSummary) hiddenSummary.textContent = `Your Max: ${weightLabel} × ${displayReps}`;
+                            if (weightSpan) {
+                                if (treatAsBodyweight) {
+                                    weightSpan.textContent = 'Bodyweight';
+                                } else if (returnedWeight !== null && returnedWeight !== undefined) {
+                                    const parsedWeight = parseFloat(returnedWeight);
+                                    weightSpan.textContent = Number.isFinite(parsedWeight) ? `${parsedWeight.toFixed(1)} lbs` : '—';
+                                } else {
+                                    weightSpan.textContent = '—';
+                                }
+                            }
+
+                            if (repsSpan) {
+                                if (returnedReps !== null && returnedReps !== undefined) {
+                                    const parsedReps = parseInt(returnedReps, 10);
+                                    if (Number.isFinite(parsedReps)) {
+                                        if (blockCategory === 'cardio') {
+                                            repsSpan.textContent = `${parsedReps} min`;
+                                        } else if (blockIsPlank) {
+                                            repsSpan.textContent = formatHoldDuration(parsedReps);
+                                        } else {
+                                            repsSpan.textContent = `${parsedReps} reps`;
+                                        }
+                                    } else {
+                                        repsSpan.textContent = '—';
+                                    }
+                                } else {
+                                    repsSpan.textContent = '—';
+                                }
+                            }
+
+                            if (hiddenSummary && weightSpan && repsSpan) {
+                                hiddenSummary.textContent = `Your Max: ${weightSpan.textContent} × ${repsSpan.textContent}`;
+                            }
                         }
-                        // Hide modal
-                        const modal = document.getElementById('prModal');
-                        modal.classList.remove('show');
-                        modal.style.display = 'none';
 
-                        // Show toast
+                        prModal.classList.remove('show');
+                        prModal.style.display = 'none';
+                        resetModalFields();
+
                         const toast = document.getElementById('toastSuccess');
                         toast.textContent = 'Max updated!';
                         toast.style.display = 'block';

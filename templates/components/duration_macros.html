@@ -1,0 +1,14 @@
+{% macro format_hold_time(total_seconds) -%}
+    {%- if total_seconds is none -%}
+        —
+    {%- else -%}
+        {%- set total = total_seconds|int -%}
+        {%- if total < 0 -%}
+            —
+        {%- else -%}
+            {%- set minutes = total // 60 -%}
+            {%- set seconds = total % 60 -%}
+            {{ minutes }}:{% if seconds < 10 %}0{% endif %}{{ seconds }}
+        {%- endif -%}
+    {%- endif -%}
+{%- endmacro %}

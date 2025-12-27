@@ -4,6 +4,9 @@
     const contexts = [];
     const DEFAULT_LINE_COLOR = '#F7931A';
     const DEFAULT_FILL_COLOR = 'rgba(247, 147, 26, 0.15)';
+    const VALUE_MODE_STRENGTH = 'strength';
+    const VALUE_MODE_CARDIO = 'cardio';
+    const VALUE_MODE_TIME_HOLD = 'time_hold';
 
     function computeOneRepMax(weight, reps) {
         const parsedWeight = Number.parseFloat(weight);
@@ -71,18 +74,43 @@
         return `${display} min`;
     }
 
+    function formatDurationClock(totalSeconds) {
+        const parsed = Number(totalSeconds);
+        if (!Number.isFinite(parsed) || parsed <= 0) {
+            return '—';
+        }
+        const rounded = Math.round(parsed);
+        const minutes = Math.floor(rounded / 60);
+        const seconds = rounded % 60;
+        const minuteLabel = minutes.toString();
+        const secondLabel = seconds < 10 ? `0${seconds}` : `${seconds}`;
+        return `${minuteLabel}:${secondLabel}`;
+    }
+
     function updateMetricDisplay(card, payload) {
         const metricNodes = card.querySelectorAll(`[data-metric-value][data-workout-id="${card.dataset.workoutCard}"]`);
         if (!metricNodes.length) return;
         const isCardio = !!payload.is_cardio;
+        const mode = payload.value_mode || (isCardio ? VALUE_MODE_CARDIO : VALUE_MODE_STRENGTH);
         const summary = payload.summary || {};
         const latestOneRm = summary.latest_one_rm;
         const bestValue = summary.best_value;
         metricNodes.forEach((node) => {
-            if (isCardio) {
+            if (mode === VALUE_MODE_CARDIO) {
                 const numericBest = Number(bestValue);
                 if (Number.isFinite(numericBest) && numericBest > 0) {
                     node.textContent = formatCardioTime(numericBest);
+                    node.dataset.value = String(numericBest);
+                } else {
+                    node.textContent = '—';
+                    node.dataset.value = '';
+                }
+                return;
+            }
+            if (mode === VALUE_MODE_TIME_HOLD) {
+                const numericBest = Number(bestValue);
+                if (Number.isFinite(numericBest) && numericBest > 0) {
+                    node.textContent = formatDurationClock(numericBest);
                     node.dataset.value = String(numericBest);
                 } else {
                     node.textContent = '—';
@@ -100,24 +128,32 @@
         });
     }
 
-function renderChart(card, payload, placeholder, canvas) {
-    if (!window.Chart || !canvas) return;
-    const history = Array.isArray(payload.history) ? payload.history : [];
+    function renderChart(card, payload, placeholder, canvas) {
+        if (!window.Chart || !canvas) return;
+        const history = Array.isArray(payload.history) ? payload.history : [];
+        const valueMode = payload.value_mode || (payload.is_cardio ? VALUE_MODE_CARDIO : VALUE_MODE_STRENGTH);
         const labels = [];
         const values = [];
 
         history.forEach((entry) => {
             const displayValue = typeof entry.display_value === 'number' ? entry.display_value : NaN;
+            const numericValue = Number(displayValue);
             labels.push(formatDateLabel(entry.recorded_at));
-            values.push(Number.isFinite(displayValue) ? Number(displayValue.toFixed(2)) : null);
+            if (!Number.isFinite(numericValue)) {
+                values.push(null);
+            } else if (valueMode === VALUE_MODE_STRENGTH) {
+                values.push(Number(numericValue.toFixed(2)));
+            } else {
+                values.push(numericValue);
+            }
         });
 
         const hasValue = values.some((val) => typeof val === 'number');
-    if (!hasValue) {
-        destroyChart(canvas);
-        togglePlaceholder(placeholder, false, 'Log a new max to unlock this chart.');
-        return;
-    }
+        if (!hasValue) {
+            destroyChart(canvas);
+            togglePlaceholder(placeholder, false, 'Log a new max to unlock this chart.');
+            return;
+        }
 
         const ctx = canvas.getContext('2d');
         destroyChart(canvas);
@@ -149,7 +185,15 @@ function renderChart(card, payload, placeholder, canvas) {
                     y: {
                         beginAtZero: true,
                         ticks: {
-                            callback: (val) => `${val} ${payload.chart_unit || ''}`.trim(),
+                            callback: (val) => {
+                                if (valueMode === VALUE_MODE_CARDIO) {
+                                    return formatCardioTime(val);
+                                }
+                                if (valueMode === VALUE_MODE_TIME_HOLD) {
+                                    return formatDurationClock(val);
+                                }
+                                return `${val} ${payload.chart_unit || ''}`.trim();
+                            },
                         },
                     },
                     x: {
@@ -170,11 +214,17 @@ function renderChart(card, payload, placeholder, canvas) {
                                 const unit = payload.chart_unit || '';
                                 if (!Number.isFinite(val)) return 'No data';
                                 const base = `${val} ${unit}`.trim();
-                                if (payload.is_cardio) {
+                                if (valueMode === VALUE_MODE_CARDIO) {
                                     const duration = Number.isFinite(entry.display_value)
                                         ? formatCardioTime(entry.display_value)
                                         : '—';
                                     return [`${base}`, `Time: ${duration}`];
+                                }
+                                if (valueMode === VALUE_MODE_TIME_HOLD) {
+                                    const holdDuration = Number.isFinite(entry.display_value)
+                                        ? formatDurationClock(entry.display_value)
+                                        : '—';
+                                    return [`Hold: ${holdDuration}`];
                                 }
                                 const weightLine = formatWeight(entry.weight);
                                 const repsLine = formatReps(entry.reps);
@@ -323,5 +373,6 @@ function renderChart(card, payload, placeholder, canvas) {
     FitBaseExerciseHistory.refreshHistory = refreshHistory;
     FitBaseExerciseHistory.computeOneRepMax = computeOneRepMax;
     FitBaseExerciseHistory.formatOneRepMax = formatOneRepMax;
+    FitBaseExerciseHistory.formatDurationClock = formatDurationClock;
     window.FitBaseExerciseHistory = FitBaseExerciseHistory;
 })(window, document);

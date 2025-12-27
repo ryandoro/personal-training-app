@@ -1,4 +1,5 @@
 {% extends "layout.html" %}
+{% import 'components/duration_macros.html' as duration_macros %}
 
 {% block title %}
     Client Profile
@@ -54,27 +55,41 @@
                         </div>
                     </div>
                     <div class="client-hero-info text-center text-md-start">
-                        <h2 class="client-hero-name mb-2">{{ client.name or 'Client' }} {{ client.last_name or '' }}</h2>
-                        <div class="client-hero-badges d-flex flex-wrap align-items-center justify-content-center justify-content-md-start gap-2 small">
+                        <h2 class="client-hero-name mb-2">
+                            <span class="client-hero-name__accent">{{ client.name or 'Client' }} {{ client.last_name or '' }}</span>
+                        </h2>
+                        <div class="client-hero-badges d-flex flex-wrap align-items-center justify-content-center gap-2 small">
                             {% if client.email %}
                                 <a href="mailto:{{ client.email }}"
-                                   class="badge bg-light text-dark text-decoration-none">
-                                    {{ client.email }}
+                                   class="badge client-pill client-pill--contact text-decoration-none">
+                                    <i class="bi bi-envelope-fill client-pill__icon" aria-hidden="true"></i>
+                                    <span class="client-pill__text">{{ client.email }}</span>
                                 </a>
                             {% endif %}
-                            <span class="badge bg-light text-dark">@{{ client.username }}</span>
+                            <span class="badge client-pill client-pill--contact">
+                                <i class="bi bi-at client-pill__icon" aria-hidden="true"></i>
+                                <span class="client-pill__text">{{ client.username }}</span>
+                            </span>
                             {% if client.subscription_type %}
-                                <span class="badge bg-light text-dark">{{ client.subscription_type|capitalize }} Plan</span>
+                                {% set plan = client.subscription_type|lower %}
+                                {% set plan_badge = 'bg-secondary' %}
+                                {% if plan == 'premium' %}
+                                    {% set plan_badge = 'bg-success' %}
+                                {% elif plan == 'pro' %}
+                                    {% set plan_badge = 'bg-warning text-dark' %}
+                                {% endif %}
+                                <span class="badge client-pill client-pill--plan {{ plan_badge }}">
+                                    <span class="client-pill__text">{{ plan|capitalize }} Plan</span>
+                                </span>
                             {% endif %}
+                            <span class="badge client-pill client-pill--stat">
+                                <span class="client-pill__text">Total Workouts: {{ client.workouts_completed or 0 }}</span>
+                            </span>
                         </div>
                     </div>
                 </div>
                 <div class="surface-body">
                 <div class="client-metrics-grid">
-                    <div class="client-metric">
-                        <span class="client-metric__label">Workouts</span>
-                        <span class="client-metric__value">{{ client.workouts_completed or 0 }}</span>
-                    </div>
                     <button type="button"
                             class="client-metric client-metric--cta"
                             data-bs-toggle="modal"
@@ -89,10 +104,6 @@
                             Booked: {{ sessions_booked }} • Completed: {{ sessions_completed }}
                         </span>
                     </button>
-                    <div class="client-metric">
-                        <span class="client-metric__label">Duration</span>
-                        <span class="client-metric__value" id="client-duration-display">{{ client.workout_duration or 60 }} mins</span>
-                    </div>
                     <div class="client-metric">
                         <span class="client-metric__label">Last Workout</span>
                         {% if client.last_workout_completed %}
@@ -320,8 +331,10 @@
                                         {% for workout in exercise_search_results %}
                                             {% set workout_name = workout.name or 'Workout' %}
                                             {% set workout_category = workout.category or 'General' %}
+                                            {% set normalized_name = workout_name|lower %}
                                             {% set is_cardio = workout_category|lower == 'cardio' %}
-                                            {% set is_bodyweight = 'bodyweight' in workout_name|lower %}
+                                            {% set is_bodyweight = 'bodyweight' in normalized_name %}
+                                            {% set is_plank = 'plank' in normalized_name %}
                                             {% if is_bodyweight or is_cardio %}
                                                 {% set weight_display = 'Bodyweight' %}
                                             {% elif workout.max_weight is not none %}
@@ -330,15 +343,20 @@
                                                     {% set weight_display = '—' %}
                                                 {% endif %}
                                                 {% if workout.max_reps is not none %}
-                                                    {% set reps_unit = ' min' if is_cardio else ' reps' %}
-                                                    {% set reps_display = (workout.max_reps|string) ~ reps_unit %}
+                                                    {% if is_cardio %}
+                                                        {% set reps_display = (workout.max_reps|string) ~ ' min' %}
+                                                    {% elif is_plank %}
+                                                        {% set reps_display = duration_macros.format_hold_time(workout.max_reps) %}
+                                                    {% else %}
+                                                        {% set reps_display = (workout.max_reps|string) ~ ' reps' %}
+                                                    {% endif %}
                                                 {% else %}
                                                     {% set reps_display = '—' %}
                                                 {% endif %}
                                             {% set notes_text = workout.notes or '' %}
                                             {% set has_notes = notes_text|trim %}
                                             {% set initial_one_rm = None %}
-                                            {% if not is_cardio and workout.max_weight is not none and workout.max_reps is not none %}
+                                            {% if not is_cardio and not is_plank and workout.max_weight is not none and workout.max_reps is not none %}
                                                 {% set weight_val = workout.max_weight|float %}
                                                 {% set reps_val = workout.max_reps|int %}
                                                 {% if weight_val > 0 and reps_val > 0 %}
@@ -349,13 +367,13 @@
                                                 <div class="card h-100 lookup-result-card shadow-sm"
                                                      data-workout-card="{{ workout.workout_id }}"
                                                      data-client-id="{{ client.id }}"
-                                                     data-exercise-type="{{ 'cardio' if is_cardio else 'strength' }}"
+                                                     data-exercise-type="{{ 'cardio' if is_cardio else ('hold' if is_plank else 'strength') }}"
                                                      data-history-window="90d">
                                                     <div class="card-body d-flex flex-column">
                                                         <div class="d-flex justify-content-center align-items-center">
                                                             <h5 class="card-title text-primary fw-bold mb-0">{{ workout_name }}</h5>
                                                         </div>
-                                                            <div class="personal-best max-summary mt-3 text-center" data-id="{{ workout.workout_id }}" data-category="{{ workout_category }}">
+                                                            <div class="personal-best max-summary mt-3 text-center" data-id="{{ workout.workout_id }}" data-category="{{ workout_category }}" data-plank="{{ 'true' if is_plank else 'false' }}" data-bodyweight="{{ 'true' if is_bodyweight and not is_cardio else 'false' }}">
                                                                 <span class="max-label text-uppercase fw-semibold d-block small text-muted">Client Max</span>
                                                                 <div class="max-pill-group d-inline-flex gap-2">
                                                                     <span class="max-pill max-pill-weight">{{ weight_display }}</span>
@@ -365,11 +383,15 @@
                                                         </div>
                                                         <div class="exercise-metric text-center mt-3" aria-live="polite">
                                                             <span class="max-label text-uppercase fw-semibold d-block small text-muted">
-                                                                {{ 'Best Time' if is_cardio else 'Est. 1RM' }}
+                                                                {% if is_cardio or is_plank %}
+                                                                    Best Time
+                                                                {% else %}
+                                                                    Est. 1RM
+                                                                {% endif %}
                                                             </span>
                                                             <div class="exercise-metric-value fw-semibold"
                                                                  data-metric-value
-                                                                 data-metric-type="{{ 'cardio' if is_cardio else 'strength' }}"
+                                                                 data-metric-type="{{ 'cardio' if is_cardio else ('hold' if is_plank else 'strength') }}"
                                                                  data-workout-id="{{ workout.workout_id }}">
                                                                 {% if not is_cardio and initial_one_rm is not none %}
                                                                     {{ ('%.0f' % initial_one_rm) }} lbs
@@ -388,7 +410,7 @@
                                                             <button type="button" class="btn btn-outline-secondary chart-window-btn" data-window="all">All</button>
                                                         </div>
                                                         <div class="d-flex flex-column flex-sm-column gap-2 mt-3">
-                                                            <button class="btn btn-outline-secondary btn-sm max-action-btn update-pr-link" data-id="{{ workout.workout_id }}" data-category="{{ workout_category }}">Update Max</button>
+                                                            <button class="btn btn-outline-secondary btn-sm max-action-btn update-pr-link" data-id="{{ workout.workout_id }}" data-category="{{ workout_category }}" data-plank="{{ 'true' if is_plank else 'false' }}">Update Max</button>
                                                             <button class="btn btn-outline-primary btn-sm max-action-btn toggle-description"
                                                                     type="button"
                                                                         data-id="lookup-desc-{{ workout.workout_id }}-{{ loop.index0 }}"
@@ -476,11 +498,11 @@
                                         <option value="{{ home_workout_token }}">{{ home_workout_token }}</option>
                                     {% endif %}
                                 </select>
-                                <div id="trainer-custom-controls" class="mt-3 text-center" hidden>
-                                    <button type="button" id="trainer-custom-button" class="btn btn-outline-primary btn-sm fw-semibold px-3">
+                                <div id="trainer-custom-controls" class="custom-selector-group mt-3 text-center" hidden>
+                                    <button type="button" id="trainer-custom-button" class="btn custom-selector-btn">
                                         Choose Categories
                                     </button>
-                                    <div id="trainer-custom-summary" class="small fw-semibold text-primary mt-1 d-none"></div>
+                                    <div id="trainer-custom-summary" class="custom-selector-summary d-none"></div>
                                 </div>
                                 <input type="hidden"
                                        id="trainer-custom-input"
@@ -490,12 +512,12 @@
                                        data-home-token="{{ home_workout_token }}"
                                        data-custom-limits='{{ custom_workout_limits | tojson }}'
                                        value='{{ active_workout.custom_categories | tojson if active_workout and active_workout.custom_categories else "[]" }}'>
-                                <div id="trainer-home-equipment-controls" class="mt-3 text-center" hidden>
-                                    <button type="button" id="trainer-home-equipment-button" class="btn btn-outline-primary btn-sm fw-semibold px-3">
+                                <div id="trainer-home-equipment-controls" class="custom-selector-group mt-3 text-center" hidden>
+                                    <button type="button" id="trainer-home-equipment-button" class="btn custom-selector-btn">
                                         Choose Equipment
                                     </button>
-                                    <div id="trainer-home-equipment-feedback" class="small text-muted mt-2 d-none"></div>
-                                    <div id="trainer-home-equipment-summary" class="small fw-semibold text-primary mt-1 d-none"></div>
+                                    <div id="trainer-home-equipment-feedback" class="custom-selector-summary d-none"></div>
+                                    <div id="trainer-home-equipment-summary" class="custom-selector-summary d-none"></div>
                                 </div>
                                 <input type="hidden"
                                        id="trainer-home-equipment-input"
@@ -708,8 +730,18 @@
                             <input type="number" class="form-control" id="maxWeightInput" step="0.5" min="0" placeholder="Max Weight (lbs)">
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label">Max Reps / Minutes</label>
-                            <input type="number" class="form-control" id="maxRepsInput" step="1" min="0" placeholder="Reps">
+                            <label class="form-label">Max Reps / Time</label>
+                            <div id="trainerRepsInputGroup">
+                                <input type="number" class="form-control" id="maxRepsInput" step="1" min="0" placeholder="Reps">
+                            </div>
+                            <div id="trainerTimeInputGroup" class="row g-2 mt-1" style="display: none;">
+                                <div class="col">
+                                    <input type="number" class="form-control" id="maxMinutesInput" min="0" step="1" placeholder="Min">
+                                </div>
+                                <div class="col">
+                                    <input type="number" class="form-control" id="maxSecondsInput" min="0" max="59" step="1" placeholder="Sec">
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -797,9 +829,12 @@
     const notesModal = document.getElementById('notesModal');
     const maxWeightInput = document.getElementById('maxWeightInput');
     const maxRepsInput = document.getElementById('maxRepsInput');
+    const maxMinutesInput = document.getElementById('maxMinutesInput');
+    const maxSecondsInput = document.getElementById('maxSecondsInput');
+    const trainerRepsInputGroup = document.getElementById('trainerRepsInputGroup');
+    const trainerTimeInputGroup = document.getElementById('trainerTimeInputGroup');
     const notesTextarea = document.getElementById('notesTextarea');
     const durationPillsWrap = document.getElementById('trainer-duration-pills');
-    const durationDisplay = document.getElementById('client-duration-display');
     const durationBadge = document.getElementById('client-duration-badge');
     const categorySelect = document.getElementById('category');
     const generateWorkoutBtn = document.getElementById('generate-client-workout-btn');
@@ -1192,7 +1227,10 @@
 
     let trainerDraftSelection = new Set();
     let trainerDraftHomeEquipmentSelection = new Set();
-    let trainerActiveDuration = parseInt((durationDisplay?.textContent || '').replace(/[^0-9]/g, ''), 10) || 60;
+    let trainerActiveDuration = (() => {
+        const activePill = durationPillsWrap?.querySelector('.duration-pill.active');
+        return parseInt(activePill?.dataset.minutes || '', 10) || 60;
+    })();
 
     function normalizeTrainerSelection(values) {
         const seen = new Set();
@@ -1298,7 +1336,7 @@
         if (!trainerCustomControls) return;
         const isActive = isTrainerCustomSelected();
         trainerCustomControls.hidden = !isActive;
-        trainerCustomControls.style.display = isActive ? 'block' : 'none';
+        trainerCustomControls.style.display = isActive ? 'flex' : 'none';
         trainerCustomControls.style.pointerEvents = isActive ? 'auto' : 'none';
         if (trainerCustomButton) {
             trainerCustomButton.disabled = !isActive;
@@ -1321,15 +1359,17 @@
         }
 
         if (trainerCustomSummary) {
-            trainerCustomSummary.classList.remove('d-none');
+            trainerCustomSummary.classList.remove('d-none', 'text-muted', 'custom-selector-summary--empty');
+            trainerCustomSummary.classList.remove('text-danger');
             if (!selection.length) {
                 trainerCustomSummary.textContent = 'No categories selected yet.';
-                trainerCustomSummary.classList.add('text-muted');
+                trainerCustomSummary.classList.add('text-danger', 'custom-selector-summary--empty');
             } else {
                 trainerCustomSummary.textContent = `Selected: ${selection.map(normalizeTrainerLabel).join(', ')}`;
-                trainerCustomSummary.classList.remove('text-muted');
+                if (!withinBounds) {
+                    trainerCustomSummary.classList.add('text-danger');
+                }
             }
-            trainerCustomSummary.classList.toggle('text-danger', selection.length > 0 && !withinBounds);
         }
     }
 
@@ -1349,31 +1389,34 @@
         const tokens = Array.isArray(selection) ? selection : getTrainerHomeEquipmentSelection();
         if (!isTrainerHomeSelected()) {
             trainerHomeEquipmentFeedback.classList.add('d-none');
-            trainerHomeEquipmentFeedback.classList.remove('text-danger');
+            trainerHomeEquipmentFeedback.classList.remove('text-danger', 'custom-selector-summary--empty');
             trainerHomeEquipmentFeedback.textContent = '';
             if (trainerHomeEquipmentSummary) {
                 trainerHomeEquipmentSummary.classList.add('d-none');
+                trainerHomeEquipmentSummary.classList.remove('text-danger', 'custom-selector-summary--empty');
                 trainerHomeEquipmentSummary.textContent = '';
             }
             return;
         }
         if (!tokens.length) {
-            trainerHomeEquipmentFeedback.classList.add('text-danger');
-            trainerHomeEquipmentFeedback.innerHTML = '<span class="fw-semibold">No equipment selected yet.</span>';
             trainerHomeEquipmentFeedback.classList.remove('d-none');
+            trainerHomeEquipmentFeedback.classList.add('text-danger', 'custom-selector-summary--empty');
+            trainerHomeEquipmentFeedback.textContent = 'No equipment selected yet.';
             if (trainerHomeEquipmentSummary) {
                 trainerHomeEquipmentSummary.classList.add('d-none');
+                trainerHomeEquipmentSummary.classList.remove('text-danger', 'custom-selector-summary--empty');
                 trainerHomeEquipmentSummary.textContent = '';
             }
             return;
         }
-        trainerHomeEquipmentFeedback.classList.remove('text-danger');
         trainerHomeEquipmentFeedback.classList.add('d-none');
+        trainerHomeEquipmentFeedback.classList.remove('text-danger', 'custom-selector-summary--empty');
         trainerHomeEquipmentFeedback.textContent = '';
         if (trainerHomeEquipmentSummary) {
             const pretty = tokens.map((token) => formatTrainerEquipmentLabel(token)).join(', ');
             trainerHomeEquipmentSummary.textContent = `Selected: ${pretty}`;
             trainerHomeEquipmentSummary.classList.remove('d-none');
+            trainerHomeEquipmentSummary.classList.remove('text-danger', 'custom-selector-summary--empty');
         }
     }
 
@@ -1381,7 +1424,7 @@
         if (!trainerHomeEquipmentControls) return;
         const isHome = isTrainerHomeSelected();
         trainerHomeEquipmentControls.hidden = !isHome;
-        trainerHomeEquipmentControls.style.display = isHome ? 'block' : 'none';
+        trainerHomeEquipmentControls.style.display = isHome ? 'flex' : 'none';
         trainerHomeEquipmentControls.style.pointerEvents = isHome ? 'auto' : 'none';
         if (trainerHomeEquipmentButton) {
             trainerHomeEquipmentButton.disabled = !isHome;
@@ -1523,6 +1566,67 @@
             .replace(/'/g, '&#39;');
     }
 
+    function formatHoldDuration(totalSeconds) {
+        const formatter = window.FitBaseExerciseHistory?.formatDurationClock;
+        if (typeof formatter === 'function') {
+            return formatter(totalSeconds);
+        }
+        const parsed = Number(totalSeconds);
+        if (!Number.isFinite(parsed) || parsed <= 0) return '—';
+        const rounded = Math.round(parsed);
+        const minutes = Math.floor(rounded / 60);
+        const seconds = rounded % 60;
+        const secLabel = seconds < 10 ? `0${seconds}` : `${seconds}`;
+        return `${minutes}:${secLabel}`;
+    }
+
+    function parseDurationDisplay(text) {
+        if (!text || text.includes('—')) {
+            return { minutes: '', seconds: '' };
+        }
+        const parts = text.split(':').map((part) => part.trim());
+        if (parts.length !== 2) {
+            return { minutes: '', seconds: '' };
+        }
+        const minutes = Number.parseInt(parts[0], 10);
+        const seconds = Number.parseInt(parts[1], 10);
+        return {
+            minutes: Number.isFinite(minutes) ? Math.max(0, minutes) : '',
+            seconds: Number.isFinite(seconds) ? Math.min(59, Math.max(0, seconds)) : '',
+        };
+    }
+
+    function toggleTrainerTimeInputs(showTimeFields) {
+        if (trainerRepsInputGroup) {
+            trainerRepsInputGroup.style.display = showTimeFields ? 'none' : '';
+        }
+        if (trainerTimeInputGroup) {
+            trainerTimeInputGroup.style.display = showTimeFields ? '' : 'none';
+        }
+    }
+
+    function resetPrModalFields() {
+        if (maxWeightInput) {
+            maxWeightInput.value = '';
+            maxWeightInput.disabled = false;
+            maxWeightInput.placeholder = 'Max Weight (lbs)';
+            maxWeightInput.title = maxWeightInput.placeholder;
+        }
+        if (maxRepsInput) {
+            maxRepsInput.value = '';
+            maxRepsInput.placeholder = 'Reps';
+            maxRepsInput.title = maxRepsInput.placeholder;
+            delete maxRepsInput.dataset.isCardio;
+        }
+        if (maxMinutesInput) maxMinutesInput.value = '';
+        if (maxSecondsInput) maxSecondsInput.value = '';
+        toggleTrainerTimeInputs(false);
+        if (prModal) {
+            delete prModal.dataset.cardio;
+            delete prModal.dataset.plank;
+        }
+    }
+
     function showToast(message, variant = 'success') {
         if (!toast) return;
         toast.textContent = message;
@@ -1559,9 +1663,6 @@
             });
         }
         trainerActiveDuration = parseInt(minutes, 10) || trainerActiveDuration;
-        if (durationDisplay) {
-            durationDisplay.textContent = `${minutes} mins`;
-        }
         if (durationBadge) {
             durationBadge.textContent = `Duration ${minutes} mins`;
         }
@@ -1633,7 +1734,7 @@
         const pills = Array.from(durationPillsWrap.querySelectorAll('.duration-pill'));
         if (!pills.length) return;
 
-        let activeMinutes = pills.find(btn => btn.classList.contains('active'))?.dataset.minutes || String((durationDisplay?.textContent || '').replace(/[^0-9]/g, '') || '60');
+        let activeMinutes = pills.find(btn => btn.classList.contains('active'))?.dataset.minutes || '60';
 
         pills.forEach(btn => {
             btn.addEventListener('click', () => {
@@ -1934,22 +2035,27 @@
         if (!target) return;
         event.preventDefault();
         currentWorkoutId = target.dataset.id;
-        const categoryLabel = (target.dataset.category || '').toLowerCase();
-        const isCardio = categoryLabel === 'cardio';
         const container = target.closest('[data-workout-card]');
         const personalBestSelector = `.personal-best[data-id="${currentWorkoutId}"]`;
         const personalBest = container?.querySelector(personalBestSelector) || document.querySelector(personalBestSelector);
+        const categoryLabel = (target.dataset.category || '').toLowerCase();
+        const isCardio = categoryLabel === 'cardio';
+        const isPlank = target.dataset.plank === 'true' || personalBest?.dataset.plank === 'true';
         const weightSpan = personalBest?.querySelector('.max-pill-weight');
         const repsSpan = personalBest?.querySelector('.max-pill-reps');
         const weightText = weightSpan ? weightSpan.textContent.trim() : '';
         const repsText = repsSpan ? repsSpan.textContent.trim() : '';
         const isBodyweight = weightText.toLowerCase().includes('bodyweight');
+        if (prModal) {
+            prModal.dataset.cardio = isCardio ? '1' : '0';
+            prModal.dataset.plank = isPlank ? '1' : '0';
+        }
 
         if (maxWeightInput) {
             maxWeightInput.disabled = isBodyweight || isCardio;
             if (maxWeightInput.disabled) {
                 maxWeightInput.value = '';
-                maxWeightInput.placeholder = isCardio ? 'Cardio' : 'Bodyweight';
+                maxWeightInput.placeholder = 'Bodyweight';
             } else {
                 const numericWeight = parseFloat(weightText.replace(/[^0-9.]+/g, ''));
                 maxWeightInput.value = Number.isFinite(numericWeight) ? numericWeight : '';
@@ -1957,7 +2063,13 @@
             }
         }
 
-        if (maxRepsInput) {
+        if (isPlank) {
+            toggleTrainerTimeInputs(true);
+            const parsed = parseDurationDisplay(repsText);
+            if (maxMinutesInput) maxMinutesInput.value = parsed.minutes !== '' ? parsed.minutes : '';
+            if (maxSecondsInput) maxSecondsInput.value = parsed.seconds !== '' ? parsed.seconds : '';
+        } else if (maxRepsInput) {
+            toggleTrainerTimeInputs(false);
             const repsNumeric = parseInt(repsText.replace(/[^0-9]+/g, ''), 10);
             maxRepsInput.value = Number.isFinite(repsNumeric) ? repsNumeric : '';
             maxRepsInput.placeholder = isCardio ? 'Minutes' : 'Reps';
@@ -1970,11 +2082,39 @@
     function handleSavePr() {
         if (!currentWorkoutId) return;
         const payload = { workout_id: currentWorkoutId };
+        const isCardio = prModal?.dataset.cardio === '1';
+        const isPlank = prModal?.dataset.plank === '1';
+
         if (maxWeightInput && !maxWeightInput.disabled && maxWeightInput.value !== '') {
-            payload.max_weight = parseFloat(maxWeightInput.value);
+            const parsedWeight = parseFloat(maxWeightInput.value);
+            if (!Number.isFinite(parsedWeight)) {
+                alert('Please enter a valid weight.');
+                return;
+            }
+            payload.max_weight = parsedWeight;
         }
-        if (maxRepsInput && maxRepsInput.value !== '') {
-            payload.max_reps = parseInt(maxRepsInput.value, 10);
+
+        if (isPlank) {
+            const minutesValue = maxMinutesInput ? parseInt(maxMinutesInput.value, 10) : 0;
+            const secondsValue = maxSecondsInput ? parseInt(maxSecondsInput.value, 10) : 0;
+            const safeMinutes = Number.isFinite(minutesValue) ? Math.max(0, minutesValue) : 0;
+            const safeSeconds = Number.isFinite(secondsValue) ? Math.min(59, Math.max(0, secondsValue)) : 0;
+            const totalSeconds = safeMinutes * 60 + safeSeconds;
+            if (!Number.isFinite(totalSeconds) || totalSeconds <= 0) {
+                alert('Please enter a hold time greater than zero.');
+                return;
+            }
+            payload.max_reps = totalSeconds;
+        } else if (maxRepsInput && maxRepsInput.value !== '') {
+            const parsedReps = parseInt(maxRepsInput.value, 10);
+            if (!Number.isFinite(parsedReps)) {
+                alert(isCardio ? 'Please enter valid minutes.' : 'Please enter valid reps.');
+                return;
+            }
+            payload.max_reps = parsedReps;
+        } else {
+            alert('Please enter valid values.');
+            return;
         }
 
         fetch(updatePrUrl, {
@@ -1989,8 +2129,6 @@
                 return;
             }
             const personalBestBlocks = document.querySelectorAll(`.personal-best[data-id="${currentWorkoutId}"]`);
-            const isCardio = maxRepsInput?.dataset.isCardio === '1';
-            const isBodyweight = maxWeightInput?.disabled;
             const returnedWeight = data.max_weight;
             const returnedReps = data.max_reps;
 
@@ -1998,10 +2136,13 @@
                 const weightSpan = personalBest.querySelector('.max-pill-weight');
                 const repsSpan = personalBest.querySelector('.max-pill-reps');
                 const summary = personalBest.querySelector('.personal-max-text');
+                const blockCategory = (personalBest.dataset.category || '').toLowerCase();
+                const blockIsPlank = personalBest.dataset.plank === 'true';
+                const treatAsBodyweight = personalBest.dataset.bodyweight === 'true' || blockCategory === 'cardio';
 
                 if (weightSpan) {
-                    if (isBodyweight) {
-                        weightSpan.textContent = maxWeightInput?.placeholder || (isCardio ? 'Cardio' : 'Bodyweight');
+                    if (treatAsBodyweight) {
+                        weightSpan.textContent = 'Bodyweight';
                     } else if (returnedWeight !== null && returnedWeight !== undefined) {
                         weightSpan.textContent = `${parseFloat(returnedWeight).toFixed(1)} lbs`;
                     } else {
@@ -2012,6 +2153,9 @@
                 if (repsSpan) {
                     if (returnedReps !== null && returnedReps !== undefined) {
                         repsSpan.textContent = isCardio ? `${parseInt(returnedReps, 10)} min` : `${parseInt(returnedReps, 10)} reps`;
+                        if (blockIsPlank) {
+                            repsSpan.textContent = formatHoldDuration(returnedReps);
+                        }
                     } else {
                         repsSpan.textContent = '—';
                     }
@@ -2026,16 +2170,23 @@
                     if (isCardio) {
                         const parsedMinutes = Number(returnedReps);
                         node.textContent = Number.isFinite(parsedMinutes) ? `${parsedMinutes} min` : '—';
+                        node.dataset.value = Number.isFinite(parsedMinutes) ? String(parsedMinutes) : '';
+                    } else if (isPlank) {
+                        const secondsValue = Number(returnedReps);
+                        node.textContent = Number.isFinite(secondsValue) ? formatHoldDuration(secondsValue) : '—';
+                        node.dataset.value = Number.isFinite(secondsValue) ? String(secondsValue) : '';
                     } else {
                         const updatedOneRm = window.FitBaseExerciseHistory.computeOneRepMax(returnedWeight, returnedReps);
                         node.textContent = updatedOneRm !== null
                             ? window.FitBaseExerciseHistory.formatOneRepMax(updatedOneRm)
                             : '—';
+                        node.dataset.value = updatedOneRm !== null ? String(updatedOneRm) : '';
                     }
                 });
                 window.FitBaseExerciseHistory.refreshHistory(currentWorkoutId);
             }
             closeModal(prModal);
+            resetPrModalFields();
             showToast('Personal record updated!');
         })
         .catch(() => alert('Unable to update max right now.'));
@@ -2178,8 +2329,14 @@
         }
 
         document.getElementById('submitPrBtn')?.addEventListener('click', handleSavePr);
-        document.getElementById('closePrModal')?.addEventListener('click', () => closeModal(prModal));
-        document.getElementById('prModalClose')?.addEventListener('click', () => closeModal(prModal));
+        document.getElementById('closePrModal')?.addEventListener('click', () => {
+            closeModal(prModal);
+            resetPrModalFields();
+        });
+        document.getElementById('prModalClose')?.addEventListener('click', () => {
+            closeModal(prModal);
+            resetPrModalFields();
+        });
 
         document.getElementById('saveNotesBtn')?.addEventListener('click', handleSaveNotes);
         document.getElementById('closeNotesModal')?.addEventListener('click', () => closeModal(notesModal));
