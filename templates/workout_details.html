@@ -18,6 +18,12 @@
             </p>
         </div>
         <div class="surface-body">
+            {% if completion_label %}
+                <div class="alert alert-info text-center py-1">
+                    <span class="fw-semibold">Completed:</span>
+                    <span>{{ completion_label }}</span>
+                </div>
+            {% endif %}
             {% if workouts %}
                 {% for subcategory, exercises in workouts.items() %}
                     {% set subcat_index = loop.index %}
@@ -26,6 +32,11 @@
                             <h5 class="surface-section__title mb-1">{{ subcategory }}</h5>
                         </div>
                         <ul class="list-group p-2 rounded-3 mb-0">
+                            {% if not exercises %}
+                                <li class="list-group-item text-center text-muted small fst-italic">
+                                    This category has no equipment-compatible exercises.
+                                </li>
+                            {% else %}
                             {% for exercise in exercises %}
                                 {% set ex_index = loop.index %}
                                 <li class="list-group-item shadow-sm p-3 rounded-4 mb-3">
@@ -58,20 +69,15 @@
                                         <p class="mb-0 text-muted small fst-italic text-center">No max recorded</p>
                                     {% endif %}
 
-                                    <div class="text-center mt-3">
-                                        <button class="btn btn-sm btn-brand-outline toggle-description"
-                                                data-id="desc-{{ subcat_index }}-{{ ex_index }}">
-                                            View Description
-                                        </button>
-                                    </div>
-
-                                    <div id="desc-{{ subcat_index }}-{{ ex_index }}"
-                                         class="mt-3 ps-2 text-muted description text-center"
-                                         style="display: none;">
-                                        {{ exercise.description }}
-                                    </div>
+                                    {% if exercise.notes %}
+                                        <div class="mt-3 text-start bg-light rounded-3 p-3">
+                                            <p class="text-uppercase text-muted small mb-1">Notes</p>
+                                            <p class="mb-0 small text-dark">{{ exercise.notes.replace('\n', '<br>') | safe }}</p>
+                                        </div>
+                                    {% endif %}
                                 </li>
                             {% endfor %}
+                            {% endif %}
                         </ul>
                     </div>
                 {% endfor %}
@@ -87,34 +93,4 @@
         </div>
     </div>
 </div>
-
-<script>
-document.addEventListener('click', function (e) {
-    const toggle = e.target.closest('.toggle-description');
-    if (!toggle) return;
-
-    const descId = toggle.getAttribute('data-id');
-    const descElement = document.getElementById(descId);
-    if (!descElement) return;
-
-    const isHidden = descElement.style.display === 'none' || descElement.style.display === '';
-
-    if (isHidden) {
-        descElement.style.display = 'block';
-        descElement.style.maxHeight = '0px';
-        descElement.style.overflow = 'hidden';
-        descElement.style.transition = 'max-height 0.3s ease-out';
-        requestAnimationFrame(() => {
-            descElement.style.maxHeight = descElement.scrollHeight + 'px';
-        });
-        toggle.textContent = 'Hide Description';
-    } else {
-        descElement.style.maxHeight = '0px';
-        setTimeout(() => {
-            descElement.style.display = 'none';
-        }, 300);
-        toggle.textContent = 'View Description';
-    }
-});
-</script>
 {% endblock %}

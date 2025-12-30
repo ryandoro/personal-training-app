@@ -2358,6 +2358,17 @@ iframe.fullscreen-sim {
   color: #fff;
 }
 
+.btn-workout-details {
+  background: #f7931a;
+  box-shadow: 0 12px 24px rgba(247, 147, 26, 0.35);
+  color: #fff;
+}
+
+.btn-workout-details:hover {
+  color: #fff;
+  box-shadow: 0 16px 36px rgba(247, 147, 26, 0.45);
+}
+
 .btn-brand-outline {
   border-radius: 999px;
   padding: 0.55rem 1.6rem;
@@ -3208,6 +3219,15 @@ iframe.fullscreen-sim {
   color: #135f93;
 }
 
+.trainer-self-calendar .calendar-day-header--stacked {
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.trainer-self-calendar .calendar-day-label--single {
+  letter-spacing: 0.02em;
+}
+
 @media (max-width: 576px) {
   .calendar-day-header {
     font-size: 0.82rem;
@@ -4045,12 +4065,19 @@ iframe.fullscreen-sim {
 }
 
 @media (max-width: 768px) {
-  .calendar-wrapper.calendar-mode-full .calendar-day-header {
+  .calendar-wrapper.calendar-mode-full:not(.trainer-self-calendar) .calendar-day-header {
     flex-direction: column;
     align-items: center;
     gap: 0.15rem;
   }
-  .calendar-wrapper.calendar-mode-full .calendar-day-header > span {
+  .calendar-wrapper.calendar-mode-full:not(.trainer-self-calendar) .calendar-day-header > span {
+    display: block;
+    width: 100%;
+  }
+  .trainer-self-calendar.calendar-mode-full .calendar-day-header--stacked {
+    align-items: center;
+  }
+  .trainer-self-calendar.calendar-mode-full .calendar-day-header--stacked > span {
     display: block;
     width: 100%;
   }
@@ -4691,6 +4718,11 @@ iframe.fullscreen-sim {
 .trainer-dashboard-card,
 .trainer-schedule-card {
   max-width: 1100px;
+}
+
+.trainer-schedule-card--wide {
+  max-width: none;
+  width: 100%;
 }
 
 .admin-dashboard-card {

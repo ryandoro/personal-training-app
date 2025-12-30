@@ -1,45 +1,29 @@
 {% extends "layout.html" %}
 
 {% block title %}
-    My Schedule
+    Workout Log
 {% endblock %}
 
 {% block content %}
-<div class="trainer-calendar-container experience-container experience-container--wide">
-    <div id="calendar-card" class="surface-card trainer-schedule-card schedule-card mx-auto">
+<div class="trainer-calendar-container experience-container experience-container--wide agenda-experience">
+    <div id="trainer-self-calendar-card" class="surface-card trainer-schedule-card trainer-schedule-card--wide schedule-card mx-auto agenda-surface-card">
         <div class="surface-hero surface-hero--dashboard text-white text-center">
             <div class="surface-hero__content w-100">
-                <h4 class="surface-hero__title mb-1">My Training Schedule</h4>
-                <p class="surface-hero__subtitle mb-3">Your trainer keeps this calendar up to date. Check what's coming next.</p>
-                <div class="d-flex flex-column align-items-center">
-                    <div class="selected-client-pill {% if not trainer_info %}selected-client-pill--empty{% endif %}">
-                        <span class="selected-client-pill__label">Assigned Trainer</span>
-                        <span class="selected-client-pill__name">
-                            {% if trainer_info %}
-                                {{ trainer_info.name or trainer_info.username }} {{ trainer_info.last_name or '' }}
-                            {% else %}
-                                No trainer assigned
-                            {% endif %}
-                        </span>
-                    </div>
-                    <a href="{{ url_for('client_self_agenda') }}" class="btn btn-light btn-sm text-primary fw-semibold mt-3">
-                        <i class="bi bi-list-check me-1"></i>My Agenda
+                <h4 class="surface-hero__title mb-1">Workout Log</h4>
+                <p class="surface-hero__subtitle mb-3">Browse every workout you've logged through FitBase.</p>
+                <div class="d-inline-flex gap-2 mt-2">
+                    <a href="{{ url_for('trainer_self_agenda_view') }}" class="btn btn-sm btn-outline-light">
+                        <i class="bi bi-list-ul me-1"></i>Agenda View
                     </a>
                 </div>
             </div>
         </div>
         <div class="surface-body">
-            {% if not trainer_info %}
-                <div class="alert alert-warning mb-3" role="alert">
-                    You are not currently linked with a trainer. Schedule information will appear here once a trainer is assigned to you.
-                </div>
-            {% endif %}
-
-            <div class="calendar-wrapper" id="client-calendar" data-mode="client">
+            <div class="calendar-wrapper trainer-self-calendar" id="client-calendar" data-mode="trainer-self">
                 <div class="calendar-controls">
                     <div class="calendar-controls__group">
                         <button class="btn btn-outline-secondary btn-sm w-100 calendar-controls__window" id="client-edit-window">
-                            <i class="bi bi-sliders me-1"></i>Edit Available Window
+                            <i class="bi bi-sliders me-1"></i>Edit Visible Hours
                         </button>
                     </div>
                     <div class="calendar-controls__group">
@@ -85,7 +69,7 @@
                 </div>
                 <div class="calendar-scroll-hint" id="client-scroll-hint">Swipe sideways to explore the week</div>
                 <div class="calendar-empty-state" id="client-calendar-empty" hidden>
-                    <p class="mb-0">No sessions scheduled for this week.</p>
+                    <p class="mb-0">No workouts logged for this week.</p>
                 </div>
             </div>
         </div>
@@ -166,10 +150,9 @@
             </div>
         </div>
         <div class="event-session-modal__body">
-            <div class="event-session-modal__section" id="clientModalCategorySection" hidden>
-                <p class="mb-0 fw-semibold text-center" id="clientModalCategory"></p>
-                <p class="mb-0 text-muted small text-center" id="clientModalCompleted"></p>
-            </div>
+        <div class="event-session-modal__section text-center" id="clientModalCategorySection" hidden>
+            <p class="mb-0 text-muted small" id="clientModalCompleted"></p>
+        </div>
             <div class="event-session-modal__section" id="clientModalNoteSection" hidden>
                 <p class="mb-0 small text-muted text-center" id="clientModalNote"></p>
             </div>
@@ -219,16 +202,16 @@
     const clientModalTitle = document.getElementById('clientModalTitle');
     const clientModalTime = document.getElementById('clientModalTime');
     const clientModalCategorySection = document.getElementById('clientModalCategorySection');
-    const clientModalCategory = document.getElementById('clientModalCategory');
     const clientModalCompleted = document.getElementById('clientModalCompleted');
-    const clientModalActions = document.getElementById('clientModalActions');
-    const clientModalWorkoutLink = document.getElementById('clientModalWorkoutLink');
     const clientModalNoteSection = document.getElementById('clientModalNoteSection');
     const clientModalNote = document.getElementById('clientModalNote');
-    const VIEW_MODE_STORAGE_KEY = 'client-calendar-view-mode';
+    const clientModalActions = document.getElementById('clientModalActions');
+    const clientModalWorkoutLink = document.getElementById('clientModalWorkoutLink');
 
     const FIFTEEN_MINUTES = 15;
     const MILLI_IN_MINUTE = 60000;
+    const VIEW_MODE_STORAGE_KEY = 'trainer-self-calendar-view-mode';
+    const WINDOW_PREF_KEY = 'trainer-self-calendar-window';
 
     function escapeHtml(value) {
         if (value === undefined || value === null) return '';
@@ -240,14 +223,25 @@
             .replace(/'/g, '&#39;');
     }
 
-    function escapeHtml(value) {
-        if (value === undefined || value === null) return '';
-        return String(value)
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#39;');
+    function startOfWeek(date) {
+        const d = new Date(date);
+        const day = d.getDay();
+        const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+        d.setDate(diff);
+        d.setHours(0,0,0,0);
+        return d;
+    }
+
+    function formatTime(date) {
+        return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    }
+
+    function toISO(date) {
+        return new Date(date).toISOString();
+    }
+
+    function clampHour(value) {
+        return Math.min(23, Math.max(0, value));
     }
 
     function loadStoredViewMode() {
@@ -266,28 +260,23 @@
         } catch (_) {}
     }
 
-    const datasetStart = Number(calendarRoot.dataset.viewStart);
-    const datasetEnd = Number(calendarRoot.dataset.viewEnd);
-    let initialStart = Number.isFinite(datasetStart) ? datasetStart : 5;
-    let initialEnd = Number.isFinite(datasetEnd) ? datasetEnd : 21;
-    if (initialEnd <= initialStart) {
-        initialStart = 5;
-        initialEnd = 21;
+    function loadWindowPreference() {
+        try {
+            const raw = window.localStorage.getItem(WINDOW_PREF_KEY);
+            if (!raw) return null;
+            const parsed = JSON.parse(raw);
+            if (typeof parsed.viewStart === 'number' && typeof parsed.viewEnd === 'number') {
+                return parsed;
+            }
+        } catch (_) {}
+        return null;
     }
-    const storedMode = loadStoredViewMode();
-    const initialMode = storedMode || 'focused';
 
-    const state = {
-        weekStart: startOfWeek(new Date()),
-        viewStart: initialStart,
-        viewEnd: initialEnd,
-        viewMode: initialMode,
-        events: []
-    };
-
-    updateViewToggleUI(initialMode);
-    calendarRoot.classList.toggle('calendar-mode-full', initialMode === 'full');
-    persistViewMode(initialMode);
+    function saveWindowPreference(start, end) {
+        try {
+            window.localStorage.setItem(WINDOW_PREF_KEY, JSON.stringify({ viewStart: start, viewEnd: end }));
+        } catch (_) {}
+    }
 
     let dayColumns = [];
     const STATUS_LABELS = {
@@ -296,34 +285,17 @@
         cancelled: 'Cancelled'
     };
 
-    function startOfWeek(date) {
-        const d = new Date(date);
-        const day = d.getDay();
-        const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-        d.setDate(diff);
-        d.setHours(0,0,0,0);
-        return d;
-    }
+    const storedMode = loadStoredViewMode();
+    let initialMode = storedMode || 'focused';
+    const storedWindow = loadWindowPreference();
 
-    function formatDayParts(date) {
-        return {
-            weekday: date.toLocaleDateString(undefined, { weekday: 'short' }),
-            month: date.toLocaleDateString(undefined, { month: 'short' }),
-            day: date.toLocaleDateString(undefined, { day: 'numeric' })
-        };
-    }
-
-    function formatTime(date) {
-        return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-    }
-
-    function toISO(date) {
-        return new Date(date).toISOString();
-    }
-
-    function clampHour(value) {
-        return Math.min(23, Math.max(0, value));
-    }
+    const state = {
+        weekStart: startOfWeek(new Date()),
+        viewStart: storedWindow ? storedWindow.viewStart : 5,
+        viewEnd: storedWindow ? storedWindow.viewEnd : 21,
+        viewMode: initialMode,
+        events: []
+    };
 
     function updateViewToggleUI(mode = state.viewMode) {
         if (viewToggleFocused) {
@@ -347,6 +319,8 @@
         rebuild();
         renderEvents();
     }
+
+    applyViewMode(initialMode, { force: true });
 
     function sortEvents() {
         state.events.sort((a, b) => {
@@ -437,7 +411,7 @@
         fetchEvents();
     }
 
-   function renderHeaders() {
+    function renderHeaders() {
         dayHeaderEl.innerHTML = '';
         columnsEl.innerHTML = '';
         dayColumns = [];
@@ -448,36 +422,45 @@
         const today = new Date();
         today.setHours(0, 0, 0, 0);
 
+        const renderStacked = window.matchMedia('(max-width: 767px)').matches;
         for (let i = 0; i < 7; i += 1) {
             const dayDate = new Date(state.weekStart);
             dayDate.setDate(dayDate.getDate() + i);
 
-           const header = document.createElement('div');
+            const header = document.createElement('div');
             header.className = 'calendar-day-header';
-            header.dataset.date = dayDate.toISOString();
-            const { weekday, month, day } = formatDayParts(dayDate);
-            header.innerHTML = [
-                `<span class="calendar-day-label">${weekday},</span>`,
-                `<span class="calendar-month-label">${month}</span>`,
-                `<span class="calendar-date-label">${day}</span>`
-            ].join('');
-            const dayNormalized = new Date(dayDate);
-            dayNormalized.setHours(0, 0, 0, 0);
-            const isToday = dayNormalized.getTime() === today.getTime();
-            if (isToday) {
+            const dayParts = {
+                weekday: dayDate.toLocaleDateString(undefined, { weekday: 'short' }),
+                month: dayDate.toLocaleDateString(undefined, { month: 'short' }),
+                day: dayDate.toLocaleDateString(undefined, { day: 'numeric' })
+            };
+            const shouldStack = state.viewMode === 'full' && renderStacked;
+            if (shouldStack) {
+                header.innerHTML = `
+                    <span class="calendar-day-label">${escapeHtml(dayParts.weekday)}</span>
+                    <span class="calendar-month-label">${escapeHtml(dayParts.month)}</span>
+                    <span class="calendar-date-label">${escapeHtml(dayParts.day)}</span>
+                `;
+                header.classList.add('calendar-day-header--stacked');
+            } else {
+                header.innerHTML = `
+                    <span class="calendar-day-label calendar-day-label--single">${escapeHtml(dayParts.weekday)}, ${escapeHtml(dayParts.month)} ${escapeHtml(dayParts.day)}</span>
+                `;
+                header.classList.remove('calendar-day-header--stacked');
+            }
+            if (dayDate.getTime() === today.getTime()) {
                 header.classList.add('calendar-day-header--today');
-                header.setAttribute('aria-current', 'date');
             }
             dayHeaderEl.appendChild(header);
 
-            const col = document.createElement('div');
-            col.className = 'calendar-day-column';
-            col.dataset.date = dayDate.toISOString();
+            const column = document.createElement('div');
+            column.className = 'calendar-day-column';
+            const isToday = dayDate.getTime() === today.getTime();
             if (isToday) {
-                col.classList.add('calendar-day-column--today');
+                column.classList.add('calendar-day-column--today');
             }
-            columnsEl.appendChild(col);
-            dayColumns.push(col);
+            columnsEl.appendChild(column);
+            dayColumns.push(column);
         }
     }
 
@@ -538,7 +521,7 @@
 
     function renderEvents() {
         dayColumns.forEach(col => col.querySelectorAll('.calendar-event').forEach(el => el.remove()));
-        emptyState.textContent = 'No sessions scheduled for this week.';
+        emptyState.textContent = 'No workouts logged for this week.';
         emptyState.hidden = state.events.length !== 0;
 
         const totalMinutes = (state.viewEnd - state.viewStart) * 60;
@@ -569,16 +552,10 @@
             eventNode.classList.toggle('calendar-event-cancelled', status === 'cancelled');
 
             const title = eventNode.querySelector('.calendar-event-title');
-            const trainerName = event.trainer_name || event.trainer_username;
-            if (trainerName) {
-                const last = event.trainer_last_name ? ` ${event.trainer_last_name}` : '';
-                title.textContent = `With ${trainerName}${last}`.trim();
-            } else if (event.session_category) {
+            if (event.session_category) {
                 title.textContent = event.session_category;
-            } else if (event.is_self_booked) {
-                title.textContent = 'Self Workout';
             } else {
-                title.textContent = 'Training Session';
+                title.textContent = 'Solo Workout';
             }
 
             const timeEl = eventNode.querySelector('.calendar-event-time');
@@ -605,37 +582,23 @@
         const end = new Date(event.end_time);
         const label = statusLabel(event.status) || 'Booked';
         clientModalStatus.textContent = label;
-        if (event.is_self_booked) {
-            clientModalTitle.textContent = 'Solo Session';
-        } else if (event.trainer_name || event.trainer_username) {
-            const trainerName = event.trainer_name || event.trainer_username;
-            const last = event.trainer_last_name ? ` ${event.trainer_last_name}` : '';
-            clientModalTitle.textContent = `With ${trainerName}${last}`.trim();
-        } else {
-            clientModalTitle.textContent = 'Training Session';
-        }
+        clientModalTitle.textContent = event.session_category || 'Solo Workout';
 
         const dateStr = start.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
         const timeLabel = `${formatTime(start)} – ${formatTime(end)}`;
         clientModalTime.innerHTML = `${escapeHtml(dateStr)}<br>${escapeHtml(timeLabel)}`;
 
-        if (event.session_category || event.session_completed_at) {
+        if (event.session_completed_at) {
             clientModalCategorySection.hidden = false;
-            clientModalCategory.textContent = event.session_category || '';
-            if (event.session_completed_at) {
-                const completedAt = new Date(event.session_completed_at);
-                if (!Number.isNaN(completedAt.getTime())) {
-                    const completedLabel = completedAt.toLocaleString(undefined, { month: 'long', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
-                    clientModalCompleted.textContent = `Completed: ${completedLabel}`;
-                } else {
-                    clientModalCompleted.textContent = '';
-                }
+            const completedAt = new Date(event.session_completed_at);
+            if (!Number.isNaN(completedAt.getTime())) {
+                const completedLabel = completedAt.toLocaleString(undefined, { month: 'long', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+                clientModalCompleted.textContent = `Completed: ${completedLabel}`;
             } else {
                 clientModalCompleted.textContent = '';
             }
         } else {
             clientModalCategorySection.hidden = true;
-            clientModalCategory.textContent = '';
             clientModalCompleted.textContent = '';
         }
 
@@ -663,10 +626,10 @@
         const end = new Date(state.weekStart);
         end.setDate(end.getDate() + 7);
         const endIso = toISO(end);
-        fetch(`/client/schedule/data?start=${encodeURIComponent(startIso)}&end=${encodeURIComponent(endIso)}`)
+        fetch(`/trainer/my_workouts/data?start=${encodeURIComponent(startIso)}&end=${encodeURIComponent(endIso)}`)
             .then(res => res.json())
             .then(data => {
-                if (!data.success) throw new Error(data.error || 'Failed to load schedule');
+                if (!data.success) throw new Error(data.error || 'Failed to load workouts');
                 state.events = data.events || [];
                 sortEvents();
                 renderEvents();
@@ -674,7 +637,7 @@
             .catch(err => {
                 console.error(err);
                 emptyState.hidden = false;
-                emptyState.textContent = 'Unable to load schedule right now.';
+                emptyState.textContent = 'Unable to load workouts right now.';
             });
     }
 
@@ -716,43 +679,25 @@
         }
         state.viewStart = startHour;
         state.viewEnd = endHour;
-        saveClientPreferences({ followTrainer: false, start: startHour, end: endHour });
+        saveWindowPreference(startHour, endHour);
         closeWindowModal();
         rebuild();
         renderEvents();
     }
 
-    function saveClientPreferences(options = {}) {
-        const {
-            followTrainer = false,
-            start = state.viewStart,
-            end = state.viewEnd,
-            onSuccess
-        } = options;
-        fetch('/client/schedule/preferences', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                follow_trainer: followTrainer,
-                view_start: start,
-                view_end: end
-            })
-        })
-            .then(res => res.json())
-            .then(data => {
-                if (!data.success) {
-                    alert(data.error || 'Unable to save preferences right now.');
-                    return;
-                }
-                state.viewStart = Number.isFinite(data.view_start) ? data.view_start : state.viewStart;
-                state.viewEnd = Number.isFinite(data.view_end) ? data.view_end : state.viewEnd;
-                if (state.viewEnd <= state.viewStart) {
-                    state.viewStart = 5;
-                    state.viewEnd = 21;
-                }
-                if (typeof onSuccess === 'function') onSuccess(data);
-            })
-            .catch(() => alert('Unable to save preferences right now.'));
+    function openEventModalIfNeeded(evt) {
+        if (evt.target === clientModal) {
+            clientModal.hidden = true;
+        }
+    }
+
+    if (clientModal) {
+        clientModal.addEventListener('click', openEventModalIfNeeded);
+    }
+    if (clientModalClose) {
+        clientModalClose.addEventListener('click', () => {
+            clientModal.hidden = true;
+        });
     }
 
     function rebuild(options = {}) {
@@ -767,34 +712,15 @@
     }
 
     function init() {
-        fetch('/client/schedule/preferences')
-            .then(res => res.json())
-            .then(data => {
-                if (data && data.success) {
-                    state.viewStart = Number.isFinite(data.view_start) ? data.view_start : state.viewStart;
-                    state.viewEnd = Number.isFinite(data.view_end) ? data.view_end : state.viewEnd;
-                    if (state.viewEnd <= state.viewStart) {
-                        state.viewStart = 5;
-                        state.viewEnd = 21;
-                    }
-                }
-            })
-            .catch(() => {})
-            .finally(() => {
-                rebuild();
-                updateWeekLabel();
-                fetchEvents();
+        rebuild();
+        updateWeekLabel();
+        fetchEvents();
 
-                if (scrollWrap && scrollHint) {
-                    const hideHint = () => {
-                        scrollHint.classList.add('hide');
-                    };
-                    scrollWrap.addEventListener('scroll', () => {
-                        hideHint();
-                    }, { once: true });
-                    setTimeout(hideHint, 4000);
-                }
-            });
+        if (scrollWrap && scrollHint) {
+            const hideHint = () => scrollHint.classList.add('hide');
+            scrollWrap.addEventListener('scroll', () => hideHint(), { once: true });
+            setTimeout(hideHint, 4000);
+        }
 
         prevWeekBtn.addEventListener('click', () => {
             state.weekStart.setDate(state.weekStart.getDate() - 7);
@@ -855,18 +781,6 @@
             weekPickerModal.addEventListener('click', (evt) => {
                 if (evt.target === weekPickerModal) {
                     closeWeekPicker();
-                }
-            });
-        }
-        if (clientModalClose) {
-            clientModalClose.addEventListener('click', () => {
-                clientModal.hidden = true;
-            });
-        }
-        if (clientModal) {
-            clientModal.addEventListener('click', (evt) => {
-                if (evt.target === clientModal) {
-                    clientModal.hidden = true;
                 }
             });
         }

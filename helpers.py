@@ -131,6 +131,12 @@ HOME_EQUIPMENT_FILTERS = {
     },
 }
 HOME_EQUIPMENT_TOKEN_SET = {option["token"] for option in HOME_EQUIPMENT_OPTIONS}
+CARDIO_BODYWEIGHT_WORKOUTS = (
+    "Treadmill Walking",
+    "Treadmill Running",
+    "Treadmill Sprinting",
+    "Treadmill Jogging",
+)
 
 # Prefix lookup so both leg press machine families can be identified quickly
 LEG_PRESS_MACHINE_PREFIXES = {
@@ -152,17 +158,22 @@ def normalize_home_equipment_selection(values) -> list[str]:
     return normalized
 
 
-def build_home_equipment_clause(equipment_tokens: list[str]) -> tuple[str, list[str]]:
+def build_home_equipment_clause(equipment_tokens: list[str]) -> tuple[str, list[str], bool]:
     """
     Build a SQL clause restricting workouts by name based on selected equipment.
-    Returns (clause_sql, params). Clause is empty when no valid tokens exist.
+    Returns (clause_sql, params, allow_cardio_bodyweight). Clause is empty when no valid tokens exist.
     """
     clauses: list[str] = []
     params: list[str] = []
+    allow_cardio_bodyweight = False
     for token in equipment_tokens or []:
         spec = HOME_EQUIPMENT_FILTERS.get(token)
         if not spec:
+            if token == "BODYWEIGHT":
+                allow_cardio_bodyweight = True
             continue
+        if token == "BODYWEIGHT":
+            allow_cardio_bodyweight = True
         include_terms = [term.strip().lower() for term in spec.get("include_any", []) if term.strip()]
         if not include_terms:
             continue
@@ -180,8 +191,8 @@ def build_home_equipment_clause(equipment_tokens: list[str]) -> tuple[str, list[
         params.extend(clause_params)
 
     if not clauses:
-        return "", []
-    return f"({' OR '.join(clauses)})", params
+        return "", [], allow_cardio_bodyweight
+    return f"({' OR '.join(clauses)})", params, allow_cardio_bodyweight
 
 
 def normalize_custom_workout_categories(categories) -> list[str]:
@@ -746,6 +757,10 @@ def generate_workout(
     category_key = (selected_category or "").strip()
     is_custom = category_key in CUSTOMIZABLE_WORKOUT_TOKENS
     is_home = category_key == HOME_WORKOUT_TOKEN
+    equipment_tokens: list[str] = []
+    equipment_clause = ""
+    equipment_params: list[str] = []
+    allow_cardio_bodyweight = False
 
     if is_custom:
         normalized = normalize_custom_workout_categories(custom_categories)
@@ -768,17 +783,19 @@ def generate_workout(
             total_target = proportional
         total_target = max(len(normalized), total_target)
         equipment_tokens = normalize_home_equipment_selection(equipment_filters) if is_home else []
-        if is_home and not equipment_tokens:
-            raise ValueError("Select at least one piece of equipment for a Custom Home Workout.")
-        equipment_clause, equipment_params = build_home_equipment_clause(equipment_tokens)
+        if is_home:
+            if not equipment_tokens:
+                raise ValueError("Select at least one piece of equipment for a Custom Home Workout.")
+            equipment_clause, equipment_params, allow_cardio_bodyweight = build_home_equipment_clause(equipment_tokens)
     else:
         structure = WORKOUT_STRUCTURE.get(user_level, {})
         subcategories = structure.get(category_key, {})
         if not subcategories:
             raise ValueError("Invalid workout category selected.")
         subcategories = OrderedDict(subcategories.items())
-        equipment_clause = ""
-        equipment_params = []
+
+    restrict_barbell = bool(equipment_tokens) and "BARBELL" not in equipment_tokens
+    restrict_dumbbell = bool(equipment_tokens) and "DUMBBELL" not in equipment_tokens
 
     workout_plan = OrderedDict()
 
@@ -817,6 +834,10 @@ def generate_workout(
                     skipped['subcategories'].add(subcategory_key)
                     continue
 
+                use_cardio_bodyweight_override = (
+                    is_home and allow_cardio_bodyweight and subcategory_key == "CARDIO"
+                )
+
                 query = """
                     SELECT
                         w.id AS workout_id,
@@ -836,8 +857,24 @@ def generate_workout(
                 """
                 params = [user_id, subcategory, user_level]
                 if equipment_clause:
-                    query += f" AND {equipment_clause}"
-                    params.extend(equipment_params)
+                    if use_cardio_bodyweight_override:
+                        placeholders = ",".join(["%s"] * len(CARDIO_BODYWEIGHT_WORKOUTS))
+                        query += f" AND (({equipment_clause}) OR w.name IN ({placeholders}))"
+                        params.extend(equipment_params)
+                        params.extend(CARDIO_BODYWEIGHT_WORKOUTS)
+                    else:
+                        query += f" AND {equipment_clause}"
+                        params.extend(equipment_params)
+                elif use_cardio_bodyweight_override:
+                    placeholders = ",".join(["%s"] * len(CARDIO_BODYWEIGHT_WORKOUTS))
+                    query += f" AND w.name IN ({placeholders})"
+                    params.extend(CARDIO_BODYWEIGHT_WORKOUTS)
+                if restrict_barbell:
+                    query += " AND LOWER(w.name) NOT LIKE %s"
+                    params.append("%barbell%")
+                if restrict_dumbbell:
+                    query += " AND LOWER(w.name) NOT LIKE %s"
+                    params.append("%dumbbell%")
                 query += """
                     ORDER BY RANDOM()
                     LIMIT %s

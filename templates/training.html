@@ -851,8 +851,17 @@
                     <em>When you finish a workout, be sure to click the button above to save it and track your progress on the homepage.</em>
                 </div>
             </div>
-        </div>
-        
+        </div> 
+       
+        <script id="training-workout-config" type="application/json">
+        {{ {
+            'enablePersonalWorkoutCustomization': personal_workout_customization_enabled,
+            'personalWorkoutReorderUrl': personal_workout_reorder_url,
+            'personalExerciseRefreshTemplate': personal_exercise_refresh_template,
+            'notesPlaceholder': notes_placeholder
+        }|tojson }}
+        </script>
+
         <script>
             const categorySelect = document.getElementById('workout-category-select');
             const generateWorkoutBtn = document.getElementById('generate-workout-btn');
@@ -899,6 +908,27 @@
             }
             const homeEquipmentLabelMap = new Map();
             let homeEquipmentOptions = [];
+            const dragState = {
+                sourceItem: null,
+                container: null,
+                subcategory: '',
+                originalOrder: [],
+            };
+            let dragPreviewNode = null;
+            const trainingConfigNode = document.getElementById('training-workout-config');
+            let trainingWorkoutConfig = {};
+            if (trainingConfigNode) {
+                try {
+                    trainingWorkoutConfig = JSON.parse(trainingConfigNode.textContent || '{}');
+                } catch (err) {
+                    console.warn('Failed to parse training workout config.', err);
+                    trainingWorkoutConfig = {};
+                }
+            }
+            const PERSONAL_CUSTOMIZATION_ENABLED = !!trainingWorkoutConfig.enablePersonalWorkoutCustomization;
+            const PERSONAL_REORDER_URL = trainingWorkoutConfig.personalWorkoutReorderUrl || '';
+            const PERSONAL_REFRESH_TEMPLATE = trainingWorkoutConfig.personalExerciseRefreshTemplate || '';
+            const NOTES_PLACEHOLDER = trainingWorkoutConfig.notesPlaceholder || '';
             const WORKOUT_COMPACT_STORAGE_KEY = 'fitbase_workout_compact_view';
             let compactWorkoutViewEnabled = false;
             try {
@@ -961,6 +991,126 @@
                 return Array.from(document.querySelectorAll('#workout-details > div:not(.d-none) .exercise-card'));
             }
 
+            function canCustomizeWorkout() {
+                return PERSONAL_CUSTOMIZATION_ENABLED;
+            }
+
+            function canReorderExercises() {
+                return PERSONAL_CUSTOMIZATION_ENABLED && !!PERSONAL_REORDER_URL;
+            }
+
+            function canRefreshExercises() {
+                return PERSONAL_CUSTOMIZATION_ENABLED && !!PERSONAL_REFRESH_TEMPLATE;
+            }
+
+            function syncExerciseDraggability() {
+                const items = document.querySelectorAll('#workout-details .exercise-list-item');
+                items.forEach((item) => {
+                    const card = item.querySelector('.exercise-card');
+                    const handle = item.querySelector('.exercise-drag-handle');
+                    const refreshBtn = item.querySelector('.exercise-refresh-btn');
+                    const controls = item.querySelector('.exercise-card-controls');
+                    const dragEnabled = canReorderExercises();
+                    if (card) {
+                        card.classList.toggle('drag-enabled', dragEnabled);
+                    }
+                    if (handle) {
+                        handle.setAttribute('draggable', dragEnabled ? 'true' : 'false');
+                        handle.style.display = canCustomizeWorkout() ? 'inline-flex' : 'none';
+                    }
+                    if (controls) {
+                        controls.style.display = canCustomizeWorkout() ? '' : 'none';
+                    }
+                    item.classList.toggle('is-draggable', dragEnabled);
+                    if (refreshBtn) {
+                        const enableRefresh = canRefreshExercises();
+                        refreshBtn.style.display = enableRefresh ? '' : 'none';
+                        refreshBtn.disabled = !enableRefresh;
+                    }
+                });
+            }
+
+            function getExerciseListOrder(container) {
+                if (!container) return [];
+                return Array.from(container.querySelectorAll('.exercise-list-item'))
+                    .map((item) => item.dataset.workoutId || '')
+                    .filter(Boolean);
+            }
+
+            function restoreExerciseOrder(container, order) {
+                if (!container || !order || !order.length) return;
+                const currentItems = Array.from(container.children);
+                const lookup = new Map(currentItems.map((node) => [node.dataset.workoutId, node]));
+                order.forEach((id) => {
+                    const node = lookup.get(id);
+                    if (node) {
+                        container.appendChild(node);
+                    }
+                });
+            }
+
+            function resetDragState() {
+                if (dragState.sourceItem) {
+                    dragState.sourceItem.classList.remove('is-dragging');
+                }
+                dragState.sourceItem = null;
+                dragState.container = null;
+                dragState.subcategory = '';
+                dragState.originalOrder = [];
+                if (dragPreviewNode) {
+                    dragPreviewNode.remove();
+                    dragPreviewNode = null;
+                }
+            }
+
+            function createDragPreview(cardElement) {
+                if (!cardElement) return null;
+                if (dragPreviewNode) {
+                    dragPreviewNode.remove();
+                }
+                const preview = cardElement.cloneNode(true);
+                preview.classList.add('exercise-card-drag-preview');
+                const rect = cardElement.getBoundingClientRect();
+                const computed = window.getComputedStyle(cardElement);
+                preview.style.boxSizing = 'border-box';
+                preview.style.width = `${rect.width}px`;
+                preview.style.height = `${rect.height}px`;
+                preview.style.margin = '0';
+                preview.style.padding = computed.padding;
+                preview.style.background = computed.backgroundColor || computed.background;
+                preview.style.border = computed.border;
+                preview.style.borderRadius = computed.borderRadius;
+                preview.style.position = 'absolute';
+                preview.style.top = '-9999px';
+                preview.style.left = '-9999px';
+                preview.style.pointerEvents = 'none';
+                document.body.appendChild(preview);
+                dragPreviewNode = preview;
+                return preview;
+            }
+
+            function persistExerciseOrder(subcategory, order, fallbackOrder, container) {
+                if (!canReorderExercises() || !subcategory) return;
+                fetch(PERSONAL_REORDER_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ subcategory, order }),
+                })
+                .then((res) => res.json().catch(() => ({})))
+                .then((data) => {
+                    if (!data?.success) {
+                        throw new Error(data?.error || 'Unable to reorder exercises.');
+                    }
+                    showToastMessage('Workout updated!');
+                    syncExerciseDraggability();
+                })
+                .catch((err) => {
+                    restoreExerciseOrder(container, fallbackOrder);
+                    syncExerciseDraggability();
+                    alert(err?.message || 'Unable to reorder exercises right now.');
+                });
+            }
+
             function clearExerciseCardOverrides() {
                 getExerciseCards().forEach((card) => {
                     delete card.dataset.userExpanded;
@@ -985,6 +1135,7 @@
             function updateCardsForCompactState() {
                 const cards = getExerciseCards();
                 updateWorkoutToggleVisibility(cards.length > 0);
+                syncExerciseDraggability();
                 if (!cards.length) return;
                 cards.forEach((card) => {
                     const shouldExpand = !compactWorkoutViewEnabled || card.dataset.userExpanded === 'true';
@@ -1412,6 +1563,134 @@
                 content.addEventListener('transitionend', onTransitionEnd);
             }
 
+            function handleExerciseDragStart(event) {
+                if (!canReorderExercises()) return;
+                const handle = event.target.closest('.exercise-drag-handle');
+                if (!handle) return;
+                const item = handle.closest('.exercise-list-item');
+                const card = item?.querySelector('.exercise-card');
+                if (!item || !card) {
+                    event.preventDefault();
+                    return;
+                }
+                dragState.sourceItem = item;
+                dragState.container = item.parentElement;
+                dragState.subcategory = item.dataset.subcategory || '';
+                dragState.originalOrder = getExerciseListOrder(dragState.container);
+                item.classList.add('is-dragging');
+                if (event.dataTransfer) {
+                    event.dataTransfer.effectAllowed = 'move';
+                    event.dataTransfer.setData('text/plain', item.dataset.workoutId || '');
+                    const preview = createDragPreview(card);
+                    if (preview) {
+                        const rect = card.getBoundingClientRect();
+                        event.dataTransfer.setDragImage(preview, rect.width / 2, rect.height / 2);
+                    }
+                }
+            }
+
+            function handleExerciseDragOver(event) {
+                if (!dragState.sourceItem || !dragState.container) return;
+                const overItem = event.target.closest('.exercise-list-item');
+                const container = overItem ? overItem.parentElement : event.target.closest('.exercise-list');
+                if (container !== dragState.container) return;
+                if (!overItem) {
+                    event.preventDefault();
+                    container.appendChild(dragState.sourceItem);
+                    return;
+                }
+                if (overItem === dragState.sourceItem) {
+                    event.preventDefault();
+                    return;
+                }
+                event.preventDefault();
+                const rect = overItem.getBoundingClientRect();
+                const before = event.clientY < rect.top + rect.height / 2;
+                if (before) {
+                    container.insertBefore(dragState.sourceItem, overItem);
+                } else {
+                    container.insertBefore(dragState.sourceItem, overItem.nextSibling);
+                }
+            }
+
+            function handleExerciseDrop(event) {
+                if (!dragState.sourceItem || !dragState.container) return;
+                event.preventDefault();
+                const container = event.target.closest('.exercise-list') || event.target.closest('.exercise-list-item')?.parentElement;
+                if (container !== dragState.container) {
+                    restoreExerciseOrder(dragState.container, dragState.originalOrder);
+                    resetDragState();
+                    return;
+                }
+                const newOrder = getExerciseListOrder(container);
+                const originalOrder = dragState.originalOrder.slice();
+                const subcategory = dragState.subcategory;
+                resetDragState();
+                if (!subcategory || JSON.stringify(newOrder) === JSON.stringify(originalOrder)) {
+                    return;
+                }
+                persistExerciseOrder(subcategory, newOrder, originalOrder, container);
+            }
+
+            function handleExerciseDragEnd() {
+                if (!dragState.sourceItem || !dragState.container) {
+                    resetDragState();
+                    return;
+                }
+                restoreExerciseOrder(dragState.container, dragState.originalOrder);
+                resetDragState();
+            }
+
+            function buildRefreshUrl(workoutId, button) {
+                const datasetUrl = button?.dataset.refreshUrl || '';
+                if (datasetUrl) return datasetUrl;
+                if (!PERSONAL_REFRESH_TEMPLATE || !workoutId) return '';
+                return PERSONAL_REFRESH_TEMPLATE.replace('/0/refresh', `/${workoutId}/refresh`);
+            }
+
+            function handleExerciseRefresh(event) {
+                const refreshBtn = event.target.closest('.exercise-refresh-btn');
+                if (!refreshBtn) return;
+                if (!canRefreshExercises()) return;
+                event.preventDefault();
+                if (refreshBtn.disabled) return;
+                const listItem = refreshBtn.closest('.exercise-list-item');
+                if (!listItem) return;
+                const subcategory = listItem.dataset.subcategory || refreshBtn.dataset.subcategory || '';
+                const workoutId = listItem.dataset.workoutId || refreshBtn.dataset.workoutId || '';
+                const refreshUrl = buildRefreshUrl(workoutId, refreshBtn);
+                if (!refreshUrl || !subcategory) return;
+                refreshBtn.disabled = true;
+                refreshBtn.classList.add('is-refreshing');
+                fetch(refreshUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ subcategory }),
+                })
+                .then((res) => res.json().catch(() => ({})))
+                .then((data) => {
+                    if (!data?.success || !data?.exercise) {
+                        throw new Error(data?.error || 'Unable to refresh this exercise.');
+                    }
+                    const newNode = createExerciseListItemElement(subcategory, data.exercise, 0);
+                    if (!newNode) {
+                        throw new Error('Unable to render the updated exercise.');
+                    }
+                    listItem.replaceWith(newNode);
+                    bindImageClickEvents();
+                    updateCardsForCompactState();
+                    syncExerciseDraggability();
+                    showToastMessage('Exercise updated!');
+                })
+                .catch((err) => {
+                    alert(err?.message || 'Unable to refresh this exercise right now.');
+                })
+                .finally(() => {
+                    refreshBtn.disabled = false;
+                    refreshBtn.classList.remove('is-refreshing');
+                });
+            }
+
             function scrollToWorkoutCards() {
                 if (!workoutStack) return;
                 requestAnimationFrame(() => {
@@ -1419,7 +1698,7 @@
                 });
             }
 
-            function showGenerateToast(message) {
+            function showToastMessage(message) {
                 if (!toastSuccess) return;
                 toastSuccess.textContent = message;
                 toastSuccess.style.display = 'block';
@@ -1470,9 +1749,8 @@
                 if (progressTrackingNote) {
                     progressTrackingNote.style.display = 'none';
                 }
+                syncExerciseDraggability();
             }
-
-            const NOTES_PLACEHOLDER = '';
 
             function escapeHtml(value) {
                 if (value === undefined || value === null) {
@@ -1564,18 +1842,7 @@
                     : `<span class="text-muted">${escapeHtml(NOTES_PLACEHOLDER)}</span>`;
                 const encodedNotes = encodeURIComponent(rawNotes);
                 const notesButtonLabel = hasNotes ? 'Edit Notes' : 'Add Notes';
-
-                return `
-                    <li class="mb-4">
-                        <div class="card shadow text-center w-100 exercise-card" data-exercise="${sanitizedKey}">
-                            <button class="exercise-card-toggle" type="button" aria-expanded="true" aria-controls="${bodyId}">
-                                <span class="exercise-name">${safeExerciseName}</span>
-                                <span class="exercise-card-toggle-icon" aria-hidden="true">
-                                    <i class="bi bi-chevron-down"></i>
-                                </span>
-                            </button>
-                            <div id="${bodyId}" class="exercise-card-body">
-                                <div class="exercise-media-row d-flex justify-content-center flex-nowrap mb-3 px-2">
+                const startImageBlock = exercise.image_exercise_start ? `
                                     <div class="d-flex flex-column align-items-center">
                                         <p class="exercise-media-label mb-2">Start:</p>
                                         <img src="/static/images/${exercise.image_exercise_start}"
@@ -1583,6 +1850,8 @@
                                             class="clickable-img exercise-media-image"
                                             data-group="${safeExerciseName}" data-index="0">
                                     </div>
+                ` : '';
+                const endImageBlock = exercise.image_exercise_end ? `
                                     <div class="d-flex flex-column align-items-center">
                                         <p class="exercise-media-label mb-2">End:</p>
                                         <img src="/static/images/${exercise.image_exercise_end}"
@@ -1590,7 +1859,45 @@
                                             class="clickable-img exercise-media-image"
                                             data-group="${safeExerciseName}" data-index="1">
                                     </div>
+                ` : '';
+                const mediaRow = (startImageBlock || endImageBlock) ? `
+                                <div class="exercise-media-row d-flex justify-content-center flex-nowrap mb-3 px-2">
+                                    ${startImageBlock}${endImageBlock}
                                 </div>
+                ` : '';
+
+                const subcategoryAttr = escapeHtml(subcategoryName || '');
+
+                return `
+                    <li class="mb-4 exercise-list-item"
+                        data-subcategory="${subcategoryAttr}"
+                        data-workout-id="${workoutIdAttr}">
+                        <div class="card shadow text-center w-100 exercise-card"
+                             data-workout-card="${sanitizedKey}">
+                            <div class="exercise-card-header">
+                                <button class="exercise-card-toggle" type="button" aria-expanded="true" aria-controls="${bodyId}">
+                                    <span class="exercise-name">${safeExerciseName}</span>
+                                    <span class="exercise-card-toggle-icon" aria-hidden="true">
+                                        <i class="bi bi-chevron-down"></i>
+                                    </span>
+                                </button>
+                                <div class="exercise-card-controls">
+                                    <button type="button"
+                                        class="exercise-refresh-btn"
+                                        data-subcategory="${subcategoryAttr}"
+                                        data-workout-id="${workoutIdAttr}"
+                                        aria-label="Swap exercise">
+                                        <i class="bi bi-arrow-repeat"></i>
+                                    </button>
+                                    <span class="exercise-drag-handle"
+                                          title="Drag to reorder"
+                                          aria-hidden="true">
+                                        <i class="bi bi-grip-vertical"></i>
+                                    </span>
+                                </div>
+                            </div>
+                            <div id="${bodyId}" class="exercise-card-body">
+                                ${mediaRow}
                                 ${youtubeSection}
                                 <div class="d-flex flex-column align-items-center gap-3 max-actions">
                                     <div class="personal-best max-summary" data-id="${workoutIdAttr}" data-category="${categoryAttr}" data-bodyweight="${isBodyweight && !isCardio}" data-plank="${isPlank}">
@@ -1637,19 +1944,39 @@
                 `;
             }
 
+            function createExerciseListItemElement(subcategoryName, exercise, index) {
+                const html = buildExerciseHtml(subcategoryName, exercise, index);
+                if (!html) return null;
+                const template = document.createElement('template');
+                template.innerHTML = html.trim();
+                return template.content.querySelector('.exercise-list-item');
+            }
+
             function buildWorkoutHtml(selectedCategory, workoutData, displayLabel) {
                 const heading = displayLabel || selectedCategory;
                 const safeHeading = escapeHtml(heading);
-                const sections = workoutData.map(subcategory => `
+                const sections = workoutData.map((subcategory) => {
+                    const exercises = Array.isArray(subcategory.exercises) ? subcategory.exercises : [];
+                    const safeSubcategory = escapeHtml(subcategory.subcategory || '');
+                    const exerciseItems = exercises.length
+                        ? exercises.map((exercise, idx) => buildExerciseHtml(subcategory.subcategory, exercise, idx)).join('')
+                        : `
+                            <li class="text-muted small fst-italic text-center py-3 exercise-list-item"
+                                data-subcategory="${safeSubcategory}">
+                                This category has no equipment-compatible exercises.
+                            </li>
+                        `;
+                    return `
                     <div class="card workout-subcategory-card shadow-sm">
                         <h6 class="workout-subcategory-title">${subcategory.subcategory}</h6>
                         <div class="mt-3">
-                            <ul class="list-unstyled mb-0">
-                                ${subcategory.exercises.map((exercise, idx) => buildExerciseHtml(subcategory.subcategory, exercise, idx)).join('')}
+                            <ul class="list-unstyled mb-0 exercise-list" data-subcategory="${safeSubcategory}">
+                                ${exerciseItems}
                             </ul>
                         </div>
                     </div>
-                `).join('');
+                    `;
+                }).join('');
 
                 return `
                     <div class="card w-100 mb-0 shadow-sm workout-card" style="padding: 18px; background: rgba(255, 255, 255, 0.68); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);">
@@ -1838,7 +2165,7 @@
                             { customCategories: data.custom_categories, homeEquipment: data.home_equipment }
                         );
                         scrollToWorkoutCards();
-                        showGenerateToast('Workout Generated!');
+                        showToastMessage('Workout Generated!');
                         updateInjuryAlertBanner(data.skipped);
                         syncSelectStyle();
                         syncGenerateButtonState();
@@ -2000,6 +2327,12 @@
                 cacheHomeEquipmentModalElements();
                 bindHomeEquipmentModalEvents();
             });
+
+            document.addEventListener('dragstart', handleExerciseDragStart);
+            document.addEventListener('dragover', handleExerciseDragOver);
+            document.addEventListener('drop', handleExerciseDrop);
+            document.addEventListener('dragend', handleExerciseDragEnd);
+            document.addEventListener('click', handleExerciseRefresh);
 
             window.addEventListener('resize', () => {
                 const customVisible = customWorkoutModal && customWorkoutModal.classList.contains('show');

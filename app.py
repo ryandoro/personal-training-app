@@ -1,5 +1,5 @@
-import os, re, logging, json, math, psycopg2, psycopg2.extras, psycopg2.errors, stripe, requests
-from flask import Flask, flash, redirect, render_template, request, session, jsonify, url_for, current_app
+import os, re, logging, json, math, uuid, psycopg2, psycopg2.extras, psycopg2.errors, stripe, requests
+from flask import Flask, flash, redirect, render_template, request, session, jsonify, url_for, current_app, abort
 from markupsafe import Markup
 from werkzeug.security import generate_password_hash, check_password_hash
 from helpers import (
@@ -36,6 +36,7 @@ from helpers import (
     CUSTOM_WORKOUT_SELECTION_LIMITS,
     HOME_EQUIPMENT_OPTIONS,
     build_home_equipment_clause,
+    CARDIO_BODYWEIGHT_WORKOUTS,
     normalize_custom_workout_categories,
     normalize_home_equipment_selection,
     custom_selection_bounds,
@@ -345,6 +346,55 @@ def _record_exercise_history(user_id, workout_id, max_weight, max_reps):
         logging.warning("user_exercise_history table missing; skipping history insert for workout_id=%s", workout_id)
     except Exception:
         logging.exception("Failed to record exercise history for workout_id=%s", workout_id)
+
+
+def _log_workout_session_history(user_id: int, category_label: str, session_entries: list[dict]) -> tuple[str | None, datetime | None]:
+    """
+    Persist a snapshot of each exercise in a completed workout into user_exercise_history.
+    Returns (session_id, completed_at) when successful.
+    """
+    if not session_entries:
+        return None, None
+
+    session_uuid = uuid.uuid4()
+    completed_at = datetime.now(timezone.utc)
+
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cursor:
+                insert_sql = """
+                    INSERT INTO user_exercise_history
+                        (user_id, workout_id, weight, reps, recorded_at, session_id, category, subcategory, notes)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """
+                for entry in session_entries:
+                    workout_id = entry.get('workout_id')
+                    if not workout_id:
+                        continue
+                    weight = entry.get('weight')
+                    reps = entry.get('reps')
+                    subcategory = entry.get('subcategory')
+                    notes = entry.get('notes')
+                    cursor.execute(
+                        insert_sql,
+                        (
+                            user_id,
+                            workout_id,
+                            weight,
+                            reps,
+                            completed_at,
+                            str(session_uuid),
+                            category_label,
+                            subcategory,
+                            notes,
+                        ),
+                    )
+            conn.commit()
+    except Exception:
+        logging.exception("Failed to record workout session snapshot for user_id=%s", user_id)
+        return None, completed_at
+
+    return str(session_uuid), completed_at
 
 
 def _downsample_history(points: list[dict], max_points: int) -> list[dict]:
@@ -1523,6 +1573,14 @@ def training():
             cursor.execute("SELECT * FROM users WHERE id = %s", (user_id,))
             user = cursor.fetchone()
 
+    personal_workout_customization_enabled = _user_can_customize_personal_workout(user)
+    personal_workout_reorder_url = (
+        url_for('personal_reorder_workout_exercises') if personal_workout_customization_enabled else ''
+    )
+    personal_exercise_refresh_template = (
+        url_for('personal_refresh_workout_exercise', workout_id=0) if personal_workout_customization_enabled else ''
+    )
+
     return render_template(
         'training.html', 
         user=user,
@@ -1552,6 +1610,10 @@ def training():
         trainer_platform_goals_prefill=trainer_platform_goals_prefill,
         trainer_client_count_options=TRAINER_CLIENT_COUNT_BUCKETS,
         trainer_sessions_per_week_options=TRAINER_SESSION_BUCKETS,
+        personal_workout_customization_enabled=personal_workout_customization_enabled,
+        personal_workout_reorder_url=personal_workout_reorder_url,
+        personal_exercise_refresh_template=personal_exercise_refresh_template,
+        notes_placeholder=WORKOUT_NOTES_PLACEHOLDER,
     )
 
 
@@ -1699,6 +1761,17 @@ def _require_trainer(user_id: int) -> dict | None:
     if not trainer or trainer.get('role') not in {'trainer', 'admin'}:
         return None
     return trainer
+
+
+def _user_can_customize_personal_workout(user_row: dict | None) -> bool:
+    """Return True when a user can reorder or refresh their personal workouts."""
+    if not user_row:
+        return False
+    role = (user_row.get('role') or '').lower()
+    subscription = (user_row.get('subscription_type') or '').lower()
+    if role not in {'trainer', 'admin'}:
+        return False
+    return subscription == 'pro'
 
 
 def _get_trainer_link_invite(conn, token_id: int) -> dict | None:
@@ -2346,6 +2419,10 @@ def _serialize_schedule_row(row):
         'status': row.get('status') or 'booked',
         'type': 'session',
         'note': row.get('note'),
+        'session_id': str(row.get('session_id')) if row.get('session_id') else None,
+        'session_category': row.get('session_category'),
+        'session_completed_at': row['session_completed_at'].isoformat() if row.get('session_completed_at') else None,
+        'is_self_booked': bool(row.get('is_self_booked')),
     }
 
 
@@ -2388,10 +2465,12 @@ def trainer_schedule_data():
             cursor.execute(
                 """
                 SELECT ts.id, ts.trainer_id, ts.client_id, ts.start_time, ts.end_time, ts.status, ts.note,
+                       ts.session_id, ts.session_category, ts.session_completed_at, ts.is_self_booked,
                        c.name AS client_name, c.last_name AS client_last_name, c.username AS client_username
                   FROM trainer_schedule ts
                   JOIN users c ON c.id = ts.client_id
                  WHERE ts.trainer_id = %s
+                   AND ts.is_self_booked = FALSE
                    AND ts.start_time < %s
                    AND ts.end_time > %s
                  ORDER BY ts.start_time ASC
@@ -2412,7 +2491,12 @@ def trainer_schedule_data():
             )
             time_off_rows = cursor.fetchall() or []
 
-    session_events = [_serialize_schedule_row(row) for row in session_rows]
+    session_events = []
+    for row in session_rows:
+        serialized = _serialize_schedule_row(row)
+        if serialized.get('session_id'):
+            serialized['session_url'] = url_for('workout_session_view', session_id=serialized['session_id'])
+        session_events.append(serialized)
     time_off_events = [_serialize_time_off_row(row) for row in time_off_rows]
     combined = sorted(session_events + time_off_events, key=lambda ev: ev['start_time'] or '')
 
@@ -2723,6 +2807,10 @@ def trainer_schedule_modify(event_id):
         if new_status not in allowed_statuses:
             return jsonify({'success': False, 'error': 'Invalid booking status.'}), 400
 
+    session_logged = False
+    session_log_error = None
+    session_meta_payload = None
+
     with get_connection() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
             cursor.execute(
@@ -2785,6 +2873,13 @@ def trainer_schedule_modify(event_id):
         status_delta = 0
         workout_delta = 0
         if new_status and new_status != current_status:
+            if current_status != 'completed' and new_status == 'completed':
+                comp_success, comp_error, comp_meta = _complete_workout_for_user(client_id)
+                if comp_success:
+                    session_logged = True
+                    session_meta_payload = comp_meta
+                else:
+                    session_log_error = comp_error
             with conn.cursor() as cursor:
                 cursor.execute(
                     """
@@ -2807,6 +2902,10 @@ def trainer_schedule_modify(event_id):
             if status_delta:
                 with conn.cursor() as cursor:
                     _adjust_sessions_booked(cursor, client_id, status_delta)
+            if current_status != 'completed' and new_status == 'completed':
+                workout_delta = 0 if session_logged else 1
+            elif current_status == 'completed' and new_status != 'completed':
+                workout_delta = -1
         if note_provided:
             with conn.cursor() as cursor:
                 cursor.execute(
@@ -2838,6 +2937,14 @@ def trainer_schedule_modify(event_id):
             )
             refreshed = cursor.fetchone()
 
+    if session_logged and session_meta_payload:
+        _attach_session_to_schedule(
+            client_id,
+            session_meta_payload,
+            trainer_id=trainer_id,
+            schedule_event_id=event_id,
+        )
+
     counts_response = {}
     with get_connection() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
@@ -2860,14 +2967,21 @@ def trainer_schedule_modify(event_id):
             row_wc = cursor.fetchone()
             counts_response['workouts_completed'] = row_wc[0] if row_wc else None
 
+    event_payload = _serialize_schedule_row(refreshed) if refreshed else None
+    if event_payload and event_payload.get('session_id'):
+        event_payload['session_url'] = url_for('workout_session_view', session_id=event_payload['session_id'])
+
     payload = {
         'success': True,
-        'event': _serialize_schedule_row(refreshed),
+        'event': event_payload,
         'sessions_remaining': counts_response.get('sessions_remaining'),
         'sessions_booked': counts_response.get('sessions_booked'),
         'sessions_completed': counts_response.get('sessions_completed', 0),
         'workouts_completed': counts_response.get('workouts_completed'),
+        'session_logged': session_logged,
     }
+    if session_log_error:
+        payload['session_log_error'] = session_log_error
     return jsonify(payload)
 
 
@@ -3483,6 +3597,74 @@ def _fetch_trainer_sessions(
     return total_all, filtered_total, rows
 
 
+def _fetch_trainer_self_sessions(
+    cursor,
+    user_id: int,
+    limit: int | None,
+    offset: int,
+    start_time_from: datetime | None = None,
+    start_time_to: datetime | None = None,
+):
+    base_conditions = [
+        "ts.trainer_id = %s",
+        "ts.client_id = %s",
+        "ts.is_self_booked = TRUE",
+    ]
+    base_params = [user_id, user_id]
+
+    cursor.execute(
+        f"""
+        SELECT COUNT(*) AS total
+          FROM trainer_schedule ts
+         WHERE {' AND '.join(base_conditions)}
+        """,
+        base_params,
+    )
+    total_all_row = cursor.fetchone() or {}
+    total_all = int(total_all_row.get('total') or 0)
+
+    filtered_conditions = list(base_conditions)
+    filtered_params = list(base_params)
+    if start_time_from:
+        filtered_conditions.append("ts.start_time >= %s")
+        filtered_params.append(start_time_from)
+    if start_time_to:
+        filtered_conditions.append("ts.start_time < %s")
+        filtered_params.append(start_time_to)
+    where_clause = ' AND '.join(filtered_conditions)
+
+    cursor.execute(
+        f"""
+        SELECT COUNT(*) AS total
+          FROM trainer_schedule ts
+         WHERE {where_clause}
+        """,
+        filtered_params,
+    )
+    filtered_row = cursor.fetchone() or {}
+    filtered_total = int(filtered_row.get('total') or 0)
+
+    query = f"""
+        SELECT ts.id,
+               ts.start_time,
+               ts.end_time,
+               ts.status,
+               ts.session_id,
+               ts.session_category
+          FROM trainer_schedule ts
+         WHERE {where_clause}
+         ORDER BY ts.start_time ASC
+    """
+    data_params = list(filtered_params)
+    if limit is not None:
+        query += " LIMIT %s OFFSET %s"
+        data_params.extend([limit, offset])
+
+    cursor.execute(query, data_params)
+    rows = cursor.fetchall() or []
+    return total_all, filtered_total, rows
+
+
 @app.route('/trainer/clients/<int:client_id>/agenda', methods=['GET', 'POST'])
 @login_required
 def trainer_client_agenda(client_id):
@@ -3518,10 +3700,12 @@ def trainer_client_agenda(client_id):
     page = max(page, 1)
     offset = (page - 1) * per_page
 
-    allowed_views = {'upcoming', 'all', 'today', 'week', 'month', 'custom'}
-    selected_view = (request.args.get('view') or 'upcoming').lower()
+    allowed_views = {'last_week', 'all', 'today', 'week', 'month', 'custom'}
+    selected_view = (request.args.get('view') or 'last_week').lower()
+    if selected_view == 'upcoming':
+        selected_view = 'last_week'
     if selected_view not in allowed_views:
-        selected_view = 'upcoming'
+        selected_view = 'last_week'
 
     start_date_raw = request.args.get('start_date') or ''
     end_date_raw = request.args.get('end_date') or ''
@@ -4658,6 +4842,7 @@ def client_schedule_data():
             cursor.execute(
                 """
                 SELECT ts.id, ts.trainer_id, ts.client_id, ts.start_time, ts.end_time, ts.status, ts.note,
+                       ts.session_id, ts.session_category, ts.session_completed_at, ts.is_self_booked,
                        t.name AS trainer_name, t.last_name AS trainer_last_name,
                        t.username AS trainer_username
                   FROM trainer_schedule ts
@@ -4675,9 +4860,16 @@ def client_schedule_data():
     for row in rows:
         event = _serialize_schedule_row(row)
         event.pop('note', None)
-        event['trainer_name'] = row.get('trainer_name')
-        event['trainer_last_name'] = row.get('trainer_last_name')
-        event['trainer_username'] = row.get('trainer_username')
+        if event.get('is_self_booked'):
+            event['trainer_name'] = None
+            event['trainer_last_name'] = None
+            event['trainer_username'] = None
+        else:
+            event['trainer_name'] = row.get('trainer_name')
+            event['trainer_last_name'] = row.get('trainer_last_name')
+            event['trainer_username'] = row.get('trainer_username')
+        if event.get('session_id'):
+            event['session_url'] = url_for('workout_session_view', session_id=event['session_id'])
         events.append(event)
 
     return jsonify({'success': True, 'events': events})
@@ -4804,6 +4996,273 @@ def client_schedule_view():
                 trainer_info = cursor.fetchone()
 
     return render_template('schedule.html', trainer_info=trainer_info)
+
+
+@app.route('/trainer/my_workouts')
+@login_required
+def trainer_self_schedule_view():
+    role = (session.get('role') or '').strip().lower()
+    if role not in {'trainer', 'admin'}:
+        flash("Trainer access required.", "danger")
+        return redirect(url_for('home'))
+    return render_template('trainer_self_schedule.html')
+
+
+@app.route('/trainer/my_workouts/agenda')
+@login_required
+def trainer_self_agenda_view():
+    user_id = session['user_id']
+    role = (session.get('role') or '').strip().lower()
+    if role not in {'trainer', 'admin'}:
+        flash("Trainer access required.", "danger")
+        return redirect(url_for('home'))
+
+    per_page_selections = (10, 30, 50, 100)
+    per_page = session.get('trainer_self_agenda_per_page')
+    if per_page not in per_page_selections:
+        per_page = per_page_selections[0]
+    per_page_arg = request.args.get('per_page')
+    if per_page_arg is not None:
+        try:
+            per_page_candidate = int(per_page_arg)
+        except (TypeError, ValueError):
+            per_page_candidate = None
+        if per_page_candidate in per_page_selections:
+            per_page = per_page_candidate
+    if not isinstance(per_page, int) or per_page <= 0:
+        per_page = per_page_selections[0]
+    if session.get('trainer_self_agenda_per_page') != per_page:
+        session['trainer_self_agenda_per_page'] = per_page
+
+    try:
+        page = int(request.args.get('page', 1))
+    except (TypeError, ValueError):
+        page = 1
+    page = max(page, 1)
+    offset = (page - 1) * per_page
+
+    allowed_views = {'upcoming', 'all', 'today', 'week', 'month', 'custom'}
+    selected_view = (request.args.get('view') or 'upcoming').lower()
+    if selected_view not in allowed_views:
+        selected_view = 'upcoming'
+
+    start_date_raw = request.args.get('start_date') or ''
+    end_date_raw = request.args.get('end_date') or ''
+    if selected_view != 'custom' and (start_date_raw or end_date_raw):
+        selected_view = 'custom'
+
+    tz_info, timezone_name, tz_offset_minutes = _resolve_request_timezone('trainer_self_agenda')
+    now_local = datetime.now(timezone.utc).astimezone(tz_info)
+    tz_info = now_local.tzinfo or timezone.utc
+    today_local = now_local.date()
+
+    def _start_of_day(target_date: date | None):
+        if not target_date:
+            return None
+        return datetime.combine(target_date, datetime.min.time(), tzinfo=tz_info)
+
+    def _start_of_next_day(target_date: date | None):
+        if not target_date:
+            return None
+        return _start_of_day(target_date + timedelta(days=1))
+
+    def _parse_date(value: str):
+        if not value:
+            return None
+        try:
+            return datetime.strptime(value, '%Y-%m-%d').date()
+        except (TypeError, ValueError):
+            return None
+
+    start_date_value = _parse_date(start_date_raw)
+    end_date_value = _parse_date(end_date_raw)
+    custom_date_error = False
+    custom_error_message = ''
+    if start_date_raw and not start_date_value:
+        custom_date_error = True
+        custom_error_message = 'Enter a valid start date.'
+    if end_date_raw and not end_date_value:
+        custom_date_error = True
+        custom_error_message = 'Enter a valid end date.'
+    if start_date_value and end_date_value and start_date_value > end_date_value:
+        custom_date_error = True
+        custom_error_message = 'Start date must be before the end date.'
+
+    filter_start = None
+    filter_end = None
+    if selected_view == 'today':
+        filter_start = _start_of_day(today_local)
+        filter_end = _start_of_next_day(today_local)
+    elif selected_view == 'week':
+        week_start = today_local - timedelta(days=today_local.weekday())
+        filter_start = _start_of_day(week_start)
+        filter_end = _start_of_day(week_start + timedelta(days=7))
+    elif selected_view == 'month':
+        month_start = today_local.replace(day=1)
+        if month_start.month == 12:
+            next_month = date(month_start.year + 1, 1, 1)
+        else:
+            next_month = date(month_start.year, month_start.month + 1, 1)
+        filter_start = _start_of_day(month_start)
+        filter_end = _start_of_day(next_month)
+    elif selected_view == 'all':
+        filter_start = None
+        filter_end = None
+    elif selected_view == 'custom':
+        if not custom_date_error:
+            if start_date_value:
+                filter_start = _start_of_day(start_date_value)
+            if end_date_value:
+                filter_end = _start_of_next_day(end_date_value)
+    else:  # last_week default
+        current_week_start = today_local - timedelta(days=today_local.weekday())
+        last_week_start = current_week_start - timedelta(days=7)
+        filter_start = _start_of_day(last_week_start)
+        filter_end = _start_of_day(current_week_start)
+
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            total_all, total_filtered, sessions = _fetch_trainer_self_sessions(
+                cursor,
+                user_id,
+                per_page,
+                offset,
+                filter_start,
+                filter_end,
+            )
+
+    total_pages = 1
+    if total_filtered and per_page:
+        total_pages = (total_filtered + per_page - 1) // per_page
+    total_pages = max(total_pages, 1)
+    if page > total_pages:
+        args = request.args.to_dict(flat=True)
+        args['page'] = total_pages
+        return redirect(url_for('trainer_self_agenda_view', **args))
+
+    def _format_local_time(dt):
+        if not dt:
+            return '—'
+        try:
+            localized = dt.astimezone()
+            return localized.strftime('%I:%M %p').lstrip('0')
+        except Exception:
+            return fmt_utc(dt)
+
+    agenda_events = []
+    for row in sessions:
+        start_dt = row.get('start_time')
+        end_dt = row.get('end_time')
+        start_iso = start_dt.isoformat() if start_dt else None
+        end_iso = end_dt.isoformat() if end_dt else None
+        date_display = start_dt.astimezone().strftime('%A, %B %d, %Y') if start_dt else '—'
+        start_time_display = _format_local_time(start_dt)
+        end_time_display = _format_local_time(end_dt)
+        agenda_events.append({
+            'id': row.get('id'),
+            'status': (row.get('status') or 'booked').capitalize(),
+            'start_iso': start_iso,
+            'end_iso': end_iso,
+            'date_display': date_display,
+            'start_display': start_time_display,
+            'end_display': end_time_display,
+            'session_category': row.get('session_category'),
+            'session_url': url_for('workout_session_view', session_id=row.get('session_id')) if row.get('session_id') else None,
+        })
+
+    if total_filtered:
+        page_start_index = offset + 1
+        page_end_index = min(offset + len(agenda_events), total_filtered)
+    else:
+        page_start_index = 0
+        page_end_index = 0
+
+    per_page_options = list(per_page_selections)
+    quick_filters = [
+        {'key': 'last_week', 'label': 'Last Week'},
+        {'key': 'today', 'label': 'Today'},
+        {'key': 'week', 'label': 'This Week'},
+        {'key': 'month', 'label': 'This Month'},
+        {'key': 'all', 'label': 'All'},
+    ]
+
+    return render_template(
+        'trainer_self_agenda.html',
+        events=agenda_events,
+        total_sessions=total_all,
+        filtered_total=total_filtered,
+        page=page,
+        total_pages=total_pages,
+        per_page=per_page,
+        per_page_options=per_page_options,
+        selected_view=selected_view,
+        start_date_input=start_date_raw,
+        end_date_input=end_date_raw,
+        custom_date_error=custom_date_error,
+        custom_date_error_message=custom_error_message,
+        quick_filters=quick_filters,
+        timezone_name=timezone_name,
+        tz_offset_minutes=tz_offset_minutes,
+        page_start_index=page_start_index,
+        page_end_index=page_end_index,
+    )
+
+
+@app.get('/trainer/my_workouts/data')
+@login_required
+def trainer_self_schedule_data():
+    user_id = session['user_id']
+    role = (session.get('role') or '').strip().lower()
+    if role not in {'trainer', 'admin'}:
+        return jsonify({'success': False, 'error': 'Trainer access required'}), 403
+
+    start_raw = request.args.get('start')
+    end_raw = request.args.get('end')
+    now_utc = datetime.now(timezone.utc)
+    try:
+        start_dt = _parse_iso_datetime(start_raw, 'start') if start_raw else (now_utc - timedelta(days=now_utc.weekday()))
+        end_dt = _parse_iso_datetime(end_raw, 'end') if end_raw else start_dt + timedelta(days=7)
+    except ValueError as exc:
+        return jsonify({'success': False, 'error': str(exc)}), 400
+
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            cursor.execute(
+                """
+                SELECT ts.id,
+                       ts.trainer_id,
+                       ts.client_id,
+                       ts.start_time,
+                       ts.end_time,
+                       ts.status,
+                       ts.note,
+                       ts.session_id,
+                       ts.session_category,
+                       ts.session_completed_at
+                  FROM trainer_schedule ts
+                 WHERE ts.client_id = %s
+                   AND ts.trainer_id = %s
+                   AND ts.is_self_booked = TRUE
+                   AND ts.start_time < %s
+                   AND ts.end_time > %s
+                 ORDER BY ts.start_time
+                """,
+                (user_id, user_id, end_dt, start_dt),
+            )
+            rows = cursor.fetchall() or []
+
+    events = []
+    for row in rows:
+        event = _serialize_schedule_row(row)
+        event.pop('note', None)
+        event['trainer_name'] = None
+        event['trainer_last_name'] = None
+        event['trainer_username'] = None
+        if event.get('session_id'):
+            event['session_url'] = url_for('workout_session_view', session_id=event['session_id'])
+        events.append(event)
+
+    return jsonify({'success': True, 'events': events})
 
 
 @app.route('/generate_client_workout/<int:client_id>', methods=['POST'])
@@ -4988,8 +5447,9 @@ def trainer_complete_client_workout(client_id):
         flash("You do not have access to that client.", "danger")
         return redirect(url_for('trainer_dashboard'))
 
-    success, error = _complete_workout_for_user(client_id)
+    success, error, session_meta = _complete_workout_for_user(client_id)
     if success:
+        event_to_complete = None
         with get_connection() as conn:
             with conn.cursor() as cursor:
                 cursor.execute(
@@ -5021,6 +5481,7 @@ def trainer_complete_client_workout(client_id):
                     )
                     _adjust_sessions_booked(cursor, client_id, -1)
             conn.commit()
+        _attach_session_to_schedule(client_id, session_meta, trainer_id=trainer_id, schedule_event_id=event_to_complete)
         flash('Session marked complete for client.', 'success')
     else:
         flash(error or 'Unable to complete the workout for this client.', 'danger')
@@ -5883,7 +6344,7 @@ def _apply_notes_update(user_id: int, workout_id: int, notes: str | None):
     return {'success': True, 'notes': notes or ''}
 
 
-def _complete_workout_for_user(user_id: int) -> tuple[bool, str | None]:
+def _complete_workout_for_user(user_id: int) -> tuple[bool, str | None, dict | None]:
     active = get_active_workout(user_id)
     if not active:
         return False, 'No workout generated'
@@ -5924,6 +6385,7 @@ def _complete_workout_for_user(user_id: int) -> tuple[bool, str | None]:
         display_category = workout_category
 
     refreshed_workout = OrderedDict()
+    session_entries: list[dict] = []
 
     with get_connection() as conn:
         with conn.cursor() as cursor:
@@ -5933,7 +6395,11 @@ def _complete_workout_for_user(user_id: int) -> tuple[bool, str | None]:
                     workout_id = ex.get('workout_id') if isinstance(ex, dict) else ex[0]
                     cursor.execute(
                         """
-                        SELECT w.name, w.description, uep.max_weight, uep.max_reps
+                        SELECT w.name,
+                               w.description,
+                               uep.max_weight,
+                               uep.max_reps,
+                               uep.notes
                           FROM workouts w
                      LEFT JOIN user_exercise_progress uep
                             ON w.id = uep.workout_id AND uep.user_id = %s
@@ -5942,17 +6408,45 @@ def _complete_workout_for_user(user_id: int) -> tuple[bool, str | None]:
                         (user_id, workout_id),
                     )
                     result = cursor.fetchone()
-                    if result:
-                        name, description, max_weight, max_reps = result
-                        refreshed_workout[subcat].append({
-                            "name": name,
-                            "description": description,
-                            "max_weight": float(max_weight) if max_weight is not None else None,
-                            "max_reps": max_reps,
-                        })
+                    if not result:
+                        continue
+                    name, description, max_weight, max_reps, notes = result
+                    weight_value = _coerce_float(max_weight)
+                    reps_value = None
+                    if max_reps is not None:
+                        try:
+                            reps_value = int(float(max_reps))
+                        except (TypeError, ValueError):
+                            reps_value = None
+                    refreshed_workout[subcat].append({
+                        "workout_id": workout_id,
+                        "name": name,
+                        "description": description,
+                        "max_weight": weight_value,
+                        "max_reps": reps_value,
+                        "notes": notes,
+                    })
+                    session_entries.append({
+                        "workout_id": workout_id,
+                        "subcategory": subcat,
+                        "weight": weight_value,
+                        "reps": reps_value,
+                        "notes": notes,
+                    })
 
-            if workout_payload_meta:
-                refreshed_workout['_meta'] = workout_payload_meta
+            session_id, completed_at = _log_workout_session_history(
+                user_id,
+                display_category or workout_category or '',
+                session_entries,
+            )
+
+            meta_payload = dict(workout_payload_meta) if workout_payload_meta else {}
+            if session_id:
+                meta_payload['session_id'] = session_id
+            if completed_at:
+                meta_payload['completed_at'] = completed_at.isoformat()
+            if meta_payload:
+                refreshed_workout['_meta'] = meta_payload
 
             cursor.execute(
                 """
@@ -5967,7 +6461,14 @@ def _complete_workout_for_user(user_id: int) -> tuple[bool, str | None]:
             conn.commit()
 
     clear_active_workout(user_id)
-    return True, None
+    session_meta = {
+        'session_id': session_id,
+        'completed_at': completed_at.isoformat() if completed_at else None,
+        'payload': refreshed_workout,
+        'display_category': display_category,
+        'category_key': workout_category,
+    }
+    return True, None, session_meta
 
 
 def _exercise_entry_workout_id(entry):
@@ -6012,6 +6513,428 @@ def _apply_formatted_exercise(entry, formatted_exercise):
             entry_list[idx] = value
         return entry_list
     return fields
+
+
+def _attach_session_to_schedule(
+    user_id: int,
+    session_meta: dict | None,
+    *,
+    trainer_id: int | None = None,
+    schedule_event_id: int | None = None,
+    as_self_session: bool = False,
+) -> None:
+    if not session_meta:
+        return
+    session_id = session_meta.get('session_id')
+    payload = session_meta.get('payload')
+    completed_at = session_meta.get('completed_at')
+    display_category = session_meta.get('display_category') or session_meta.get('category_key') or 'Workout Session'
+    if not session_id or not payload:
+        return
+
+    if isinstance(completed_at, str):
+        try:
+            completed_dt = datetime.fromisoformat(completed_at)
+        except ValueError:
+            completed_dt = datetime.now(timezone.utc)
+    elif isinstance(completed_at, datetime):
+        completed_dt = completed_at
+    else:
+        completed_dt = datetime.now(timezone.utc)
+    if completed_dt.tzinfo is None:
+        completed_dt = completed_dt.replace(tzinfo=timezone.utc)
+
+    try:
+        uuid.UUID(str(session_id))
+    except (ValueError, TypeError):
+        return
+
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            cursor.execute(
+                "SELECT trainer_id, workout_duration FROM users WHERE id = %s",
+                (user_id,),
+            )
+            user_row = cursor.fetchone()
+            if not user_row:
+                return
+
+        duration_minutes = user_row.get('workout_duration') or 60
+        try:
+            duration_minutes = int(duration_minutes)
+        except (TypeError, ValueError):
+            duration_minutes = 60
+        if duration_minutes <= 0:
+            duration_minutes = 60
+        start_dt = completed_dt - timedelta(minutes=duration_minutes)
+
+        target_event_id = None
+        def _validate_event(event_id: int | None) -> bool:
+            if not event_id:
+                return False
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(
+                    """
+                    SELECT client_id, trainer_id, is_self_booked
+                      FROM trainer_schedule
+                     WHERE id = %s
+                    """,
+                    (event_id,),
+                )
+                row = cursor.fetchone()
+            if not row:
+                return False
+            if as_self_session:
+                return row.get('client_id') == user_id and row.get('is_self_booked')
+            if trainer_id:
+                return row.get('client_id') == user_id and row.get('trainer_id') == trainer_id and not row.get('is_self_booked')
+            expected_trainer = user_row.get('trainer_id')
+            return row.get('client_id') == user_id and row.get('trainer_id') == expected_trainer and not row.get('is_self_booked')
+
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            cursor.execute(
+                "SELECT id FROM trainer_schedule WHERE session_id = %s",
+                (session_id,),
+            )
+            existing = cursor.fetchone()
+            if existing:
+                target_event_id = existing.get('id')
+
+        if not target_event_id and schedule_event_id:
+            if _validate_event(schedule_event_id):
+                target_event_id = schedule_event_id
+
+        if not target_event_id:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                conditions = [
+                    "client_id = %s",
+                    "start_time <= %s",
+                    "end_time >= %s",
+                ]
+                params = [user_id, completed_dt, completed_dt]
+                if as_self_session:
+                    conditions.append("is_self_booked = TRUE")
+                cursor.execute(
+                    f"""
+                    SELECT id
+                      FROM trainer_schedule
+                     WHERE {' AND '.join(conditions)}
+                     ORDER BY start_time DESC
+                     LIMIT 1
+                    """,
+                    params,
+                )
+                match_row = cursor.fetchone()
+                if match_row:
+                    target_event_id = match_row.get('id')
+
+        created_event = False
+        if target_event_id and not _validate_event(target_event_id):
+            target_event_id = None
+
+        if not target_event_id:
+            if as_self_session:
+                assigned_trainer = user_id
+            else:
+                assigned_trainer = trainer_id or user_row.get('trainer_id')
+            if not assigned_trainer:
+                return
+            is_self_booked = bool(as_self_session)
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO trainer_schedule (
+                        trainer_id,
+                        client_id,
+                        start_time,
+                        end_time,
+                        status,
+                        note,
+                        is_self_booked
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    RETURNING id
+                    """,
+                    (
+                        assigned_trainer,
+                        user_id,
+                        start_dt,
+                        completed_dt,
+                        'completed',
+                        'Session logged from completed workout',
+                        is_self_booked,
+                    ),
+                )
+                new_row = cursor.fetchone()
+                target_event_id = new_row['id'] if isinstance(new_row, dict) else new_row[0]
+                created_event = True
+
+        if not target_event_id:
+            conn.rollback()
+            return
+
+        note_value = None
+        if isinstance(payload, dict):
+            meta_block = payload.get('_meta')
+            if isinstance(meta_block, dict):
+                note_value = meta_block.get('notes')
+
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE trainer_schedule
+                   SET session_id = %s,
+                       session_payload = %s,
+                       session_category = %s,
+                       session_completed_at = %s,
+                       status = 'completed',
+                       is_self_booked = CASE WHEN %s THEN TRUE ELSE is_self_booked END,
+                       note = CASE
+                                WHEN (note IS NULL OR note = '') AND %s IS NOT NULL THEN %s
+                                ELSE note
+                              END
+                 WHERE id = %s
+                """,
+                (
+                    session_id,
+                    psycopg2.extras.Json(payload),
+                    display_category,
+                    completed_dt,
+                    created_event,
+                    note_value,
+                    note_value,
+                    target_event_id,
+                ),
+            )
+            conn.commit()
+
+
+@app.post('/training/workout/reorder')
+@login_required
+def personal_reorder_workout_exercises():
+    user_id = session['user_id']
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            cursor.execute(
+                "SELECT role, subscription_type FROM users WHERE id = %s",
+                (user_id,),
+            )
+            user_row = cursor.fetchone()
+    if not _user_can_customize_personal_workout(user_row):
+        return jsonify({'success': False, 'error': 'Trainer Pro access required.'}), 403
+
+    payload = request.get_json(silent=True) or {}
+    subcategory = (payload.get('subcategory') or '').strip()
+    order_list = payload.get('order')
+    if not subcategory or not isinstance(order_list, list) or not order_list:
+        return jsonify({'success': False, 'error': 'Invalid reorder payload.'}), 400
+
+    sanitized_order = []
+    for value in order_list:
+        key = str(value).strip()
+        if not key:
+            continue
+        sanitized_order.append(key)
+    if len(sanitized_order) != len(order_list):
+        return jsonify({'success': False, 'error': 'Invalid exercise identifiers provided.'}), 400
+    if len(set(sanitized_order)) != len(sanitized_order):
+        return jsonify({'success': False, 'error': 'Duplicate exercise identifiers provided.'}), 400
+
+    active = get_active_workout(user_id)
+    if not active:
+        return jsonify({'success': False, 'error': 'No active workout to update.'}), 404
+    workout_payload = active.get('workout_data') or {}
+    plan = workout_payload.get('plan')
+    if not isinstance(plan, list):
+        return jsonify({'success': False, 'error': 'Active workout plan is missing.'}), 400
+
+    target_label = subcategory.lower()
+    target_block = None
+    for block in plan:
+        label = str(block.get('subcategory') or '').strip()
+        if label.lower() == target_label:
+            target_block = block
+            break
+    if not target_block:
+        return jsonify({'success': False, 'error': 'Workout category not found.'}), 404
+
+    exercises = target_block.get('exercises') or []
+    if len(exercises) != len(sanitized_order):
+        return jsonify({'success': False, 'error': 'Exercise count mismatch. Refresh and try again.'}), 400
+
+    lookup = {}
+    for entry in exercises:
+        workout_id = _exercise_entry_workout_id(entry)
+        if workout_id is None:
+            return jsonify({'success': False, 'error': 'An exercise is missing its identifier.'}), 400
+        lookup[str(workout_id)] = entry
+    if set(lookup.keys()) != set(sanitized_order):
+        return jsonify({'success': False, 'error': 'Invalid exercise order submitted.'}), 400
+
+    target_block['exercises'] = [lookup[wid] for wid in sanitized_order]
+
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE active_workouts
+                   SET workout_data = %s
+                 WHERE user_id = %s
+                """,
+                (psycopg2.extras.Json(workout_payload), user_id),
+            )
+            conn.commit()
+
+    return jsonify({'success': True})
+
+
+@app.post('/training/workout/exercises/<int:workout_id>/refresh')
+@login_required
+def personal_refresh_workout_exercise(workout_id):
+    user_id = session['user_id']
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            cursor.execute(
+                "SELECT role, subscription_type, exercise_history FROM users WHERE id = %s",
+                (user_id,),
+            )
+            user_row = cursor.fetchone()
+    if not _user_can_customize_personal_workout(user_row):
+        return jsonify({'success': False, 'error': 'Trainer Pro access required.'}), 403
+
+    payload = request.get_json(silent=True) or {}
+    subcategory = (payload.get('subcategory') or '').strip()
+    if not subcategory:
+        return jsonify({'success': False, 'error': 'Workout category is required.'}), 400
+
+    active = get_active_workout(user_id)
+    if not active:
+        return jsonify({'success': False, 'error': 'No active workout to update.'}), 404
+    workout_payload = active.get('workout_data') or {}
+    plan = workout_payload.get('plan')
+    if not isinstance(plan, list):
+        return jsonify({'success': False, 'error': 'Active workout plan is missing.'}), 400
+
+    normalized_subcategory = subcategory.lower()
+    target_block = None
+    for block in plan:
+        label = str(block.get('subcategory') or '').strip()
+        if label.lower() == normalized_subcategory:
+            target_block = block
+            break
+    if not target_block:
+        return jsonify({'success': False, 'error': 'Workout category not found.'}), 404
+
+    exercises = target_block.get('exercises') or []
+    if not exercises:
+        return jsonify({'success': False, 'error': 'No exercises available for this category.'}), 400
+
+    existing_ids = set()
+    replacement_index = None
+    for idx, entry in enumerate(exercises):
+        entry_id = _exercise_entry_workout_id(entry)
+        if entry_id is None:
+            return jsonify({'success': False, 'error': 'An exercise is missing its identifier.'}), 400
+        try:
+            entry_int = int(entry_id)
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'error': 'Invalid exercise identifier detected.'}), 400
+        existing_ids.add(entry_int)
+        if entry_int == workout_id:
+            replacement_index = idx
+    if replacement_index is None:
+        return jsonify({'success': False, 'error': 'Exercise not found in this workout.'}), 404
+
+    user_level = get_user_level(user_row.get('exercise_history'))
+    equipment_tokens = []
+    raw_equipment = workout_payload.get('home_equipment')
+    if raw_equipment:
+        equipment_tokens = normalize_home_equipment_selection(raw_equipment)
+    equipment_clause = ""
+    equipment_params = []
+    allow_cardio_bodyweight = False
+    if equipment_tokens:
+        equipment_clause, equipment_params, allow_cardio_bodyweight = build_home_equipment_clause(equipment_tokens)
+    restrict_barbell = bool(equipment_tokens) and 'BARBELL' not in equipment_tokens
+    restrict_dumbbell = bool(equipment_tokens) and 'DUMBBELL' not in equipment_tokens
+
+    subcategory_key = (subcategory or "").strip().upper()
+    use_cardio_bodyweight_override = allow_cardio_bodyweight and subcategory_key == 'CARDIO'
+
+    query = """
+        SELECT
+            w.id AS workout_id,
+            w.name,
+            w.description,
+            w.youtube_id,
+            w.image_exercise_start,
+            w.image_exercise_end,
+            uep.max_weight,
+            uep.max_reps,
+            uep.notes
+        FROM workouts w
+        LEFT JOIN user_exercise_progress uep
+            ON w.id = uep.workout_id AND uep.user_id = %s
+        WHERE w.category = %s
+          AND w.level <= %s
+    """
+    params = [user_id, subcategory, user_level]
+    excluded_ids = sorted(existing_ids)
+    if excluded_ids:
+        placeholders = ','.join(['%s'] * len(excluded_ids))
+        query += f" AND w.id NOT IN ({placeholders})"
+        params.extend(excluded_ids)
+    if equipment_clause:
+        if use_cardio_bodyweight_override:
+            placeholders = ",".join(["%s"] * len(CARDIO_BODYWEIGHT_WORKOUTS))
+            query += f" AND (({equipment_clause}) OR w.name IN ({placeholders}))"
+            params.extend(equipment_params)
+            params.extend(CARDIO_BODYWEIGHT_WORKOUTS)
+        else:
+            query += f" AND {equipment_clause}"
+            params.extend(equipment_params)
+    elif use_cardio_bodyweight_override:
+        placeholders = ",".join(["%s"] * len(CARDIO_BODYWEIGHT_WORKOUTS))
+        query += f" AND w.name IN ({placeholders})"
+        params.extend(CARDIO_BODYWEIGHT_WORKOUTS)
+    if restrict_barbell:
+        query += " AND LOWER(w.name) NOT LIKE %s"
+        params.append("%barbell%")
+    if restrict_dumbbell:
+        query += " AND LOWER(w.name) NOT LIKE %s"
+        params.append("%dumbbell%")
+    query += " ORDER BY RANDOM() LIMIT 1"
+
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            cursor.execute(query, params)
+            replacement_row = cursor.fetchone()
+        if not replacement_row:
+            return jsonify({'success': False, 'error': "No alternates match your level or equipment setup right now."}), 404
+
+        formatted_exercise = _format_exercise(subcategory, replacement_row)
+        exercises[replacement_index] = _apply_formatted_exercise(
+            exercises[replacement_index],
+            formatted_exercise,
+        )
+
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE active_workouts
+                   SET workout_data = %s
+                 WHERE user_id = %s
+                """,
+                (psycopg2.extras.Json(workout_payload), user_id),
+            )
+        conn.commit()
+
+    return jsonify({
+        'success': True,
+        'exercise': formatted_exercise,
+        'workout_id': formatted_exercise.get('workout_id'),
+        'subcategory': target_block.get('subcategory') or subcategory,
+    })
 
 
 @app.post('/trainer/clients/<int:client_id>/workout/reorder')
@@ -6169,8 +7092,14 @@ def trainer_refresh_client_workout_exercise(client_id, workout_id):
         equipment_tokens = normalize_home_equipment_selection(raw_equipment)
     equipment_clause = ""
     equipment_params = []
+    allow_cardio_bodyweight = False
     if equipment_tokens:
-        equipment_clause, equipment_params = build_home_equipment_clause(equipment_tokens)
+        equipment_clause, equipment_params, allow_cardio_bodyweight = build_home_equipment_clause(equipment_tokens)
+    restrict_barbell = bool(equipment_tokens) and 'BARBELL' not in equipment_tokens
+    restrict_dumbbell = bool(equipment_tokens) and 'DUMBBELL' not in equipment_tokens
+
+    subcategory_key = (subcategory or "").strip().upper()
+    use_cardio_bodyweight_override = allow_cardio_bodyweight and subcategory_key == 'CARDIO'
 
     query = """
         SELECT
@@ -6196,8 +7125,24 @@ def trainer_refresh_client_workout_exercise(client_id, workout_id):
         query += f" AND w.id NOT IN ({placeholders})"
         params.extend(excluded_ids)
     if equipment_clause:
-        query += f" AND {equipment_clause}"
-        params.extend(equipment_params)
+        if use_cardio_bodyweight_override:
+            placeholders = ",".join(["%s"] * len(CARDIO_BODYWEIGHT_WORKOUTS))
+            query += f" AND (({equipment_clause}) OR w.name IN ({placeholders}))"
+            params.extend(equipment_params)
+            params.extend(CARDIO_BODYWEIGHT_WORKOUTS)
+        else:
+            query += f" AND {equipment_clause}"
+            params.extend(equipment_params)
+    elif use_cardio_bodyweight_override:
+        placeholders = ",".join(["%s"] * len(CARDIO_BODYWEIGHT_WORKOUTS))
+        query += f" AND w.name IN ({placeholders})"
+        params.extend(CARDIO_BODYWEIGHT_WORKOUTS)
+    if restrict_barbell:
+        query += " AND LOWER(w.name) NOT LIKE %s"
+        params.append("%barbell%")
+    if restrict_dumbbell:
+        query += " AND LOWER(w.name) NOT LIKE %s"
+        params.append("%dumbbell%")
     query += " ORDER BY RANDOM() LIMIT 1"
 
     with get_connection() as conn:
@@ -6283,14 +7228,15 @@ def get_exercise_progress_route(workout_id):
 @login_required
 def complete_workout():
     user_id = session['user_id']
-    success, error = _complete_workout_for_user(user_id)
+    success, error, session_meta = _complete_workout_for_user(user_id)
     if not success:
         return jsonify({'success': False, 'error': error}), 400
+    _attach_session_to_schedule(user_id, session_meta, as_self_session=True)
     return jsonify({'success': True})
 
 
-def _load_last_workout_payload(user_id: int, category: str) -> tuple[OrderedDict | None, str]:
-    """Return the stored workout payload (if any) and a user-friendly label."""
+def _load_last_workout_payload(user_id: int, category: str) -> tuple[OrderedDict | None, str, dict | None]:
+    """Return the stored workout payload (if any), its label, and metadata."""
     with get_connection() as conn:
         with conn.cursor() as cursor:
             cursor.execute(
@@ -6304,21 +7250,24 @@ def _load_last_workout_payload(user_id: int, category: str) -> tuple[OrderedDict
             row = cursor.fetchone()
 
     if not row or not row[0]:
-        return None, category
+        return None, category, None
 
     try:
         workouts = json.loads(row[0], object_pairs_hook=OrderedDict)
     except (TypeError, json.JSONDecodeError):
-        return None, category
+        return None, category, None
 
     display_category = category
-    if isinstance(workouts, dict) and '_meta' in workouts:
-        meta = workouts.pop('_meta') or {}
-        pretty_custom = meta.get('custom_categories_pretty') if isinstance(meta, dict) else None
+    metadata = None
+    if isinstance(workouts, dict):
+        metadata = workouts.pop('_meta', None)
+        pretty_custom = None
+        if isinstance(metadata, dict):
+            pretty_custom = metadata.get('custom_categories_pretty')
         if isinstance(pretty_custom, list) and pretty_custom:
             display_category = ', '.join(pretty_custom)
 
-    return workouts, display_category
+    return workouts, display_category, metadata
 
 
 @app.route('/workout_details/<category>', methods=['GET'])
@@ -6326,12 +7275,26 @@ def _load_last_workout_payload(user_id: int, category: str) -> tuple[OrderedDict
 def workout_details(category):
     user_id = session['user_id']
 
-    workouts, display_category = _load_last_workout_payload(user_id, category)
+    workouts, display_category, workout_meta = _load_last_workout_payload(user_id, category)
+    completion_label = None
+    completion_dt = None
+    if isinstance(workout_meta, dict):
+        completed_raw = workout_meta.get('completed_at')
+        if completed_raw:
+            try:
+                completion_dt = datetime.fromisoformat(completed_raw)
+                completion_label = completion_dt.astimezone().strftime("%B %d, %Y at %I:%M %p")
+            except ValueError:
+                completion_dt = None
+                completion_label = None
     return render_template(
         'workout_details.html',
         category=category,
         display_category=display_category,
         workouts=workouts,
+        workout_meta=workout_meta or {},
+        completion_label=completion_label,
+        completion_dt=completion_dt,
         back_url=url_for('home'),
     )
 
@@ -6361,13 +7324,121 @@ def trainer_client_workout_details(client_id, category):
         flash("You do not have access to that client's workouts.", "danger")
         return redirect(url_for('trainer_dashboard'))
 
-    workouts, display_category = _load_last_workout_payload(client_id, category)
+    workouts, display_category, workout_meta = _load_last_workout_payload(client_id, category)
+    completion_label = None
+    completion_dt = None
+    if isinstance(workout_meta, dict):
+        completed_raw = workout_meta.get('completed_at')
+        if completed_raw:
+            try:
+                completion_dt = datetime.fromisoformat(completed_raw)
+                completion_label = completion_dt.astimezone().strftime("%B %d, %Y at %I:%M %p")
+            except ValueError:
+                completion_dt = None
+                completion_label = None
     return render_template(
         'workout_details.html',
         category=category,
         display_category=display_category,
         workouts=workouts,
+        workout_meta=workout_meta or {},
+        completion_label=completion_label,
+        completion_dt=completion_dt,
         back_url=url_for('client_profile', client_id=client_id),
+    )
+
+
+@app.route('/workout_session/<session_id>', methods=['GET'])
+@login_required
+def workout_session_view(session_id):
+    user_id = session['user_id']
+    role = (session.get('role') or 'user').strip().lower()
+    try:
+        session_uuid = uuid.UUID(str(session_id))
+    except (ValueError, TypeError):
+        abort(404)
+
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            cursor.execute(
+                """
+                SELECT client_id,
+                       trainer_id,
+                       session_payload,
+                       session_category,
+                       session_completed_at
+                  FROM trainer_schedule
+                 WHERE session_id = %s
+                """,
+                (str(session_uuid),),
+            )
+            row = cursor.fetchone()
+
+    if not row:
+        abort(404)
+
+    client_id = row.get('client_id')
+    trainer_owner_id = row.get('trainer_id')
+    if role in {'trainer', 'admin'}:
+        trainer = _require_trainer(user_id)
+        if not trainer:
+            flash("Trainer access required.", "danger")
+            return redirect(url_for('home'))
+        if role != 'admin' and trainer_owner_id != user_id:
+            flash("You do not have access to that workout session.", "danger")
+            return redirect(url_for('trainer_dashboard'))
+        back_url = url_for('trainer_self_schedule_view')
+    else:
+        if client_id != user_id:
+            abort(403)
+        back_url = url_for('client_schedule_view')
+
+    raw_payload = row.get('session_payload')
+    if raw_payload is None:
+        flash("Workout details are unavailable for this session.", "warning")
+        return redirect(back_url)
+
+    if isinstance(raw_payload, str):
+        try:
+            payload = json.loads(raw_payload, object_pairs_hook=OrderedDict)
+        except (TypeError, json.JSONDecodeError):
+            payload = None
+    else:
+        payload = raw_payload
+
+    if not payload:
+        flash("Workout details are unavailable for this session.", "warning")
+        return redirect(back_url)
+
+    workouts = payload
+    metadata = None
+    if isinstance(payload, dict):
+        workouts = OrderedDict(payload)
+        metadata = workouts.pop('_meta', None)
+
+    display_category = row.get('session_category')
+    if isinstance(metadata, dict):
+        pretty_custom = metadata.get('custom_categories_pretty')
+        if isinstance(pretty_custom, list) and pretty_custom:
+            display_category = ', '.join(pretty_custom)
+        elif metadata.get('session_label'):
+            display_category = metadata.get('session_label')
+    if not display_category:
+        display_category = 'Workout Session'
+
+    completed_at = row.get('session_completed_at')
+    completion_label = None
+    if isinstance(completed_at, datetime):
+        completion_label = completed_at.astimezone().strftime("%B %d, %Y at %I:%M %p")
+
+    return render_template(
+        'workout_details.html',
+        category=row.get('session_category') or display_category,
+        display_category=display_category,
+        workouts=workouts,
+        workout_meta=metadata or {},
+        completion_label=completion_label,
+        back_url=back_url,
     )
 
 

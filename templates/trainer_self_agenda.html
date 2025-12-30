@@ -1,0 +1,196 @@
+{% extends "layout.html" %}
+
+{% block title %}
+    Workout Log Agenda
+{% endblock %}
+
+{% block content %}
+<div class="experience-container experience-container--wide agenda-experience">
+    <div class="surface-card surface-card--glass agenda-surface-card">
+        <div class="surface-hero surface-hero--dashboard text-center">
+            <div class="surface-hero__content w-100">
+                <h4 class="surface-hero__title mb-1">Workout Log Agenda</h4>
+                <p class="surface-hero__subtitle">
+                    Filter your completed workouts by date range or quick view.
+                </p>
+                <div class="d-inline-flex gap-2 mt-2">
+                    <a href="{{ url_for('trainer_self_schedule_view') }}" class="btn btn-sm btn-outline-light">
+                        <i class="bi bi-calendar-week me-1"></i>Calendar View
+                    </a>
+                </div>
+            </div>
+        </div>
+        <div class="surface-body">
+            <div class="surface-section surface-section--flat agenda-card agenda-card-panel">
+                <div class="agenda-filters-grid">
+                    <div class="agenda-filters-grid__quick">
+                        <div class="agenda-filter-bar">
+                            <div class="agenda-quick-links d-flex flex-wrap gap-2 align-items-center">
+                                <span class="text-uppercase small text-muted fw-semibold me-1 agenda-quick-label text-center text-lg-start">
+                                    Quick View:
+                                </span>
+                                {% for filter in quick_filters %}
+                                    <a class="btn btn-outline-primary btn-sm {% if selected_view == filter.key %}active{% endif %}"
+                                       href="{{ url_for('trainer_self_agenda_view', view=filter.key, per_page=per_page, page=1) }}#trainerSelfAgendaTable"
+                                       {% if selected_view == filter.key %}aria-current="true"{% endif %}>
+                                        {{ filter.label }}
+                                    </a>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="agenda-filters-grid__date">
+                        <form method="get"
+                              action="{{ url_for('trainer_self_agenda_view') }}#trainerSelfAgendaTable"
+                              class="agenda-range-form d-flex flex-column gap-3">
+                            <input type="hidden" name="view" value="custom">
+                            <input type="hidden" name="per_page" value="{{ per_page }}">
+                            <input type="hidden" name="page" value="1">
+                            <div>
+                                <div class="text-uppercase small text-muted fw-semibold mb-2 text-center text-lg-start">Date Range</div>
+                                <div class="d-flex flex-wrap align-items-center gap-2 agenda-date-range">
+                                    <label class="small text-muted mb-0 text-nowrap" for="agendaStartDate">From</label>
+                                    <input type="date"
+                                           id="agendaStartDate"
+                                           class="form-control form-control-sm"
+                                           name="start_date"
+                                           value="{{ start_date_input }}">
+                                    <label class="small text-muted mb-0 text-nowrap" for="agendaEndDate">To</label>
+                                    <input type="date"
+                                           id="agendaEndDate"
+                                           class="form-control form-control-sm"
+                                           name="end_date"
+                                           value="{{ end_date_input }}">
+                                    <div class="agenda-date-range__actions d-flex align-items-center gap-2 flex-wrap justify-content-center justify-content-lg-start">
+                                        <button type="submit" class="btn btn-outline-primary btn-sm">Apply</button>
+                                        <a class="btn btn-link btn-sm text-decoration-none"
+                                           href="{{ url_for('trainer_self_agenda_view', view='last_week', per_page=per_page) }}#trainerSelfAgendaTable">
+                                            Clear
+                                        </a>
+                                    </div>
+                                </div>
+                                {% if custom_date_error %}
+                                    <div class="text-danger small mt-2">{{ custom_date_error_message }}</div>
+                                {% endif %}
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <div class="mt-4">
+                    {% if events %}
+                        <div class="table-responsive agenda-table-wrapper">
+                            <table class="table align-middle" id="trainerSelfAgendaTable">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Workout</th>
+                                        <th>Date &amp; Time</th>
+                                        <th class="text-end">Details</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for event in events %}
+                                        <tr>
+                                            <td>{{ event.session_category or 'Solo Workout' }}</td>
+                                            <td>
+                                                <div>{{ event.date_display }}</div>
+                                                <div class="text-muted small">{{ event.start_display }} – {{ event.end_display }}</div>
+                                            </td>
+                                            <td class="text-end">
+                                                {% if event.session_url %}
+                                                    <a href="{{ event.session_url }}" class="btn btn-sm btn-outline-primary">
+                                                        <i class="bi bi-activity me-1"></i>Details
+                                                    </a>
+                                                {% else %}
+                                                    <span class="text-muted small">No details stored</span>
+                                                {% endif %}
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <p class="text-center text-muted mb-0" id="trainerSelfAgendaTable">No workouts match your filters.</p>
+                    {% endif %}
+
+                    <div class="card-footer bg-transparent border-0 px-0 mt-3 d-flex flex-wrap align-items-center justify-content-between gap-3">
+                        <div class="small text-muted">
+                            {% if filtered_total %}
+                                Showing {{ page_start_index }}&ndash;{{ page_end_index }} of {{ filtered_total }} workout{% if filtered_total != 1 %}s{% endif %}.
+                            {% else %}
+                                Showing 0 workouts.
+                            {% endif %}
+                        </div>
+                        <div class="d-flex flex-wrap align-items-center gap-3 ms-auto">
+                            {% if total_pages > 1 %}
+                                <nav aria-label="Workout pagination">
+                                    <ul class="pagination pagination-sm mb-0">
+                                        <li class="page-item {% if page == 1 %}disabled{% endif %}">
+                                            {% if page == 1 %}
+                                                <span class="page-link">Previous</span>
+                                            {% else %}
+                                                <a class="page-link"
+                                                   href="{{ url_for('trainer_self_agenda_view', view=selected_view, start_date=start_date_input, end_date=end_date_input, per_page=per_page, page=page-1) }}#trainerSelfAgendaTable">
+                                                    Previous
+                                                </a>
+                                            {% endif %}
+                                        </li>
+                                        {% for p in range(1, total_pages + 1) %}
+                                            <li class="page-item {% if p == page %}active{% endif %}">
+                                                {% if p == page %}
+                                                    <span class="page-link">{{ p }}</span>
+                                                {% else %}
+                                                    <a class="page-link"
+                                                       href="{{ url_for('trainer_self_agenda_view', view=selected_view, start_date=start_date_input, end_date=end_date_input, per_page=per_page, page=p) }}#trainerSelfAgendaTable">
+                                                        {{ p }}
+                                                    </a>
+                                                {% endif %}
+                                            </li>
+                                        {% endfor %}
+                                        <li class="page-item {% if page == total_pages %}disabled{% endif %}">
+                                            {% if page == total_pages %}
+                                                <span class="page-link">Next</span>
+                                            {% else %}
+                                                <a class="page-link"
+                                                   href="{{ url_for('trainer_self_agenda_view', view=selected_view, start_date=start_date_input, end_date=end_date_input, per_page=per_page, page=page+1) }}#trainerSelfAgendaTable">
+                                                    Next
+                                                </a>
+                                            {% endif %}
+                                        </li>
+                                    </ul>
+                                </nav>
+                            {% endif %}
+                            <div class="agenda-per-page d-flex align-items-center gap-2">
+                                <label for="perPageSelect" class="small text-muted mb-0 text-nowrap">Workouts per page</label>
+                                <select class="form-select form-select-sm" id="perPageSelect" name="per_page">
+                                    {% for option in per_page_options %}
+                                        <option value="{{ option }}" {% if per_page == option %}selected{% endif %}>{{ option }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const perPageSelect = document.getElementById('perPageSelect');
+    if (perPageSelect) {
+        perPageSelect.addEventListener('change', () => {
+            const params = new URLSearchParams(window.location.search);
+            params.set('per_page', perPageSelect.value);
+            params.set('page', '1');
+            const query = params.toString();
+            const basePath = window.location.pathname;
+            const target = query ? `${basePath}?${query}` : basePath;
+            window.location.href = `${target}#trainerSelfAgendaTable`;
+        });
+    }
+});
+</script>
+{% endblock %}

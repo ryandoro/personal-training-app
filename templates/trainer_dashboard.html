@@ -361,6 +361,11 @@
             </div>
         </div>
         <div class="event-session-modal__body">
+            <div class="event-session-modal__section" id="eventWorkoutDetailsSection" hidden>
+                <a href="#" class="btn btn-brand btn-workout-details w-100" id="eventViewSession">
+                    <i class="bi bi-activity me-1"></i>Workout Details
+                </a>
+            </div>
                 <div class="event-session-modal__reschedule" id="eventReschedulePanel" hidden>
                     <div class="event-session-modal__reschedule-header">
                         <h6 class="mb-1">Reschedule Session</h6>
@@ -610,6 +615,8 @@
     const eventModalTimeDisplay = document.getElementById('eventModalTimeDisplay');
     const eventModalStatus = document.getElementById('eventModalStatus');
     const eventViewAgendaBtn = document.getElementById('eventViewAgenda');
+    const eventWorkoutDetailsSection = document.getElementById('eventWorkoutDetailsSection');
+    const eventViewSessionBtn = document.getElementById('eventViewSession');
     const eventViewProfileBtn = document.getElementById('eventViewProfile');
     const eventReschedulePanel = document.getElementById('eventReschedulePanel');
     const eventRescheduleForm = document.getElementById('eventRescheduleForm');
@@ -1468,6 +1475,20 @@
                 eventViewAgendaBtn.href = buildClientUrl(clientAgendaTemplate, targetId);
             }
         }
+            if (eventWorkoutDetailsSection) {
+                if (eventType === 'time_off' || !modalData.session_url) {
+                    eventWorkoutDetailsSection.hidden = true;
+                    eventViewSessionBtn.hidden = true;
+                    eventViewSessionBtn.removeAttribute('href');
+                    eventViewSessionBtn.textContent = '';
+                } else {
+                    eventWorkoutDetailsSection.hidden = false;
+                    eventViewSessionBtn.hidden = false;
+                    eventViewSessionBtn.href = modalData.session_url;
+                    const label = modalData.session_category || 'Workout Details';
+                    eventViewSessionBtn.innerHTML = `<i class="bi bi-activity me-1"></i>${label}`;
+                }
+            }
         if (eventViewProfileBtn) {
             if (eventType === 'time_off') {
                 eventViewProfileBtn.hidden = true;

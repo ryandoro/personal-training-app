@@ -83,6 +83,11 @@
                                     <a class="nav-link" href="{{ url_for('client_schedule_view') }}">Schedule</a>
                                 </li>
                             {% endif %}
+                            {% if session.get('role') in ['trainer', 'admin'] %}
+                                <li class="nav-item">
+                                    <a class="nav-link" href="{{ url_for('trainer_self_schedule_view') }}">Workout Log</a>
+                                </li>
+                            {% endif %}
                             <li class="nav-item">
                                 <a class="nav-link" href="{{ url_for('settings') }}">Account Settings</a>
                             </li>                        
