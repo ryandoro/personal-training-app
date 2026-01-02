@@ -230,6 +230,28 @@
     const FIFTEEN_MINUTES = 15;
     const MILLI_IN_MINUTE = 60000;
 
+    function buildSessionLink(baseUrl) {
+        if (!baseUrl) return '';
+        try {
+            const url = new URL(baseUrl, window.location.origin);
+            const tzName = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+            if (tzName) {
+                url.searchParams.set('timezone', tzName);
+            }
+            const tzOffset = new Date().getTimezoneOffset();
+            if (Number.isFinite(tzOffset)) {
+                url.searchParams.set('tz_offset', tzOffset);
+            }
+            const backTarget = window.location.pathname + window.location.search + window.location.hash;
+            if (backTarget) {
+                url.searchParams.set('back', backTarget);
+            }
+            return url.toString();
+        } catch (err) {
+            return baseUrl;
+        }
+    }
+
     function escapeHtml(value) {
         if (value === undefined || value === null) return '';
         return String(value)
@@ -649,7 +671,7 @@
 
         if (event.session_url) {
             clientModalActions.hidden = false;
-            clientModalWorkoutLink.href = event.session_url;
+            clientModalWorkoutLink.href = buildSessionLink(event.session_url);
         } else {
             clientModalActions.hidden = true;
             clientModalWorkoutLink.removeAttribute('href');

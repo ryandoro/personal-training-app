@@ -33,6 +33,10 @@
                             {{ trainer_stats.total_clients or 0 }} clients •
                             <span class="trainer-sessions-completed-value">{{ trainer_stats.sessions_completed or 0 }}</span> sessions
                         </p>
+                        <p class="dashboard-snapshot__meta mb-0">
+                            Sessions all time:
+                            <span class="trainer-sessions-completed-alltime-value">{{ trainer_stats.sessions_completed_all_time or 0 }}</span>
+                        </p>
                     </div>
                 </div>
                 <div class="trainer-dashboard-hero__meta trainer-hero-inline mb-0 d-flex align-items-center justify-content-center gap-2 flex-wrap">
@@ -143,11 +147,12 @@
                                                     data-client-name="{{ client.name or client.username }}"
                                                     data-client-lastname="{{ client.last_name or '' }}"
                                                     data-sessions="{{ client.sessions_total if client.sessions_total is not none else '' }}"
+                                                    data-sessions-left="{{ client.sessions_left if client.sessions_left is not none else '' }}"
                                                     data-sessions-booked="{{ client.sessions_booked or 0 }}"
                                                     data-sessions-completed="{{ client.sessions_completed_count }}"
                                                     data-workouts-completed="{{ client.workouts_completed or 0 }}">
-                                                Book Now
-                                            </button>
+                                                    Book Now
+                                                </button>
                                         </td>
                                     </tr>
                                 {% endfor %}
@@ -236,10 +241,22 @@
                 </div>
             </div>
             <div class="trainer-week-stats pt-3 pb-1 d-flex flex-wrap justify-content-center gap-3 align-items-center" id="trainer-week-stats" aria-live="polite">
-                <div class="badge bg-light text-dark border fw-semibold px-3 py-2">Total Sessions: <span id="trainer-week-total">0</span></div>
-                <div class="badge bg-light text-dark border fw-semibold px-3 py-2">Booked: <span id="trainer-week-booked">0</span></div>
-                <div class="badge bg-light text-dark border fw-semibold px-3 py-2">Cancelled: <span id="trainer-week-cancelled">0</span></div>
-                <div class="badge bg-light text-dark border fw-semibold px-3 py-2">Completed: <span id="trainer-week-completed">0</span></div>
+                <div class="client-pill client-pill--stat trainer-week-pill">
+                    <span class="trainer-week-pill__label">Total Sessions</span>
+                    <span class="trainer-week-pill__value" id="trainer-week-total">0</span>
+                </div>
+                <div class="client-pill client-pill--stat trainer-week-pill">
+                    <span class="trainer-week-pill__label">Booked</span>
+                    <span class="trainer-week-pill__value" id="trainer-week-booked">0</span>
+                </div>
+                <div class="client-pill client-pill--stat trainer-week-pill">
+                    <span class="trainer-week-pill__label">Cancelled</span>
+                    <span class="trainer-week-pill__value" id="trainer-week-cancelled">0</span>
+                </div>
+                <div class="client-pill client-pill--stat trainer-week-pill">
+                    <span class="trainer-week-pill__label">Completed</span>
+                    <span class="trainer-week-pill__value" id="trainer-week-completed">0</span>
+                </div>
             </div>
         </div>
     </div>
@@ -673,7 +690,8 @@
     let toastTimeout = null;
     let eventNoteStatusTimer = null;
     const trainerSessionsCompletedEls = document.querySelectorAll('.trainer-sessions-completed-value');
-    const trainerStats = JSON.parse('{{ {"totalClients": trainer_stats.total_clients|default(0, true), "sessionsCompleted": trainer_stats.sessions_completed|default(0, true)} | tojson | safe }}');
+    const trainerSessionsCompletedAllTimeEls = document.querySelectorAll('.trainer-sessions-completed-alltime-value');
+    const trainerStats = JSON.parse('{{ {"totalClients": trainer_stats.total_clients|default(0, true), "sessionsCompleted": trainer_stats.sessions_completed|default(0, true), "sessionsCompletedAllTime": trainer_stats.sessions_completed_all_time|default(0, true)} | tojson | safe }}');
     const STATUS_INFO_DEFAULT_SESSION = 'Status changes update client balances immediately.';
     const STATUS_INFO_DEFAULT_TIME_OFF = 'Personal time blocks prevent new sessions during this window.';
     const STATUS_INFO_DEFAULT_VARIANT = 'muted';
@@ -690,13 +708,48 @@
         });
     }
 
+    function setTrainerSessionsCompletedAllTime(value) {
+        const numeric = Number(value);
+        if (!Number.isFinite(numeric)) return;
+        const normalized = Math.max(0, Math.round(numeric));
+        trainerStats.sessionsCompletedAllTime = normalized;
+        trainerSessionsCompletedAllTimeEls.forEach(el => {
+            if (el) {
+                el.textContent = normalized;
+            }
+        });
+    }
+
+    function parseSessionValue(raw) {
+        if (raw === undefined || raw === null || raw === '') {
+            return null;
+        }
+        const parsed = Number(raw);
+        return Number.isNaN(parsed) ? null : parsed;
+    }
+
+    function clientHasSessionsLeft(clientInfo) {
+        if (!clientInfo) return true;
+        if (clientInfo.sessionsLeft !== null && typeof clientInfo.sessionsLeft !== 'undefined') {
+            return clientInfo.sessionsLeft > 0;
+        }
+        if (clientInfo.sessions === null || typeof clientInfo.sessions === 'undefined') {
+            return true;
+        }
+        const consumed = (clientInfo.sessionsBooked || 0) + (clientInfo.sessionsCompleted || 0);
+        return consumed < clientInfo.sessions;
+    }
+
     function adjustTrainerSessionsCompleted(delta) {
         if (!delta) return;
         const current = Number(trainerStats.sessionsCompleted || 0);
+        const currentAllTime = Number(trainerStats.sessionsCompletedAllTime || 0);
         setTrainerSessionsCompleted(current + delta);
+        setTrainerSessionsCompletedAllTime(currentAllTime + delta);
     }
 
     setTrainerSessionsCompleted(trainerStats.sessionsCompleted || 0);
+    setTrainerSessionsCompletedAllTime(trainerStats.sessionsCompletedAllTime || 0);
 
     function getWeekdayLabel(date) {
         if (!(date instanceof Date) || Number.isNaN(date.getTime())) return null;
@@ -1012,6 +1065,28 @@
         }
     }
 
+    function buildSessionLink(baseUrl) {
+        if (!baseUrl) return '';
+        try {
+            const url = new URL(baseUrl, window.location.origin);
+            const tzName = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+            if (tzName) {
+                url.searchParams.set('timezone', tzName);
+            }
+            const tzOffset = new Date().getTimezoneOffset();
+            if (Number.isFinite(tzOffset)) {
+                url.searchParams.set('tz_offset', tzOffset);
+            }
+            const backTarget = window.location.pathname + window.location.search + window.location.hash;
+            if (backTarget) {
+                url.searchParams.set('back', backTarget);
+            }
+            return url.toString();
+        } catch (err) {
+            return baseUrl;
+        }
+    }
+
     function setEventStatusInfoMessage(message, variant = STATUS_INFO_DEFAULT_VARIANT) {
         if (!eventStatusInfo) return;
         const text = message ? String(message) : '';
@@ -1096,7 +1171,7 @@
         }, 4000);
     }
 
-    function updateClientRowCounts(clientId, totalSessions, bookedSessions, completedSessions = 0, workoutsCompleted = null) {
+    function updateClientRowCounts(clientId, totalSessions, bookedSessions, completedSessions = 0, workoutsCompleted = null, sessionsLeftOverride = undefined) {
         const row = document.querySelector(`tr[data-client-id="${clientId}"]`);
         if (!row) return;
         const workoutsCell = row.querySelector('.workouts-completed-cell');
@@ -1116,8 +1191,13 @@
             if (totalSessions === null || totalSessions === undefined || totalSessions === '') {
                 leftCell.textContent = '∞';
             } else {
-                const consumed = Math.min(totalSessions, Math.max(bookedSessions, 0) + Math.max(completedSessions, 0));
-                const left = Math.max(totalSessions - consumed, 0);
+                let left = sessionsLeftOverride;
+                if (left === undefined || left === null) {
+                    const consumed = Math.min(totalSessions, Math.max(bookedSessions, 0) + Math.max(completedSessions, 0));
+                    left = Math.max(totalSessions - consumed, 0);
+                } else {
+                    left = Math.max(Number(left) || 0, 0);
+                }
                 leftCell.textContent = `${left} / ${totalSessions}`;
             }
         }
@@ -1183,12 +1263,14 @@
             sessions_booked: bookedValue,
             sessions_remaining: totalValue,
             sessions_completed: completedValue,
-            workouts_completed: workoutsValue
+            workouts_completed: workoutsValue,
+            sessions_left: leftValue
         } = counts;
 
         const button = document.querySelector(`.book-client-btn[data-client-id="${clientId}"]`);
         let totalSessions = totalValue;
         let workoutsCompleted = workoutsValue;
+        let sessionsLeft = leftValue;
 
         if (button) {
             if (totalValue !== undefined) {
@@ -1202,6 +1284,18 @@
             } else {
                 totalSessions = button.dataset.sessions === '' ? null : Number(button.dataset.sessions || '0');
             }
+            if (leftValue !== undefined) {
+                if (leftValue === null || leftValue === '') {
+                    button.dataset.sessionsLeft = '';
+                    sessionsLeft = null;
+                } else {
+                    button.dataset.sessionsLeft = String(leftValue);
+                    sessionsLeft = Number(leftValue);
+                }
+            } else {
+                const rawLeft = button.dataset.sessionsLeft;
+                sessionsLeft = rawLeft === undefined || rawLeft === '' ? null : Number(rawLeft || '0');
+            }
             if (workoutsValue !== undefined && workoutsValue !== null) {
                 button.dataset.workoutsCompleted = String(workoutsValue);
             }
@@ -1212,10 +1306,14 @@
             if (completedValue !== undefined && completedValue !== null) {
                 button.dataset.sessionsCompleted = String(completedValue);
             }
-        } else if (totalSessions === undefined) {
-            totalSessions = null;
+        } else {
+            if (totalSessions === undefined) {
+                totalSessions = null;
+            }
+            if (sessionsLeft === undefined) {
+                sessionsLeft = null;
+            }
         }
-
         const datasetWorkouts = button ? Number(button.dataset.workoutsCompleted || '0') : 0;
         const datasetBooked = button ? Number(button.dataset.sessionsBooked || '0') : 0;
         const datasetCompleted = button ? Number(button.dataset.sessionsCompleted || '0') : 0;
@@ -1230,8 +1328,12 @@
             : (state.selectedClient && state.selectedClient.id === clientId && typeof state.selectedClient.workoutsCompleted !== 'undefined'
                 ? state.selectedClient.workoutsCompleted
                 : datasetWorkouts);
+        if (sessionsLeft === undefined) {
+            const rawLeft = button ? button.dataset.sessionsLeft : null;
+            sessionsLeft = rawLeft === undefined || rawLeft === '' ? null : Number(rawLeft || '0');
+        }
 
-        updateClientRowCounts(clientId, totalSessions, bookedSessions, completedSessions, workoutsCompleted);
+        updateClientRowCounts(clientId, totalSessions, bookedSessions, completedSessions, workoutsCompleted, sessionsLeft);
 
         if (state.selectedClient && state.selectedClient.id === clientId) {
             if (bookedValue !== undefined && bookedValue !== null) {
@@ -1250,6 +1352,12 @@
                 state.selectedClient.sessions = totalSessions;
                 if (state.selectedClientButton) {
                     state.selectedClientButton.dataset.sessions = totalSessions === null ? '' : String(totalSessions);
+                }
+            }
+            if (leftValue !== undefined) {
+                state.selectedClient.sessionsLeft = sessionsLeft;
+                if (state.selectedClientButton) {
+                    state.selectedClientButton.dataset.sessionsLeft = sessionsLeft === null ? '' : String(sessionsLeft);
                 }
             }
             if (workoutsCompleted !== undefined && workoutsCompleted !== null) {
@@ -1272,7 +1380,8 @@
         const last = button.dataset.clientLastname || '';
         const fullName = `${name} ${last}`.trim();
         setSelectedClientDisplay(`Booking for ${fullName}`, false);
-        const sessionsTotal = button.dataset.sessions === '' ? null : Number(button.dataset.sessions || '0');
+        const sessionsTotal = parseSessionValue(button.dataset.sessions);
+        const sessionsLeft = parseSessionValue(button.dataset.sessionsLeft);
         const sessionsBooked = Number(button.dataset.sessionsBooked || '0');
         const sessionsCompleted = Number(button.dataset.sessionsCompleted || '0');
         const workoutsCompleted = Number(button.dataset.workoutsCompleted || '0');
@@ -1281,6 +1390,7 @@
             name,
             last,
             sessions: sessionsTotal,
+            sessionsLeft,
             sessionsBooked,
             sessionsCompleted,
             workoutsCompleted
@@ -1484,7 +1594,7 @@
                 } else {
                     eventWorkoutDetailsSection.hidden = false;
                     eventViewSessionBtn.hidden = false;
-                    eventViewSessionBtn.href = modalData.session_url;
+                    eventViewSessionBtn.href = buildSessionLink(modalData.session_url);
                     const label = modalData.session_category || 'Workout Details';
                     eventViewSessionBtn.innerHTML = `<i class="bi bi-activity me-1"></i>${label}`;
                 }
@@ -2107,7 +2217,8 @@ function applyWeekPicker(event) {
         const last = button.dataset.clientLastname || '';
         const fullName = `${name} ${last}`.trim();
         setSelectedClientDisplay(`Booking for ${fullName}`, false);
-        const sessionsTotal = button.dataset.sessions === '' ? null : Number(button.dataset.sessions);
+        const sessionsTotal = parseSessionValue(button.dataset.sessions);
+        const sessionsLeft = parseSessionValue(button.dataset.sessionsLeft);
         const sessionsBooked = Number(button.dataset.sessionsBooked || '0');
         const sessionsCompleted = Number(button.dataset.sessionsCompleted || '0');
         const workoutsCompleted = Number(button.dataset.workoutsCompleted || '0');
@@ -2116,13 +2227,13 @@ function applyWeekPicker(event) {
             name,
             last,
             sessions: sessionsTotal,
+            sessionsLeft,
             sessionsBooked,
             sessionsCompleted,
             workoutsCompleted
         };
         state.selectedClientButton = button;
-        const consumed = (state.selectedClient.sessionsBooked || 0) + (state.selectedClient.sessionsCompleted || 0);
-        if (state.selectedClient.sessions !== null && consumed >= state.selectedClient.sessions) {
+        if (!clientHasSessionsLeft(state.selectedClient)) {
             showDashboardToast(`${name} ${last} has no sessions remaining.`, 'danger');
             state.selectedClient = null;
             state.selectedClientButton = null;
@@ -2141,8 +2252,7 @@ function applyWeekPicker(event) {
             showDashboardToast('Select a client before booking a slot.', 'warning');
             return;
         }
-        const consumed = (state.selectedClient.sessionsBooked || 0) + (state.selectedClient.sessionsCompleted || 0);
-        if (state.selectedClient.sessions !== null && consumed >= state.selectedClient.sessions) {
+        if (!clientHasSessionsLeft(state.selectedClient)) {
             showDashboardToast('That client has no sessions remaining.', 'danger');
             state.selectedClient = null;
             state.selectedClientButton = null;
@@ -2394,15 +2504,20 @@ function applyWeekPicker(event) {
                         syncClientSessionCounts(resultClientId, {
                             sessions_booked: data.sessions_booked,
                             sessions_remaining: data.sessions_remaining,
+                            sessions_left: data.sessions_left,
                             sessions_completed: data.sessions_completed,
                             workouts_completed: data.workouts_completed
                         });
                     }
                 } else if (state.selectedClient) {
                     const updatedBooked = (state.selectedClient.sessionsBooked || 0) + 1;
+                    const updatedLeft = state.selectedClient.sessionsLeft === null || typeof state.selectedClient.sessionsLeft === 'undefined'
+                        ? state.selectedClient.sessionsLeft
+                        : Math.max((state.selectedClient.sessionsLeft || 0) - 1, 0);
                     syncClientSessionCounts(state.selectedClient.id, {
                         sessions_booked: updatedBooked,
                         sessions_remaining: state.selectedClient.sessions,
+                        sessions_left: updatedLeft,
                         sessions_completed: state.selectedClient.sessionsCompleted || 0,
                         workouts_completed: state.selectedClient.workoutsCompleted || 0
                     });
@@ -2457,9 +2572,22 @@ function applyWeekPicker(event) {
                 }
                 state.events = state.events.filter(ev => eventKey(ev) !== key);
                 renderEvents();
-                if (targetClientId && (wasBooked || wasCompleted)) {
+                const responseClientId = data.client_id || targetClientId;
+                const serverProvidedCounts = typeof data.sessions_booked !== 'undefined'
+                    || typeof data.sessions_remaining !== 'undefined'
+                    || typeof data.sessions_completed !== 'undefined';
+                if (responseClientId && serverProvidedCounts) {
+                    syncClientSessionCounts(responseClientId, {
+                        sessions_booked: data.sessions_booked,
+                        sessions_remaining: data.sessions_remaining,
+                        sessions_left: data.sessions_left,
+                        sessions_completed: data.sessions_completed,
+                        workouts_completed: data.workouts_completed
+                    });
+                } else if (targetClientId && (wasBooked || wasCompleted)) {
                     const payload = {};
                     let hasUpdate = false;
+                    const sessionDelta = (wasBooked ? 1 : 0) + (wasCompleted ? 1 : 0);
                     if (state.selectedClient && state.selectedClient.id === targetClientId) {
                         if (wasBooked) {
                             payload.sessions_booked = Math.max((state.selectedClient.sessionsBooked || 1) - 1, 0);
@@ -2472,6 +2600,9 @@ function applyWeekPicker(event) {
                             hasUpdate = true;
                         }
                         payload.sessions_remaining = state.selectedClient.sessions;
+                        if (sessionDelta && state.selectedClient.sessionsLeft !== null && typeof state.selectedClient.sessionsLeft !== 'undefined') {
+                            payload.sessions_left = Math.max((state.selectedClient.sessionsLeft || 0) + sessionDelta, 0);
+                        }
                     } else {
                         const buttonRef = document.querySelector(`.book-client-btn[data-client-id="${targetClientId}"]`);
                         if (buttonRef) {
@@ -2488,6 +2619,11 @@ function applyWeekPicker(event) {
                                 hasUpdate = true;
                             }
                             payload.sessions_remaining = buttonRef.dataset.sessions === '' ? null : Number(buttonRef.dataset.sessions || '0');
+                            const leftRaw = buttonRef.dataset.sessionsLeft;
+                            if (sessionDelta && leftRaw !== undefined && leftRaw !== '') {
+                                const currentLeft = Number(leftRaw || '0');
+                                payload.sessions_left = Math.max(currentLeft + sessionDelta, 0);
+                            }
                         }
                     }
                     if (hasUpdate) {
@@ -2583,6 +2719,7 @@ function applyWeekPicker(event) {
                     syncClientSessionCounts(state.modalEvent.client_id, {
                         sessions_booked: data.sessions_booked,
                         sessions_remaining: data.sessions_remaining,
+                        sessions_left: data.sessions_left,
                         sessions_completed: data.sessions_completed,
                         workouts_completed: data.workouts_completed
                     });
@@ -2757,6 +2894,7 @@ function applyWeekPicker(event) {
                     syncClientSessionCounts(clientId, {
                         sessions_booked: data.sessions_booked,
                         sessions_remaining: data.sessions_remaining,
+                        sessions_left: data.sessions_left,
                         sessions_completed: data.sessions_completed,
                         workouts_completed: data.workouts_completed
                     });
@@ -2767,9 +2905,13 @@ function applyWeekPicker(event) {
                     if (delta !== 0) {
                         if (state.selectedClient && state.selectedClient.id === clientId) {
                             const updated = Math.max((state.selectedClient.sessionsBooked || 0) + delta, 0);
+                            const updatedLeft = state.selectedClient.sessionsLeft === null || typeof state.selectedClient.sessionsLeft === 'undefined'
+                                ? state.selectedClient.sessionsLeft
+                                : Math.max((state.selectedClient.sessionsLeft || 0) - delta, 0);
                             syncClientSessionCounts(clientId, {
                                 sessions_booked: updated,
                                 sessions_remaining: state.selectedClient.sessions,
+                                sessions_left: updatedLeft,
                                 sessions_completed: state.selectedClient.sessionsCompleted || 0,
                                 workouts_completed: state.selectedClient.workoutsCompleted || 0
                             });
@@ -2779,9 +2921,14 @@ function applyWeekPicker(event) {
                                 const currentBooked = Math.max(Number(btn.dataset.sessionsBooked || '0') + delta, 0);
                                 const totalSessions = btn.dataset.sessions === '' ? null : Number(btn.dataset.sessions || '0');
                                 const completedSessions = Number(btn.dataset.sessionsCompleted || '0');
+                                const leftRaw = btn.dataset.sessionsLeft;
+                                const updatedLeft = leftRaw === undefined || leftRaw === ''
+                                    ? null
+                                    : Math.max(Number(leftRaw || '0') - delta, 0);
                                 syncClientSessionCounts(clientId, {
                                     sessions_booked: currentBooked,
                                     sessions_remaining: totalSessions,
+                                    sessions_left: updatedLeft,
                                     sessions_completed: completedSessions,
                                     workouts_completed: Number(btn.dataset.workoutsCompleted || '0')
                                 });
@@ -2972,6 +3119,7 @@ function applyWeekPicker(event) {
                     syncClientSessionCounts(data.client_id, {
                         sessions_booked: data.sessions_booked,
                         sessions_remaining: data.sessions_remaining,
+                        sessions_left: data.sessions_left,
                         sessions_completed: data.sessions_completed,
                         workouts_completed: data.workouts_completed
                     });

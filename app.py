@@ -53,8 +53,8 @@ from mail import (
     send_trainer_link_email,
     send_trainer_link_connected_email,
 )
-from urllib.parse import urlencode 
-from decimal import Decimal
+from urllib.parse import urlencode, urlparse 
+from decimal import Decimal, InvalidOperation
 from dns import resolver as dns_resolver, exception as dns_exception
 
 # Set up basic logging configuration
@@ -1636,6 +1636,9 @@ def trainer_dashboard():
     search_term = (request.args.get('search') or '').strip()
     total_clients = 0
 
+    sessions_completed_all_time = 0
+    package_map: dict[int, list[dict]] = {}
+    package_usage_counts: dict[int, dict[str, int]] = {}
     with get_connection() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
             cursor.execute(
@@ -1679,23 +1682,36 @@ def trainer_dashboard():
             cursor.execute("\n".join(base_query), params)
             clients = cursor.fetchall() or []
 
-    client_ids = [client['id'] for client in clients]
-    booked_counts, completed_counts = _compute_client_schedule_counts(user_id, client_ids, sync_booked=True)
-
-    for client in clients:
-        total_sessions = client.get('sessions_remaining')
-        booked_sessions = booked_counts.get(client['id'], 0)
-        client['sessions_booked'] = booked_sessions
-        completed_sessions = completed_counts.get(client['id'], 0)
-        client['sessions_completed_count'] = completed_sessions
-        client['sessions_total'] = total_sessions
-        if total_sessions is None:
-            client['sessions_left'] = None
-        else:
-            used = min(total_sessions, booked_sessions + completed_sessions)
-            client['sessions_left'] = max(total_sessions - used, 0)
-
-    with get_connection() as conn:
+        if clients:
+            client_ids_for_packages = [client['id'] for client in clients]
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(
+                    """
+                    SELECT id,
+                           client_id,
+                           trainer_id,
+                           label,
+                           sessions_purchased,
+                           price_paid,
+                           currency,
+                           note,
+                           purchased_at
+                      FROM client_session_packages
+                     WHERE trainer_id = %s
+                       AND client_id = ANY(%s)
+                     ORDER BY purchased_at ASC, id ASC
+                    """,
+                    (user_id, client_ids_for_packages),
+                )
+                for row in cursor.fetchall() or []:
+                    package_map.setdefault(row['client_id'], []).append(row)
+            if package_map:
+                with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                    package_usage_counts = _fetch_package_usage_counts(
+                        cursor,
+                        user_id,
+                        list(package_map.keys()),
+                    )
         with conn.cursor() as cursor:
             cursor.execute(
                 """
@@ -1706,11 +1722,44 @@ def trainer_dashboard():
                 """,
                 (user_id,),
             )
-            sessions_completed = cursor.fetchone()[0]
+            sessions_completed_all_time = cursor.fetchone()[0] or 0
+
+    client_ids = [client['id'] for client in clients]
+    booked_counts, completed_counts = _compute_client_schedule_counts(user_id, client_ids, sync_booked=True)
+
+    total_sessions_completed = 0
+    for client in clients:
+        booked_sessions = booked_counts.get(client['id'], 0)
+        client['sessions_booked'] = booked_sessions
+        completed_sessions = completed_counts.get(client['id'], 0)
+        client['sessions_completed_count'] = completed_sessions
+        total_sessions_completed += completed_sessions
+        packages = package_map.get(client['id']) or []
+        if packages:
+            usage_counts = package_usage_counts.get(client['id']) or {}
+            package_booked = usage_counts.get('booked', booked_sessions)
+            package_completed = usage_counts.get('completed', completed_sessions)
+            summary = _compute_session_package_summary(
+                packages,
+                int(package_booked or 0),
+                int(package_completed or 0),
+            )
+            client['sessions_total'] = summary['sessions_total']
+            client['sessions_left'] = summary['sessions_left']
+            client['using_session_packages'] = True
+        else:
+            total_sessions = client.get('sessions_remaining')
+            client['sessions_total'] = total_sessions
+            if total_sessions is None:
+                client['sessions_left'] = None
+            else:
+                used = min(total_sessions, booked_sessions + completed_sessions)
+                client['sessions_left'] = max(total_sessions - used, 0)
 
     trainer_stats = {
         'total_clients': total_clients,
-        'sessions_completed': sessions_completed,
+        'sessions_completed': total_sessions_completed,
+        'sessions_completed_all_time': sessions_completed_all_time,
     }
 
     trainer_info = {
@@ -1863,6 +1912,7 @@ def client_profile(client_id):
     exercise_search_results = []
 
     sessions_completed_count = 0
+    session_packages: list[dict] = []
     with get_connection() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
             cursor.execute(
@@ -1892,6 +1942,29 @@ def client_profile(client_id):
                 (client_id,),
             )
             active = cursor.fetchone()
+
+            package_trainer_id = trainer_id
+            if trainer.get('role') == 'admin' and client.get('trainer_id'):
+                package_trainer_id = client['trainer_id']
+            cursor.execute(
+                """
+                SELECT id,
+                       client_id,
+                       trainer_id,
+                       label,
+                       sessions_purchased,
+                       price_paid,
+                       currency,
+                       note,
+                       purchased_at
+                  FROM client_session_packages
+                 WHERE client_id = %s
+                   AND trainer_id = %s
+                 ORDER BY purchased_at ASC, id ASC
+                """,
+                (client_id, package_trainer_id),
+            )
+            session_packages = cursor.fetchall() or []
 
             if exercise_search_term:
                 cursor.execute(
@@ -1924,6 +1997,18 @@ def client_profile(client_id):
     client['sessions_booked'] = booked_counts.get(client_id, client.get('sessions_booked') or 0)
     sessions_completed_count = completed_counts.get(client_id, sessions_completed_count)
 
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            session_summary = _resolve_client_session_summary(
+                cursor,
+                trainer_id,
+                client_id,
+                client['sessions_booked'],
+                sessions_completed_count,
+                client.get('sessions_remaining'),
+                packages=session_packages,
+            )
+    session_packages = session_summary.get('packages', session_packages) if session_summary else session_packages
     injury_payload = parse_injury_payload(client.get('injury') if client else None)
     cardio_restriction_flag = bool(client.get('cardio_restriction') if client else False) or injury_payload['cardio']
     injury_regions = injury_payload['regions']
@@ -2016,6 +2101,8 @@ def client_profile(client_id):
         premium_generation_allowed=premium_generation_allowed,
         sessions_booked=client.get('sessions_booked') if client else 0,
         sessions_completed=sessions_completed_count,
+        session_summary=session_summary,
+        session_packages=session_summary.get('packages', []) if session_summary else [],
         NOTES_PLACEHOLDER=WORKOUT_NOTES_PLACEHOLDER,
     )
 
@@ -2257,6 +2344,29 @@ def _ensure_trainer_client_link(cursor, trainer_id: int, client_id: int, trainer
     return None
 
 
+def _resolve_back_link(default_url: str) -> str:
+    """Return a safe back URL that stays within this application."""
+    candidate = request.args.get('back') or request.args.get('return_to') or request.referrer
+    if not candidate:
+        return default_url
+    try:
+        parsed = urlparse(candidate)
+    except ValueError:
+        return default_url
+    host_netloc = urlparse(request.host_url).netloc
+    if parsed.netloc and parsed.netloc != host_netloc:
+        return default_url
+    path = parsed.path or ''
+    if not path:
+        return default_url
+    back_url = path
+    if parsed.query:
+        back_url = f"{back_url}?{parsed.query}"
+    if parsed.fragment:
+        back_url = f"{back_url}#{parsed.fragment}"
+    return back_url
+
+
 def _trainer_time_off_conflict(cursor, trainer_id: int, start_dt: datetime, end_dt: datetime, exclude_id: int | None = None) -> bool:
     params = [trainer_id, start_dt, end_dt]
     exclude_clause = ""
@@ -2371,6 +2481,206 @@ def _adjust_workouts_completed(cursor, client_id: int, delta: int) -> None:
         (delta, delta, delta, client_id),
     )
 
+
+def _fetch_session_packages_by_client(cursor, trainer_id: int, client_ids: list[int]) -> dict[int, list[dict]]:
+    """Return a mapping of client_id -> ordered session packages for that trainer."""
+    package_map: dict[int, list[dict]] = {}
+    if not client_ids:
+        return package_map
+    cursor.execute(
+        """
+        SELECT id,
+               client_id,
+               trainer_id,
+               label,
+               sessions_purchased,
+               price_paid,
+               currency,
+               note,
+               purchased_at
+          FROM client_session_packages
+         WHERE trainer_id = %s
+           AND client_id = ANY(%s)
+         ORDER BY purchased_at ASC, id ASC
+        """,
+        (trainer_id, client_ids),
+    )
+    for row in cursor.fetchall() or []:
+        cid = row['client_id']
+        package_map.setdefault(cid, []).append(row)
+    return package_map
+
+
+def _fetch_package_usage_counts(cursor, trainer_id: int, client_ids: list[int]) -> dict[int, dict[str, int]]:
+    """Return counts of booked/completed sessions since each client's first package."""
+    usage_map: dict[int, dict[str, int]] = {}
+    if not client_ids:
+        return usage_map
+    cursor.execute(
+        """
+        WITH package_bounds AS (
+            SELECT client_id, MIN(purchased_at) AS earliest_purchase
+              FROM client_session_packages
+             WHERE trainer_id = %s
+               AND client_id = ANY(%s)
+             GROUP BY client_id
+        )
+        SELECT pb.client_id,
+               COALESCE(SUM(CASE WHEN ts.status = 'booked' THEN 1 ELSE 0 END), 0)::int AS booked_count,
+               COALESCE(SUM(CASE WHEN ts.status = 'completed' THEN 1 ELSE 0 END), 0)::int AS completed_count
+          FROM package_bounds pb
+     LEFT JOIN trainer_schedule ts
+            ON ts.client_id = pb.client_id
+           AND ts.trainer_id = %s
+           AND (
+                ts.start_time >= pb.earliest_purchase
+                OR ts.created_at >= pb.earliest_purchase
+            )
+      GROUP BY pb.client_id
+        """,
+        (trainer_id, client_ids, trainer_id),
+    )
+    rows = cursor.fetchall() or []
+    for row in rows:
+        if isinstance(row, dict):
+            cid = row.get('client_id')
+            booked = row.get('booked_count') or 0
+            completed = row.get('completed_count') or 0
+        else:
+            cid = row[0] if len(row) > 0 else None
+            booked = row[1] if len(row) > 1 else 0
+            completed = row[2] if len(row) > 2 else 0
+        if cid is None:
+            continue
+        usage_map[int(cid)] = {
+            'booked': int(booked or 0),
+            'completed': int(completed or 0),
+        }
+    return usage_map
+
+
+def _compute_session_package_summary(
+    packages: list[dict],
+    sessions_booked: int,
+    sessions_completed: int,
+) -> dict:
+    """Given a package list and usage counts, derive totals/remaining sessions."""
+    usage_remaining = max(int(sessions_booked or 0) + int(sessions_completed or 0), 0)
+    annotated_packages: list[dict] = []
+    total_capacity = 0
+    sessions_left = 0
+
+    for package in packages:
+        purchased_raw = package.get('sessions_purchased')
+        try:
+            purchased = max(int(purchased_raw or 0), 0)
+        except (TypeError, ValueError):
+            purchased = 0
+        if purchased <= 0:
+            annotated = dict(package)
+            annotated.update({
+                'sessions_used': 0,
+                'sessions_left': 0,
+                'is_consumed': True,
+            })
+            annotated_packages.append(annotated)
+            continue
+
+        consumed = min(purchased, usage_remaining)
+        usage_remaining = max(usage_remaining - purchased, 0)
+        remaining = max(purchased - consumed, 0)
+
+        annotated = dict(package)
+        annotated['sessions_used'] = consumed
+        annotated['sessions_left'] = remaining
+        annotated['is_consumed'] = remaining <= 0
+        annotated_packages.append(annotated)
+
+        if remaining > 0:
+            total_capacity += purchased
+            sessions_left += remaining
+
+    return {
+        'packages': annotated_packages,
+        'sessions_total': total_capacity,
+        'sessions_left': sessions_left,
+        'using_packages': bool(annotated_packages),
+    }
+
+
+def _resolve_client_session_summary(
+    cursor,
+    trainer_id: int,
+    client_id: int,
+    sessions_booked: int | None,
+    sessions_completed: int | None,
+    fallback_total: int | None,
+    *,
+    packages: list[dict] | None = None,
+) -> dict:
+    """Return a normalized session summary for a single client."""
+    booked_val = sessions_booked
+    completed_val = sessions_completed
+    total_val = fallback_total
+
+    if booked_val is None or total_val is None:
+        cursor.execute(
+            "SELECT sessions_booked, sessions_remaining FROM users WHERE id = %s",
+            (client_id,),
+        )
+        row = cursor.fetchone() or {}
+        if booked_val is None:
+            booked_val = row.get('sessions_booked') or 0
+        if total_val is None:
+            total_val = row.get('sessions_remaining')
+
+    if completed_val is None:
+        cursor.execute(
+            """
+            SELECT COUNT(*)::int AS completed_count
+              FROM trainer_schedule
+             WHERE trainer_id = %s
+               AND client_id = %s
+               AND status = 'completed'
+            """,
+            (trainer_id, client_id),
+        )
+        row = cursor.fetchone()
+        if isinstance(row, dict):
+            completed_val = int(row.get('completed_count') or 0)
+        else:
+            completed_val = int(row[0] if row else 0)
+
+    package_list = packages
+    if package_list is None:
+        package_map = _fetch_session_packages_by_client(cursor, trainer_id, [client_id])
+        package_list = package_map.get(client_id, [])
+    if package_list:
+        package_trainer_id = trainer_id
+        for pkg in package_list:
+            pkg_trainer = pkg.get('trainer_id')
+            if pkg_trainer:
+                package_trainer_id = int(pkg_trainer)
+                break
+        usage_map = _fetch_package_usage_counts(cursor, package_trainer_id, [client_id])
+        usage_counts = usage_map.get(client_id)
+        package_booked = int(usage_counts.get('booked', 0)) if usage_counts else int(booked_val or 0)
+        package_completed = int(usage_counts.get('completed', 0)) if usage_counts else int(completed_val or 0)
+        summary = _compute_session_package_summary(package_list, package_booked, package_completed)
+        return summary
+
+    total_sessions = total_val if total_val is None else int(total_val)
+    if total_sessions is None:
+        sessions_left = None
+    else:
+        consumed = min(total_sessions, max(int(booked_val or 0) + int(completed_val or 0), 0))
+        sessions_left = max(total_sessions - consumed, 0)
+    return {
+        'sessions_total': total_sessions,
+        'sessions_left': sessions_left,
+        'using_packages': False,
+        'packages': [],
+    }
 def _compute_client_schedule_counts(trainer_id: int, client_ids: list[int], sync_booked: bool = False) -> tuple[dict[int, int], dict[int, int]]:
     booked_counts: dict[int, int] = {}
     completed_counts: dict[int, int] = {}
@@ -2624,7 +2934,16 @@ def trainer_schedule_book():
             completed_row = cursor.fetchone() or {}
             sessions_completed = int(completed_row.get('completed_count') or 0)
 
-            if sessions_remaining_val is not None and (sessions_booked + sessions_completed) >= sessions_remaining_val:
+            session_summary = _resolve_client_session_summary(
+                cursor,
+                trainer_id,
+                client_id,
+                sessions_booked,
+                sessions_completed,
+                sessions_remaining_val,
+            )
+            remaining_quota = session_summary.get('sessions_left')
+            if remaining_quota is not None and remaining_quota <= 0:
                 flash('That client has no sessions remaining.', 'danger')
                 return jsonify({'success': False, 'error': 'Client has no sessions remaining.', 'flash': True}), 400
 
@@ -2681,10 +3000,23 @@ def trainer_schedule_book():
                 if result:
                     sessions_completed_count = int(result[0] or 0)
 
+        session_summary_after = {}
+        with get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                session_summary_after = _resolve_client_session_summary(
+                    cursor,
+                    trainer_id,
+                    client_id,
+                    counts_row.get('sessions_booked') or 0,
+                    sessions_completed_count,
+                    counts_row.get('sessions_remaining'),
+                )
+
     payload = {
         'success': True,
         'event': _serialize_schedule_row(event_row) if event_row else None,
-        'sessions_remaining': counts_row.get('sessions_remaining') if counts_row else None,
+        'sessions_remaining': session_summary_after.get('sessions_total') if session_summary_after else counts_row.get('sessions_remaining'),
+        'sessions_left': session_summary_after.get('sessions_left') if session_summary_after else None,
         'sessions_booked': counts_row.get('sessions_booked') if counts_row else None,
         'sessions_completed': sessions_completed_count,
         'workouts_completed': counts_row.get('workouts_completed') if counts_row else None,
@@ -2760,6 +3092,9 @@ def trainer_schedule_modify(event_id):
         return jsonify({'success': False, 'error': 'Trainer access required'}), 403
 
     if request.method == 'DELETE':
+        client_id = None
+        summary_after_delete: dict | None = None
+        counts_after_delete: dict[str, int | None] = {}
         with get_connection() as conn:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
                 cursor.execute(
@@ -2776,7 +3111,39 @@ def trainer_schedule_modify(event_id):
                 if prior_status == 'completed':
                     _adjust_workouts_completed(cursor, client_id, -1)
                 conn.commit()
-        return jsonify({'success': True})
+        if client_id:
+            with get_connection() as conn:
+                with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                    cursor.execute(
+                        "SELECT sessions_remaining, sessions_booked, workouts_completed FROM users WHERE id = %s",
+                        (client_id,),
+                    )
+                    counts_after_delete = cursor.fetchone() or {}
+                with conn.cursor() as cursor:
+                    cursor.execute(
+                        "SELECT COUNT(*) FROM trainer_schedule WHERE trainer_id = %s AND client_id = %s AND status = 'completed'",
+                        (trainer_id, client_id),
+                    )
+                    completed_value = cursor.fetchone()[0]
+                    counts_after_delete['sessions_completed'] = completed_value
+                with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                    summary_after_delete = _resolve_client_session_summary(
+                        cursor,
+                        trainer_id,
+                        client_id,
+                        counts_after_delete.get('sessions_booked') or 0,
+                        counts_after_delete.get('sessions_completed', 0) or 0,
+                        counts_after_delete.get('sessions_remaining'),
+                    )
+        return jsonify({
+            'success': True,
+            'client_id': client_id,
+            'sessions_booked': counts_after_delete.get('sessions_booked') if counts_after_delete else None,
+            'sessions_completed': counts_after_delete.get('sessions_completed') if counts_after_delete else None,
+            'workouts_completed': counts_after_delete.get('workouts_completed') if counts_after_delete else None,
+            'sessions_remaining': (summary_after_delete.get('sessions_total') if summary_after_delete else counts_after_delete.get('sessions_remaining') if counts_after_delete else None),
+            'sessions_left': summary_after_delete.get('sessions_left') if summary_after_delete else None,
+        })
 
     payload = request.get_json(silent=True) or {}
     start_raw = payload.get('start_time')
@@ -2848,8 +3215,17 @@ def trainer_schedule_modify(event_id):
                 completed_row = cursor.fetchone() or {}
                 completed_now = int(completed_row.get('completed_count') or 0)
                 counts_snapshot['sessions_completed'] = completed_now
-                remaining_val = None if remaining is None else int(remaining)
-                if remaining_val is not None and remaining_val <= (booked_now + completed_now):
+                summary_snapshot = _resolve_client_session_summary(
+                    cursor,
+                    trainer_id,
+                    client_id,
+                    booked_now,
+                    completed_now,
+                    remaining,
+                )
+                counts_snapshot['sessions_summary'] = summary_snapshot
+                remaining_quota = summary_snapshot.get('sessions_left')
+                if remaining_quota is not None and remaining_quota <= 0:
                     return jsonify({'success': False, 'error': 'Client has no sessions remaining to mark as booked.'}), 400
 
         if start_dt and end_dt:
@@ -2946,6 +3322,7 @@ def trainer_schedule_modify(event_id):
         )
 
     counts_response = {}
+    session_summary_response = {}
     with get_connection() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
             cursor.execute(
@@ -2966,6 +3343,15 @@ def trainer_schedule_modify(event_id):
             )
             row_wc = cursor.fetchone()
             counts_response['workouts_completed'] = row_wc[0] if row_wc else None
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            session_summary_response = _resolve_client_session_summary(
+                cursor,
+                trainer_id,
+                client_id,
+                counts_response.get('sessions_booked') or 0,
+                counts_response.get('sessions_completed', 0) or 0,
+                counts_response.get('sessions_remaining'),
+            )
 
     event_payload = _serialize_schedule_row(refreshed) if refreshed else None
     if event_payload and event_payload.get('session_id'):
@@ -2974,7 +3360,8 @@ def trainer_schedule_modify(event_id):
     payload = {
         'success': True,
         'event': event_payload,
-        'sessions_remaining': counts_response.get('sessions_remaining'),
+        'sessions_remaining': session_summary_response.get('sessions_total') if session_summary_response else counts_response.get('sessions_remaining'),
+        'sessions_left': session_summary_response.get('sessions_left') if session_summary_response else None,
         'sessions_booked': counts_response.get('sessions_booked'),
         'sessions_completed': counts_response.get('sessions_completed', 0),
         'workouts_completed': counts_response.get('workouts_completed'),
@@ -3110,6 +3497,16 @@ def trainer_schedule_delete_weekday(event_id):
             )
             completed_count = cursor.fetchone()[0]
 
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            summary_row = _resolve_client_session_summary(
+                cursor,
+                trainer_id,
+                client_id,
+                counts_row.get('sessions_booked') or 0,
+                completed_count or 0,
+                counts_row.get('sessions_remaining'),
+            )
+
         conn.commit()
 
     response_payload = {
@@ -3120,7 +3517,8 @@ def trainer_schedule_delete_weekday(event_id):
         'time_range_label': time_range_label,
         'client_id': client_id,
         'sessions_booked': counts_row.get('sessions_booked'),
-        'sessions_remaining': counts_row.get('sessions_remaining'),
+        'sessions_remaining': summary_row.get('sessions_total') if summary_row else counts_row.get('sessions_remaining'),
+        'sessions_left': summary_row.get('sessions_left') if summary_row else None,
         'sessions_completed': completed_count,
         'workouts_completed': counts_row.get('workouts_completed'),
     }
@@ -3854,12 +4252,19 @@ def trainer_client_agenda(client_id):
                         }[bulk_action]
 
                         delta = 0
+                        workout_delta = 0
                         current_statuses = [(ev['id'], (ev.get('status') or 'booked').lower()) for ev in events]
                         for _, status in current_statuses:
+                            if status == desired_status:
+                                continue
                             if status == 'booked' and desired_status != 'booked':
                                 delta -= 1
                             elif status != 'booked' and desired_status == 'booked':
                                 delta += 1
+                            if status != 'completed' and desired_status == 'completed':
+                                workout_delta += 1
+                            elif status == 'completed' and desired_status != 'completed':
+                                workout_delta -= 1
 
                         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
                             cursor.execute(
@@ -3868,9 +4273,17 @@ def trainer_client_agenda(client_id):
                             )
                             counts = cursor.fetchone() or {}
 
-                        sessions_remaining = counts.get('sessions_remaining')
-                        sessions_booked = counts.get('sessions_booked') or 0
-                        if delta > 0 and sessions_remaining is not None and sessions_booked + delta > sessions_remaining:
+                        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                            session_summary = _resolve_client_session_summary(
+                                cursor,
+                                trainer_id,
+                                client_id,
+                                counts.get('sessions_booked') or 0,
+                                None,
+                                counts.get('sessions_remaining'),
+                            )
+                        sessions_left = session_summary.get('sessions_left')
+                        if delta > 0 and sessions_left is not None and delta > sessions_left:
                             flash("Not enough sessions remaining to mark those bookings as scheduled.", "danger")
                         else:
                             with conn.cursor() as cursor:
@@ -3886,6 +4299,8 @@ def trainer_client_agenda(client_id):
                                 )
                                 if delta:
                                     _adjust_sessions_booked(cursor, client_id, delta)
+                                if workout_delta:
+                                    _adjust_workouts_completed(cursor, client_id, workout_delta)
                                 conn.commit()
                             flash(f"Updated {len(events)} session(s) to {desired_status}.", "success")
                             action_performed = True
@@ -3921,6 +4336,9 @@ def trainer_client_agenda(client_id):
         except Exception:
             return fmt_utc(dt)
 
+    back_target = request.full_path or url_for('trainer_self_agenda_view')
+    if back_target.endswith('?'):
+        back_target = back_target[:-1]
     agenda_events = []
     for row in sessions:
         start_dt = row.get('start_time')
@@ -4423,6 +4841,7 @@ def trainer_agenda():
                         flash("No sessions matched your selection.", "warning")
                     else:
                         client_deltas: dict[int, int] = {}
+                        client_workout_deltas: dict[int, int] = {}
                         client_ids: set[int] = set()
                         if bulk_action == 'delete':
                             booked_count_map: dict[int, int] = {}
@@ -4467,6 +4886,10 @@ def trainer_agenda():
                                     client_deltas[cid] = client_deltas.get(cid, 0) - 1
                                 elif current_status != 'booked' and desired_status == 'booked':
                                     client_deltas[cid] = client_deltas.get(cid, 0) + 1
+                                if current_status != 'completed' and desired_status == 'completed':
+                                    client_workout_deltas[cid] = client_workout_deltas.get(cid, 0) + 1
+                                elif current_status == 'completed' and desired_status != 'completed':
+                                    client_workout_deltas[cid] = client_workout_deltas.get(cid, 0) - 1
 
                             positive_client_ids = [cid for cid, delta in client_deltas.items() if delta > 0]
                             if positive_client_ids:
@@ -4502,6 +4925,9 @@ def trainer_agenda():
                                     for cid, delta in client_deltas.items():
                                         if delta:
                                             _adjust_sessions_booked(cursor, cid, delta)
+                                    for cid, w_delta in client_workout_deltas.items():
+                                        if w_delta:
+                                            _adjust_workouts_completed(cursor, cid, w_delta)
                                     conn.commit()
                                     flash(f"Updated {len(events)} session(s) to {desired_status}.", "success")
                                     action_performed = True
@@ -4515,6 +4941,12 @@ def trainer_agenda():
                                     """,
                                     (desired_status, trainer_id, selected_ids),
                                 )
+                                for cid, delta in client_deltas.items():
+                                    if delta:
+                                        _adjust_sessions_booked(cursor, cid, delta)
+                                for cid, w_delta in client_workout_deltas.items():
+                                    if w_delta:
+                                        _adjust_workouts_completed(cursor, cid, w_delta)
                                 conn.commit()
                                 flash(f"Updated {len(events)} session(s) to {desired_status}.", "success")
                                 action_performed = True
@@ -4705,13 +5137,20 @@ def trainer_schedule_repeat(event_id):
             completed_row = cursor.fetchone()
             sessions_completed = int(completed_row[0] or 0) if completed_row else 0
 
-        quota = None
-        if sessions_remaining is not None:
-            sessions_remaining_val = int(sessions_remaining)
-            consumed = sessions_booked + sessions_completed
-            quota = max(sessions_remaining_val - consumed, 0)
-            if quota == 0:
-                return jsonify({'success': False, 'error': 'This client has no sessions remaining to repeat.'}), 400
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            session_summary = _resolve_client_session_summary(
+                cursor,
+                trainer_id,
+                client_id,
+                sessions_booked,
+                sessions_completed,
+                sessions_remaining,
+            )
+
+        remaining_quota = session_summary.get('sessions_left')
+        if remaining_quota is not None and remaining_quota <= 0:
+            return jsonify({'success': False, 'error': 'This client has no sessions remaining to repeat.'}), 400
+        quota = remaining_quota
 
         base_start: datetime = base_event['start_time']
         base_end: datetime = base_event['end_time']
@@ -4790,12 +5229,23 @@ def trainer_schedule_repeat(event_id):
     if quota is not None:
         remaining_quota = max(quota - len(created_ids), 0)
 
-    with conn.cursor() as cursor:
-        cursor.execute(
-            "SELECT COUNT(*) FROM trainer_schedule WHERE trainer_id = %s AND client_id = %s AND status = 'completed'",
-            (trainer_id, client_id),
-        )
-        sessions_completed_count = cursor.fetchone()[0]
+    with get_connection() as conn_fetch:
+        with conn_fetch.cursor() as cursor:
+            cursor.execute(
+                "SELECT COUNT(*) FROM trainer_schedule WHERE trainer_id = %s AND client_id = %s AND status = 'completed'",
+                (trainer_id, client_id),
+            )
+            sessions_completed_count = cursor.fetchone()[0]
+
+        with conn_fetch.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            summary_after_repeat = _resolve_client_session_summary(
+                cursor,
+                trainer_id,
+                client_id,
+                counts.get('sessions_booked') if isinstance(counts, dict) else None,
+                sessions_completed_count,
+                counts.get('sessions_remaining') if isinstance(counts, dict) else None,
+            )
 
     response_payload = {
         'success': True,
@@ -4804,7 +5254,8 @@ def trainer_schedule_repeat(event_id):
         'conflicts': skipped_conflicts,
         'remaining_quota': remaining_quota,
         'sessions_booked': counts.get('sessions_booked'),
-        'sessions_remaining': counts.get('sessions_remaining'),
+        'sessions_remaining': summary_after_repeat.get('sessions_total') if summary_after_repeat else counts.get('sessions_remaining'),
+        'sessions_left': summary_after_repeat.get('sessions_left') if summary_after_repeat else None,
         'sessions_completed': sessions_completed_count,
         'workouts_completed': counts.get('workouts_completed'),
     }
@@ -5149,6 +5600,9 @@ def trainer_self_agenda_view():
         except Exception:
             return fmt_utc(dt)
 
+    back_target = request.full_path or url_for('trainer_self_agenda_view')
+    if back_target.endswith('?'):
+        back_target = back_target[:-1]
     agenda_events = []
     for row in sessions:
         start_dt = row.get('start_time')
@@ -5158,6 +5612,18 @@ def trainer_self_agenda_view():
         date_display = start_dt.astimezone().strftime('%A, %B %d, %Y') if start_dt else '—'
         start_time_display = _format_local_time(start_dt)
         end_time_display = _format_local_time(end_dt)
+        session_url = None
+        session_id_val = row.get('session_id')
+        if session_id_val:
+            url_params = {'session_id': session_id_val}
+            if timezone_name:
+                url_params['timezone'] = timezone_name
+            if tz_offset_minutes is not None:
+                url_params['tz_offset'] = tz_offset_minutes
+            if back_target:
+                url_params['back'] = back_target
+            session_url = url_for('workout_session_view', **url_params)
+
         agenda_events.append({
             'id': row.get('id'),
             'status': (row.get('status') or 'booked').capitalize(),
@@ -5167,7 +5633,7 @@ def trainer_self_agenda_view():
             'start_display': start_time_display,
             'end_display': end_time_display,
             'session_category': row.get('session_category'),
-            'session_url': url_for('workout_session_view', session_id=row.get('session_id')) if row.get('session_id') else None,
+            'session_url': session_url,
         })
 
     if total_filtered:
@@ -5619,6 +6085,79 @@ def trainer_update_sessions_remaining(client_id):
 
     flash("Sessions remaining updated.", "success")
     return redirect(url_for('client_profile', client_id=client_id))
+
+
+@app.route('/trainer/clients/<int:client_id>/session_packages', methods=['POST'])
+@login_required
+def trainer_add_session_package(client_id):
+    trainer_id = session['user_id']
+    trainer = _require_trainer(trainer_id)
+    if not trainer:
+        flash("Trainer access required.", "danger")
+        return redirect(url_for('home'))
+
+    sessions_raw = (request.form.get('sessions_purchased') or '').strip()
+    label = (request.form.get('label') or '').strip() or None
+    price_raw = (request.form.get('price_paid') or '').strip()
+    currency_raw = (request.form.get('currency') or 'USD').strip().upper()
+    currency = (currency_raw or 'USD')[:3] or 'USD'
+    note = (request.form.get('note') or '').strip() or None
+
+    if not sessions_raw:
+        flash("Enter how many sessions were purchased.", "danger")
+        return redirect(url_for('client_profile', client_id=client_id))
+    try:
+        sessions_count = int(sessions_raw)
+    except ValueError:
+        flash("Sessions purchased must be a whole number.", "danger")
+        return redirect(url_for('client_profile', client_id=client_id))
+    if sessions_count <= 0:
+        flash("Sessions purchased must be greater than zero.", "danger")
+        return redirect(url_for('client_profile', client_id=client_id))
+
+    price_value = None
+    if price_raw:
+        try:
+            price_value = Decimal(price_raw)
+        except (InvalidOperation, ValueError):
+            flash("Enter a valid price paid for the package.", "danger")
+            return redirect(url_for('client_profile', client_id=client_id))
+        if price_value < 0:
+            flash("Price paid cannot be negative.", "danger")
+            return redirect(url_for('client_profile', client_id=client_id))
+
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            cursor.execute(
+                "SELECT trainer_id FROM users WHERE id = %s",
+                (client_id,),
+            )
+            client = cursor.fetchone()
+
+        if not client:
+            flash("Client not found.", "danger")
+            return redirect(url_for('trainer_dashboard'))
+
+        if client.get('trainer_id') != trainer_id and trainer.get('role') != 'admin':
+            flash("You do not have access to that client.", "danger")
+            return redirect(url_for('trainer_dashboard'))
+
+        package_trainer_id = trainer_id
+        if trainer.get('role') == 'admin' and client.get('trainer_id'):
+            package_trainer_id = client['trainer_id']
+
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO client_session_packages (client_id, trainer_id, label, sessions_purchased, price_paid, currency, note)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """,
+                (client_id, package_trainer_id, label, sessions_count, price_value, currency or 'USD', note),
+            )
+            conn.commit()
+
+    flash("Session package added to purchase history.", "success")
+    return redirect(url_for('client_profile', client_id=client_id, focus='sessions'))
 
 
 @app.route('/trainer/clients/<int:client_id>/workout_duration', methods=['POST'])
@@ -6347,12 +6886,12 @@ def _apply_notes_update(user_id: int, workout_id: int, notes: str | None):
 def _complete_workout_for_user(user_id: int) -> tuple[bool, str | None, dict | None]:
     active = get_active_workout(user_id)
     if not active:
-        return False, 'No workout generated'
+        return False, 'No workout generated', None
 
     workout_data = active.get('workout_data') or {}
     stored_plan = workout_data.get('plan') if isinstance(workout_data, dict) else None
     if not stored_plan:
-        return False, 'No workout data available'
+        return False, 'No workout data available', None
 
     workout_category = active.get('category')
     workout_payload_meta = {}
@@ -7325,6 +7864,19 @@ def trainer_client_workout_details(client_id, category):
         return redirect(url_for('trainer_dashboard'))
 
     workouts, display_category, workout_meta = _load_last_workout_payload(client_id, category)
+    tz_info, _, _ = _resolve_request_timezone('workout_session')
+    tz_info = tz_info or timezone.utc
+
+    def _localize_completion(dt: datetime | None) -> datetime | None:
+        if dt is None:
+            return None
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        try:
+            return dt.astimezone(tz_info)
+        except Exception:
+            return dt
+
     completion_label = None
     completion_dt = None
     if isinstance(workout_meta, dict):
@@ -7332,10 +7884,15 @@ def trainer_client_workout_details(client_id, category):
         if completed_raw:
             try:
                 completion_dt = datetime.fromisoformat(completed_raw)
-                completion_label = completion_dt.astimezone().strftime("%B %d, %Y at %I:%M %p")
+                localized_dt = _localize_completion(completion_dt)
+                if localized_dt:
+                    completion_dt = localized_dt
+                    completion_label = localized_dt.strftime("%B %d, %Y at %I:%M %p")
             except ValueError:
                 completion_dt = None
                 completion_label = None
+    fallback_back_url = url_for('client_profile', client_id=client_id)
+    back_url = _resolve_back_link(fallback_back_url)
     return render_template(
         'workout_details.html',
         category=category,
@@ -7344,7 +7901,7 @@ def trainer_client_workout_details(client_id, category):
         workout_meta=workout_meta or {},
         completion_label=completion_label,
         completion_dt=completion_dt,
-        back_url=url_for('client_profile', client_id=client_id),
+        back_url=back_url,
     )
 
 
@@ -7353,6 +7910,8 @@ def trainer_client_workout_details(client_id, category):
 def workout_session_view(session_id):
     user_id = session['user_id']
     role = (session.get('role') or 'user').strip().lower()
+    tz_info, _, _ = _resolve_request_timezone('workout_session')
+    tz_info = tz_info or timezone.utc
     try:
         session_uuid = uuid.UUID(str(session_id))
     except (ValueError, TypeError):
@@ -7387,11 +7946,13 @@ def workout_session_view(session_id):
         if role != 'admin' and trainer_owner_id != user_id:
             flash("You do not have access to that workout session.", "danger")
             return redirect(url_for('trainer_dashboard'))
-        back_url = url_for('trainer_self_schedule_view')
+        fallback_back_url = url_for('trainer_self_schedule_view')
     else:
         if client_id != user_id:
             abort(403)
-        back_url = url_for('client_schedule_view')
+        fallback_back_url = url_for('client_schedule_view')
+
+    back_url = _resolve_back_link(fallback_back_url)
 
     raw_payload = row.get('session_payload')
     if raw_payload is None:
@@ -7429,7 +7990,14 @@ def workout_session_view(session_id):
     completed_at = row.get('session_completed_at')
     completion_label = None
     if isinstance(completed_at, datetime):
-        completion_label = completed_at.astimezone().strftime("%B %d, %Y at %I:%M %p")
+        localized_completed = completed_at
+        if localized_completed.tzinfo is None:
+            localized_completed = localized_completed.replace(tzinfo=timezone.utc)
+        try:
+            localized_completed = localized_completed.astimezone(tz_info)
+        except Exception:
+            pass
+        completion_label = localized_completed.strftime("%B %d, %Y at %I:%M %p")
 
     return render_template(
         'workout_details.html',
