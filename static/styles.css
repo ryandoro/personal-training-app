@@ -1074,6 +1074,11 @@ iframe.fullscreen-sim {
   max-width: 720px;
 }
 
+.experience-container--edge-to-edge {
+  max-width: none;
+  width: 100%;
+}
+
 @media (max-width: 768px) {
   .experience-container--wide {
     padding-inline: 0.75rem;
@@ -3518,6 +3523,32 @@ iframe.fullscreen-sim {
   position: relative;
 }
 
+@media (max-width: 576px) {
+  .calendar-wrapper[data-mode="trainer-self"] .calendar-event-content {
+    height: auto;
+    min-height: 2.8rem;
+    padding-top: 0rem;
+    justify-content: flex-start;
+    gap: 0.25rem;
+  }
+
+  .trainer-self-calendar .calendar-event-title {
+    margin-top: 0.15rem;
+  }
+
+  .calendar-wrapper[data-mode="client"] .calendar-event-content {
+    height: auto;
+    min-height: 2.8rem;
+    padding-top: 0rem;
+    justify-content: flex-start;
+    gap: 0.25rem;
+  }
+
+  .calendar-wrapper[data-mode="client"] .calendar-event-title {
+    margin-top: 0.15rem;
+  }
+}
+
 .calendar-event-content:hover {
   background: linear-gradient(135deg, rgba(30, 164, 230, 0.95), rgba(51, 195, 240, 0.87));
 }
@@ -4099,6 +4130,38 @@ iframe.fullscreen-sim {
   }
   .calendar-wrapper.calendar-mode-full .calendar-event-dragzone::before {
     font-size: 0.85rem;
+  }
+}
+
+.trainer-self-calendar.calendar-mode-full .calendar-event-content {
+  height: auto;
+  min-height: 2.4rem;
+}
+
+.calendar-wrapper.calendar-mode-full[data-mode="client"] .calendar-event-content {
+  height: auto;
+  min-height: 2.4rem;
+}
+
+@media (max-width: 768px) {
+  .trainer-self-calendar.calendar-mode-full .calendar-event-content {
+    min-height: 2.6rem;
+  }
+
+  .calendar-wrapper.calendar-mode-full[data-mode="client"] .calendar-event-content {
+    min-height: 2.6rem;
+  }
+}
+
+@media (max-width: 576px) {
+  .trainer-self-calendar.calendar-mode-full .calendar-event-content {
+    padding-top: 0rem;
+    justify-content: flex-start;
+  }
+
+  .calendar-wrapper.calendar-mode-full[data-mode="client"] .calendar-event-content {
+    padding-top: 0rem;
+    justify-content: flex-start;
   }
 }
 
@@ -5328,8 +5391,21 @@ iframe.fullscreen-sim {
   }
 }
 
-.agenda-experience {
+.full-width-agenda-page {
+  width: 100%;
+  max-width: 1380px;
+  margin-inline: auto;
+  padding-inline: clamp(1rem, 3.5vw, 3rem);
+}
+
+.agenda-experience,
+.settings-experience {
   padding-inline: clamp(1.25rem, 4vw, 2.75rem);
+}
+
+.agenda-experience--full-bleed,
+.settings-experience--full-bleed {
+  padding-inline: clamp(0.5rem, 1.5vw, 1.25rem);
 }
 
 .agenda-surface-card .surface-body {
@@ -5633,6 +5709,14 @@ iframe.fullscreen-sim {
 }
 
 @media (max-width: 768px) {
+  .full-width-agenda-page {
+    margin-left: calc(var(--bs-gutter-x, 0.75rem) * -1);
+    margin-right: calc(var(--bs-gutter-x, 0.75rem) * -1);
+    width: calc(100% + (var(--bs-gutter-x, 0.75rem) * 2));
+    padding-inline: clamp(0.4rem, 4vw, 0.85rem);
+    max-width: none;
+  }
+
   .agenda-status__text {
     display: none;
   }
@@ -5641,8 +5725,14 @@ iframe.fullscreen-sim {
     display: inline-flex;
   }
 
-  .agenda-experience {
+  .agenda-experience,
+  .settings-experience {
     padding-inline: clamp(0.75rem, 4vw, 1.5rem);
+  }
+
+  .agenda-experience--full-bleed,
+  .settings-experience--full-bleed {
+    padding-inline: clamp(0.5rem, 4vw, 1.1rem);
   }
 
   .agenda-surface-card .surface-body {
@@ -5713,6 +5803,13 @@ iframe.fullscreen-sim {
 }
 
 @media (max-width: 576px) {
+  .full-width-agenda-page {
+    margin-left: calc(var(--bs-gutter-x, 0.75rem) * -1);
+    margin-right: calc(var(--bs-gutter-x, 0.75rem) * -1);
+    padding-inline: clamp(0.3rem, 5vw, 0.7rem);
+    max-width: none;
+  }
+
   .agenda-date-range__actions {
     flex-direction: row;
     justify-content: center;
@@ -5740,8 +5837,14 @@ iframe.fullscreen-sim {
 }
 
 @media (max-width: 576px) {
-  .agenda-experience {
+  .agenda-experience,
+  .settings-experience {
     padding-inline: clamp(0.4rem, 6vw, 0.9rem);
+  }
+
+  .agenda-experience--full-bleed,
+  .settings-experience--full-bleed {
+    padding-inline: clamp(0.4rem, 5vw, 0.85rem);
   }
 
   .agenda-surface-card .surface-body {
@@ -6159,6 +6262,11 @@ iframe.fullscreen-sim {
   width: 100%;
   max-width: 1200px;
   margin: 0 auto;
+}
+
+.trainer-calendar-container--full {
+  max-width: none;
+  width: 100%;
 }
 
 #calendar-card .calendar-wrapper {

@@ -5599,14 +5599,22 @@ def trainer_self_agenda_view():
         args['page'] = total_pages
         return redirect(url_for('trainer_self_agenda_view', **args))
 
-    def _format_local_time(dt):
+    def _localize(dt: datetime | None) -> datetime | None:
         if not dt:
-            return '—'
+            return None
+        localized = dt
+        if localized.tzinfo is None:
+            localized = localized.replace(tzinfo=timezone.utc)
         try:
-            localized = dt.astimezone()
-            return localized.strftime('%I:%M %p').lstrip('0')
+            return localized.astimezone(tz_info)
         except Exception:
-            return fmt_utc(dt)
+            return localized
+
+    def _format_local_time(dt):
+        localized = _localize(dt)
+        if not localized:
+            return '—'
+        return localized.strftime('%I:%M %p').lstrip('0')
 
     back_target = request.full_path or url_for('trainer_self_agenda_view')
     if back_target.endswith('?'):
@@ -5617,7 +5625,8 @@ def trainer_self_agenda_view():
         end_dt = row.get('end_time')
         start_iso = start_dt.isoformat() if start_dt else None
         end_iso = end_dt.isoformat() if end_dt else None
-        date_display = start_dt.astimezone().strftime('%A, %B %d, %Y') if start_dt else '—'
+        localized_start = _localize(start_dt)
+        date_display = localized_start.strftime('%A, %B %d, %Y') if localized_start else '—'
         start_time_display = _format_local_time(start_dt)
         end_time_display = _format_local_time(end_dt)
         session_url = None

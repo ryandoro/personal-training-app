@@ -5,14 +5,15 @@
 {% endblock %}
 
 {% block content %}
-<div class="trainer-calendar-container experience-container experience-container--wide agenda-experience">
+<div class="full-width-agenda-page">
+<div class="trainer-calendar-container trainer-calendar-container--full experience-container experience-container--wide experience-container--edge-to-edge agenda-experience agenda-experience--full-bleed">
     <div id="trainer-self-calendar-card" class="surface-card trainer-schedule-card trainer-schedule-card--wide schedule-card mx-auto agenda-surface-card">
         <div class="surface-hero surface-hero--dashboard text-white text-center">
             <div class="surface-hero__content w-100">
                 <h4 class="surface-hero__title mb-1">Workout Log</h4>
                 <p class="surface-hero__subtitle mb-3">Browse every workout you've logged through FitBase.</p>
                 <div class="d-inline-flex gap-2 mt-2">
-                    <a href="{{ url_for('trainer_self_agenda_view') }}" class="btn btn-sm btn-outline-light">
+                    <a href="{{ url_for('trainer_self_agenda_view') }}" class="btn btn-sm btn-outline-light" id="trainerAgendaLink">
                         <i class="bi bi-list-ul me-1"></i>Agenda View
                     </a>
                 </div>
@@ -168,6 +169,7 @@
     const calendarRoot = document.getElementById('client-calendar');
     if (!calendarRoot) return;
 
+    const agendaLink = document.getElementById('trainerAgendaLink');
     const dayHeaderEl = document.getElementById('client-days-header');
     const timesEl = document.getElementById('client-times');
     const columnsEl = document.getElementById('client-day-columns');
@@ -212,6 +214,28 @@
     const MILLI_IN_MINUTE = 60000;
     const VIEW_MODE_STORAGE_KEY = 'trainer-self-calendar-view-mode';
     const WINDOW_PREF_KEY = 'trainer-self-calendar-window';
+
+    function ensureAgendaLinkTimezone() {
+        if (!agendaLink) return;
+        const baseHref = agendaLink.getAttribute('href');
+        if (!baseHref) return;
+        try {
+            const agendaUrl = new URL(baseHref, window.location.origin);
+            const tzName = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+            if (tzName) {
+                agendaUrl.searchParams.set('timezone', tzName);
+            }
+            const tzOffset = new Date().getTimezoneOffset();
+            if (Number.isFinite(tzOffset)) {
+                agendaUrl.searchParams.set('tz_offset', tzOffset);
+            }
+            agendaLink.setAttribute('href', agendaUrl.pathname + agendaUrl.search + agendaUrl.hash);
+        } catch (err) {
+            // ignore failures and keep existing href
+        }
+    }
+
+    ensureAgendaLinkTimezone();
 
     function buildSessionLink(baseUrl) {
         if (!baseUrl) return '';
@@ -811,4 +835,5 @@
     init();
 })();
 </script>
+</div>
 {% endblock %}

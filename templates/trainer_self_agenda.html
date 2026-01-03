@@ -5,7 +5,33 @@
 {% endblock %}
 
 {% block content %}
-<div class="experience-container experience-container--wide agenda-experience">
+<script>
+(function enforceAgendaTimezone() {
+    const params = new URLSearchParams(window.location.search);
+    const hasTzName = params.has('timezone');
+    const hasTzOffset = params.has('tz_offset');
+    const tzName = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+    const tzOffset = new Date().getTimezoneOffset();
+    let mutated = false;
+    if (!hasTzName && tzName) {
+        params.set('timezone', tzName);
+        mutated = true;
+    }
+    if (!hasTzOffset && Number.isFinite(tzOffset)) {
+        params.set('tz_offset', tzOffset);
+        mutated = true;
+    }
+    if (mutated) {
+        const basePath = window.location.pathname;
+        const query = params.toString();
+        const hash = window.location.hash || '';
+        const target = query ? `${basePath}?${query}${hash}` : `${basePath}${hash}`;
+        window.location.replace(target);
+    }
+})();
+</script>
+<div class="full-width-agenda-page">
+<div class="experience-container experience-container--wide experience-container--edge-to-edge agenda-experience agenda-experience--full-bleed">
     <div class="surface-card surface-card--glass agenda-surface-card">
         <div class="surface-hero surface-hero--dashboard text-center">
             <div class="surface-hero__content w-100">
@@ -32,6 +58,7 @@
                                 {% for filter in quick_filters %}
                                     <a class="btn btn-outline-primary btn-sm {% if selected_view == filter.key %}active{% endif %}"
                                        href="{{ url_for('trainer_self_agenda_view', view=filter.key, per_page=per_page, page=1) }}#trainerSelfAgendaTable"
+                                       data-append-tz="true"
                                        {% if selected_view == filter.key %}aria-current="true"{% endif %}>
                                         {{ filter.label }}
                                     </a>
@@ -42,10 +69,17 @@
                     <div class="agenda-filters-grid__date">
                         <form method="get"
                               action="{{ url_for('trainer_self_agenda_view') }}#trainerSelfAgendaTable"
-                              class="agenda-range-form d-flex flex-column gap-3">
+                              class="agenda-range-form d-flex flex-column gap-3"
+                              data-append-tz-form="true">
                             <input type="hidden" name="view" value="custom">
                             <input type="hidden" name="per_page" value="{{ per_page }}">
                             <input type="hidden" name="page" value="1">
+                            {% if timezone_name %}
+                                <input type="hidden" name="timezone" value="{{ timezone_name }}">
+                            {% endif %}
+                            {% if tz_offset_minutes is not none %}
+                                <input type="hidden" name="tz_offset" value="{{ tz_offset_minutes }}">
+                            {% endif %}
                             <div>
                                 <div class="text-uppercase small text-muted fw-semibold mb-2 text-center text-lg-start">Date Range</div>
                                 <div class="d-flex flex-wrap align-items-center gap-2 agenda-date-range">
@@ -64,7 +98,8 @@
                                     <div class="agenda-date-range__actions d-flex align-items-center gap-2 flex-wrap justify-content-center justify-content-lg-start">
                                         <button type="submit" class="btn btn-outline-primary btn-sm">Apply</button>
                                         <a class="btn btn-link btn-sm text-decoration-none"
-                                           href="{{ url_for('trainer_self_agenda_view', view='last_7_days', per_page=per_page) }}#trainerSelfAgendaTable">
+                                           href="{{ url_for('trainer_self_agenda_view', view='last_7_days', per_page=per_page) }}#trainerSelfAgendaTable"
+                                           data-append-tz="true">
                                             Clear
                                         </a>
                                     </div>
@@ -131,7 +166,8 @@
                                                 <span class="page-link">Previous</span>
                                             {% else %}
                                                 <a class="page-link"
-                                                   href="{{ url_for('trainer_self_agenda_view', view=selected_view, start_date=start_date_input, end_date=end_date_input, per_page=per_page, page=page-1) }}#trainerSelfAgendaTable">
+                                                   href="{{ url_for('trainer_self_agenda_view', view=selected_view, start_date=start_date_input, end_date=end_date_input, per_page=per_page, page=page-1) }}#trainerSelfAgendaTable"
+                                                   data-append-tz="true">
                                                     Previous
                                                 </a>
                                             {% endif %}
@@ -142,7 +178,8 @@
                                                     <span class="page-link">{{ p }}</span>
                                                 {% else %}
                                                     <a class="page-link"
-                                                       href="{{ url_for('trainer_self_agenda_view', view=selected_view, start_date=start_date_input, end_date=end_date_input, per_page=per_page, page=p) }}#trainerSelfAgendaTable">
+                                                       href="{{ url_for('trainer_self_agenda_view', view=selected_view, start_date=start_date_input, end_date=end_date_input, per_page=per_page, page=p) }}#trainerSelfAgendaTable"
+                                                       data-append-tz="true">
                                                         {{ p }}
                                                     </a>
                                                 {% endif %}
@@ -153,7 +190,8 @@
                                                 <span class="page-link">Next</span>
                                             {% else %}
                                                 <a class="page-link"
-                                                   href="{{ url_for('trainer_self_agenda_view', view=selected_view, start_date=start_date_input, end_date=end_date_input, per_page=per_page, page=page+1) }}#trainerSelfAgendaTable">
+                                                   href="{{ url_for('trainer_self_agenda_view', view=selected_view, start_date=start_date_input, end_date=end_date_input, per_page=per_page, page=page+1) }}#trainerSelfAgendaTable"
+                                                   data-append-tz="true">
                                                     Next
                                                 </a>
                                             {% endif %}
@@ -179,13 +217,56 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', () => {
+    const params = new URLSearchParams(window.location.search);
+    const tzName = params.get('timezone');
+    const tzOffset = params.get('tz_offset');
+
+    const applyTimezoneToLink = (anchor) => {
+        const rawHref = anchor.getAttribute('href');
+        if (!rawHref || rawHref.startsWith('#')) {
+            return;
+        }
+        try {
+            const linkUrl = new URL(rawHref, window.location.origin);
+            if (tzName) {
+                linkUrl.searchParams.set('timezone', tzName);
+            }
+            if (tzOffset !== null && tzOffset !== '') {
+                linkUrl.searchParams.set('tz_offset', tzOffset);
+            }
+            anchor.setAttribute('href', linkUrl.pathname + linkUrl.search + linkUrl.hash);
+        } catch (err) {
+            // ignore malformed URLs
+        }
+    };
+
+    const ensureFormTimezoneFields = (form) => {
+        if (tzName && !form.querySelector('input[name="timezone"]')) {
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = 'timezone';
+            input.value = tzName;
+            form.appendChild(input);
+        }
+        if (tzOffset !== null && tzOffset !== '' && !form.querySelector('input[name="tz_offset"]')) {
+            const offsetInput = document.createElement('input');
+            offsetInput.type = 'hidden';
+            offsetInput.name = 'tz_offset';
+            offsetInput.value = tzOffset;
+            form.appendChild(offsetInput);
+        }
+    };
+
+    document.querySelectorAll('[data-append-tz="true"]').forEach(applyTimezoneToLink);
+    document.querySelectorAll('[data-append-tz-form="true"]').forEach(ensureFormTimezoneFields);
+
     const perPageSelect = document.getElementById('perPageSelect');
     if (perPageSelect) {
         perPageSelect.addEventListener('change', () => {
-            const params = new URLSearchParams(window.location.search);
-            params.set('per_page', perPageSelect.value);
-            params.set('page', '1');
-            const query = params.toString();
+            const nextParams = new URLSearchParams(window.location.search);
+            nextParams.set('per_page', perPageSelect.value);
+            nextParams.set('page', '1');
+            const query = nextParams.toString();
             const basePath = window.location.pathname;
             const target = query ? `${basePath}?${query}` : basePath;
             window.location.href = `${target}#trainerSelfAgendaTable`;
@@ -193,4 +274,5 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 });
 </script>
+</div>
 {% endblock %}
