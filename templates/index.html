@@ -48,7 +48,7 @@
                     <span class="stat-icon stat-icon--recent"><i class="bi bi-clock-history"></i></span>
                     <span class="stat-label">Last Workout Completed</span>
                     {% if last_workout_completed != "No workouts completed yet" %}
-                        <a class="stat-link" href="{{ url_for('workout_details', category=last_workout_completed) }}">
+                        <a class="stat-link" href="{{ url_for('workout_details', category=last_workout_completed, timezone=workout_details_timezone, tz_offset=workout_details_tz_offset) }}">
                             {{ last_workout_completed }}
                             <span class="stat-link-icon">›</span>
                         </a>

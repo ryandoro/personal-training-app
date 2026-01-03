@@ -488,6 +488,7 @@ def home():
     # Get the user ID from the session
     user_id = session['user_id']
     now_utc = datetime.now(timezone.utc)
+    _, workout_details_timezone, workout_details_tz_offset = _resolve_request_timezone('workout_session')
 
     def _format_person(first_name, last_name, username):
         parts = [part for part in (first_name, last_name) if part]
@@ -664,6 +665,8 @@ def home():
         trainer_next_session=trainer_next_session,
         injury_status=injury_status,
         injury_free_days=injury_free_days,
+        workout_details_timezone=workout_details_timezone,
+        workout_details_tz_offset=workout_details_tz_offset,
     )
 
 
@@ -5492,10 +5495,12 @@ def trainer_self_agenda_view():
     page = max(page, 1)
     offset = (page - 1) * per_page
 
-    allowed_views = {'upcoming', 'all', 'today', 'week', 'month', 'custom'}
-    selected_view = (request.args.get('view') or 'upcoming').lower()
+    allowed_views = {'last_7_days', 'all', 'today', 'week', 'month', 'custom'}
+    selected_view = (request.args.get('view') or 'last_7_days').lower()
+    if selected_view in {'last_week', 'upcoming'}:
+        selected_view = 'last_7_days'
     if selected_view not in allowed_views:
-        selected_view = 'upcoming'
+        selected_view = 'last_7_days'
 
     start_date_raw = request.args.get('start_date') or ''
     end_date_raw = request.args.get('end_date') or ''
@@ -5541,7 +5546,11 @@ def trainer_self_agenda_view():
 
     filter_start = None
     filter_end = None
-    if selected_view == 'today':
+    if selected_view == 'last_7_days':
+        seven_days_ago = today_local - timedelta(days=7)
+        filter_start = _start_of_day(seven_days_ago)
+        filter_end = _start_of_day(today_local)
+    elif selected_view == 'today':
         filter_start = _start_of_day(today_local)
         filter_end = _start_of_next_day(today_local)
     elif selected_view == 'week':
@@ -5565,11 +5574,10 @@ def trainer_self_agenda_view():
                 filter_start = _start_of_day(start_date_value)
             if end_date_value:
                 filter_end = _start_of_next_day(end_date_value)
-    else:  # last_week default
-        current_week_start = today_local - timedelta(days=today_local.weekday())
-        last_week_start = current_week_start - timedelta(days=7)
-        filter_start = _start_of_day(last_week_start)
-        filter_end = _start_of_day(current_week_start)
+    else:  # fallback to last 7 days
+        seven_days_ago = today_local - timedelta(days=7)
+        filter_start = _start_of_day(seven_days_ago)
+        filter_end = _start_of_day(today_local)
 
     with get_connection() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
@@ -5645,7 +5653,7 @@ def trainer_self_agenda_view():
 
     per_page_options = list(per_page_selections)
     quick_filters = [
-        {'key': 'last_week', 'label': 'Last Week'},
+        {'key': 'last_7_days', 'label': 'Last 7 Days'},
         {'key': 'today', 'label': 'Today'},
         {'key': 'week', 'label': 'This Week'},
         {'key': 'month', 'label': 'This Month'},
@@ -6973,6 +6981,8 @@ def _complete_workout_for_user(user_id: int) -> tuple[bool, str | None, dict | N
                         "notes": notes,
                     })
 
+            subcategory_order = list(refreshed_workout.keys())
+
             session_id, completed_at = _log_workout_session_history(
                 user_id,
                 display_category or workout_category or '',
@@ -6980,6 +6990,8 @@ def _complete_workout_for_user(user_id: int) -> tuple[bool, str | None, dict | N
             )
 
             meta_payload = dict(workout_payload_meta) if workout_payload_meta else {}
+            if subcategory_order:
+                meta_payload['subcategory_order'] = subcategory_order
             if session_id:
                 meta_payload['session_id'] = session_id
             if completed_at:
@@ -7809,11 +7821,45 @@ def _load_last_workout_payload(user_id: int, category: str) -> tuple[OrderedDict
     return workouts, display_category, metadata
 
 
+def _fetch_session_subcategory_order(session_uuid: str) -> list[str] | None:
+    """Attempt to reconstruct subcategory order for a session from exercise history."""
+    if not session_uuid:
+        return None
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT subcategory
+                      FROM user_exercise_history
+                     WHERE session_id = %s
+                       AND subcategory IS NOT NULL
+                     ORDER BY id ASC
+                    """,
+                    (session_uuid,),
+                )
+                order = []
+                for row in cursor:
+                    subcat = row[0]
+                    if not subcat:
+                        continue
+                    if subcat not in order:
+                        order.append(subcat)
+                return order or None
+    except psycopg2.errors.UndefinedTable:
+        return None
+    except Exception:
+        logging.exception("Failed to fetch subcategory order for session_id=%s", session_uuid)
+        return None
+
+
 @app.route('/workout_details/<category>', methods=['GET'])
 @login_required
 def workout_details(category):
     user_id = session['user_id']
 
+    tz_info, _, _ = _resolve_request_timezone('workout_session')
+    tz_info = tz_info or timezone.utc
     workouts, display_category, workout_meta = _load_last_workout_payload(user_id, category)
     completion_label = None
     completion_dt = None
@@ -7822,7 +7868,14 @@ def workout_details(category):
         if completed_raw:
             try:
                 completion_dt = datetime.fromisoformat(completed_raw)
-                completion_label = completion_dt.astimezone().strftime("%B %d, %Y at %I:%M %p")
+                if completion_dt.tzinfo is None:
+                    completion_dt = completion_dt.replace(tzinfo=timezone.utc)
+                try:
+                    localized_dt = completion_dt.astimezone(tz_info)
+                except Exception:
+                    localized_dt = completion_dt.astimezone()
+                completion_dt = localized_dt
+                completion_label = localized_dt.strftime("%B %d, %Y at %I:%M %p")
             except ValueError:
                 completion_dt = None
                 completion_label = None
@@ -7912,6 +7965,22 @@ def workout_session_view(session_id):
     role = (session.get('role') or 'user').strip().lower()
     tz_info, _, _ = _resolve_request_timezone('workout_session')
     tz_info = tz_info or timezone.utc
+
+    def _apply_subcategory_order(workout_mapping, meta):
+        if not isinstance(workout_mapping, dict) or not isinstance(meta, dict):
+            return workout_mapping
+        order = meta.get('subcategory_order')
+        if not isinstance(order, list) or not order:
+            return workout_mapping
+        ordered = OrderedDict()
+        for key in order:
+            if key in workout_mapping:
+                ordered[key] = workout_mapping[key]
+        for key, value in workout_mapping.items():
+            if key not in ordered:
+                ordered[key] = value
+        return ordered
+
     try:
         session_uuid = uuid.UUID(str(session_id))
     except (ValueError, TypeError):
@@ -7976,6 +8045,13 @@ def workout_session_view(session_id):
     if isinstance(payload, dict):
         workouts = OrderedDict(payload)
         metadata = workouts.pop('_meta', None)
+        if not isinstance(metadata, dict):
+            metadata = {}
+        if not metadata.get('subcategory_order'):
+            inferred_order = _fetch_session_subcategory_order(str(session_uuid))
+            if inferred_order:
+                metadata['subcategory_order'] = inferred_order
+        workouts = _apply_subcategory_order(workouts, metadata)
 
     display_category = row.get('session_category')
     if isinstance(metadata, dict):
