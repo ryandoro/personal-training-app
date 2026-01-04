@@ -48,7 +48,7 @@
                     <span class="stat-icon stat-icon--recent"><i class="bi bi-clock-history"></i></span>
                     <span class="stat-label">Last Workout Completed</span>
                     {% if last_workout_completed != "No workouts completed yet" %}
-                        <a class="stat-link" href="{{ url_for('workout_details', category=last_workout_completed, timezone=workout_details_timezone, tz_offset=workout_details_tz_offset) }}">
+                        <a class="stat-link" id="lastWorkoutDetailsLink" href="{{ url_for('workout_details', category=last_workout_completed, timezone=workout_details_timezone, tz_offset=workout_details_tz_offset) }}">
                             {{ last_workout_completed }}
                             <span class="stat-link-icon">›</span>
                         </a>
@@ -245,6 +245,29 @@
                     orb.classList.add('glow');
                 });
             });
+        });
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const lastWorkoutLink = document.getElementById('lastWorkoutDetailsLink');
+            if (lastWorkoutLink) {
+                const href = lastWorkoutLink.getAttribute('href');
+                if (href) {
+                    try {
+                        const linkUrl = new URL(href, window.location.origin);
+                        const tzName = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+                        if (tzName) {
+                            linkUrl.searchParams.set('timezone', tzName);
+                        }
+                        const tzOffset = new Date().getTimezoneOffset();
+                        if (Number.isFinite(tzOffset)) {
+                            linkUrl.searchParams.set('tz_offset', tzOffset);
+                        }
+                        lastWorkoutLink.setAttribute('href', linkUrl.pathname + linkUrl.search + linkUrl.hash);
+                    } catch (err) {
+                        // ignore malformed URLs
+                    }
+                }
+            }
         });
 
         document.addEventListener('DOMContentLoaded', () => {
