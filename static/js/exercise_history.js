@@ -7,6 +7,7 @@
     const VALUE_MODE_STRENGTH = 'strength';
     const VALUE_MODE_CARDIO = 'cardio';
     const VALUE_MODE_TIME_HOLD = 'time_hold';
+    const VALUE_MODE_BODYWEIGHT = 'bodyweight_reps';
 
     function computeOneRepMax(weight, reps) {
         const parsedWeight = Number.parseFloat(weight);
@@ -118,6 +119,17 @@
                 }
                 return;
             }
+            if (mode === VALUE_MODE_BODYWEIGHT) {
+                const numericBest = Number(bestValue);
+                if (Number.isFinite(numericBest) && numericBest > 0) {
+                    node.textContent = formatReps(numericBest);
+                    node.dataset.value = String(numericBest);
+                } else {
+                    node.textContent = '—';
+                    node.dataset.value = '';
+                }
+                return;
+            }
             if (Number.isFinite(latestOneRm)) {
                 node.textContent = formatOneRepMax(latestOneRm);
                 node.dataset.value = String(latestOneRm);
@@ -192,6 +204,9 @@
                                 if (valueMode === VALUE_MODE_TIME_HOLD) {
                                     return formatDurationClock(val);
                                 }
+                                if (valueMode === VALUE_MODE_BODYWEIGHT) {
+                                    return formatReps(val);
+                                }
                                 return `${val} ${payload.chart_unit || ''}`.trim();
                             },
                         },
@@ -225,6 +240,12 @@
                                         ? formatDurationClock(entry.display_value)
                                         : '—';
                                     return [`Hold: ${holdDuration}`];
+                                }
+                                if (valueMode === VALUE_MODE_BODYWEIGHT) {
+                                    const repsValue = Number.isFinite(entry.display_value)
+                                        ? Math.round(entry.display_value)
+                                        : null;
+                                    return [`Reps: ${repsValue ?? '—'}`];
                                 }
                                 const weightLine = formatWeight(entry.weight);
                                 const repsLine = formatReps(entry.reps);

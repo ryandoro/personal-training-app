@@ -341,6 +341,7 @@
                                             {% set is_cardio = workout_category|lower == 'cardio' %}
                                             {% set is_bodyweight = 'bodyweight' in normalized_name %}
                                             {% set is_plank = 'plank' in normalized_name %}
+                                            {% set is_bodyweight_chart = (is_bodyweight and not is_cardio and not is_plank) %}
                                             {% if is_bodyweight or is_cardio %}
                                                 {% set weight_display = 'Bodyweight' %}
                                             {% elif workout.max_weight is not none %}
@@ -362,7 +363,7 @@
                                             {% set notes_text = workout.notes or '' %}
                                             {% set has_notes = notes_text|trim %}
                                             {% set initial_one_rm = None %}
-                                            {% if not is_cardio and not is_plank and workout.max_weight is not none and workout.max_reps is not none %}
+                                            {% if not is_cardio and not is_plank and not is_bodyweight_chart and workout.max_weight is not none and workout.max_reps is not none %}
                                                 {% set weight_val = workout.max_weight|float %}
                                                 {% set reps_val = workout.max_reps|int %}
                                                 {% if weight_val > 0 and reps_val > 0 %}
@@ -373,7 +374,7 @@
                                                 <div class="card h-100 lookup-result-card shadow-sm"
                                                      data-workout-card="{{ workout.workout_id }}"
                                                      data-client-id="{{ client.id }}"
-                                                     data-exercise-type="{{ 'cardio' if is_cardio else ('hold' if is_plank else 'strength') }}"
+                                                     data-exercise-type="{{ 'cardio' if is_cardio else ('hold' if is_plank else ('reps' if is_bodyweight_chart else 'strength')) }}"
                                                      data-history-window="90d">
                                                     <div class="card-body d-flex flex-column">
                                                         <div class="d-flex justify-content-center align-items-center">
@@ -391,15 +392,19 @@
                                                             <span class="max-label text-uppercase fw-semibold d-block small text-muted">
                                                                 {% if is_cardio or is_plank %}
                                                                     Best Time
+                                                                {% elif is_bodyweight_chart %}
+                                                                    Best Reps
                                                                 {% else %}
                                                                     Est. 1RM
                                                                 {% endif %}
                                                             </span>
                                                             <div class="exercise-metric-value fw-semibold"
                                                                  data-metric-value
-                                                                 data-metric-type="{{ 'cardio' if is_cardio else ('hold' if is_plank else 'strength') }}"
+                                                                 data-metric-type="{{ 'cardio' if is_cardio else ('hold' if is_plank else ('reps' if is_bodyweight_chart else 'strength')) }}"
                                                                  data-workout-id="{{ workout.workout_id }}">
-                                                                {% if not is_cardio and initial_one_rm is not none %}
+                                                                {% if is_bodyweight_chart and workout.max_reps is not none %}
+                                                                    {{ reps_display }}
+                                                                {% elif not is_cardio and initial_one_rm is not none %}
                                                                     {{ ('%.0f' % initial_one_rm) }} lbs
                                                                 {% else %}
                                                                     —

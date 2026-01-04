@@ -5,7 +5,26 @@
 {% block content %}
 <div class="page-hero page-hero--scroll">
     <div class="page-card page-card--wide page-card--flush" style="background: rgba(255, 255, 255, 0.75); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);">
-        <div class="page-section text-center">
+        <form class="exercise-lookup-form search-results-form mt-4"
+              action="{{ url_for('search') }}"
+              method="GET"
+              role="search">
+            <div class="lookup-input-group">
+                <label class="visually-hidden" for="search-results-query">Search exercises</label>
+                <input class="lookup-input"
+                       id="search-results-query"
+                       name="q"
+                       type="search"
+                       placeholder="Search exercises..."
+                       value="{{ query }}"
+                       aria-label="Search exercises" />
+                <button class="btn btn-brand lookup-search-btn" type="submit">
+                    <i class="bi bi-search me-2" aria-hidden="true"></i>
+                    Search
+                </button>
+            </div>
+        </form>
+        <div class="page-section text-center mt-4">
             <h2 class="fw-semibold mb-1">Your results for “{{ query }}”</h2>
             <p class="text-muted small mb-0">Review maxes, notes, and descriptions for each exercise.</p>
         </div>
@@ -24,6 +43,7 @@
                         {% set normalized_name = workout_name|lower %}
                         {% set is_bodyweight = 'bodyweight' in normalized_name %}
                         {% set is_plank = 'plank' in normalized_name %}
+                        {% set is_bodyweight_chart = (is_bodyweight and not is_cardio and not is_plank) %}
                         {% if is_bodyweight or is_cardio %}
                             {% set weight_display = 'Bodyweight' %}
                         {% elif workout.max_weight is not none %}
@@ -47,30 +67,86 @@
                         {% set has_notes = notes_text|trim %}
                         {% set is_btn_bodyweight = (not is_cardio and is_bodyweight) %}
                         {% set initial_one_rm = None %}
-                        {% if not is_cardio and not is_plank and workout.max_weight is not none and workout.max_reps is not none %}
+                        {% if not is_cardio and not is_plank and not is_bodyweight_chart and workout.max_weight is not none and workout.max_reps is not none %}
                             {% set weight_val = workout.max_weight|float %}
                             {% set reps_val = workout.max_reps|int %}
                             {% if weight_val > 0 and reps_val > 0 %}
                                 {% set initial_one_rm = weight_val * (1 + 0.0333 * reps_val) %}
                             {% endif %}
                         {% endif %}
+                        {% set media_group = 'lookup-media-' ~ (workout_id or 'exercise') ~ '-' ~ loop.index0 %}
+                        {% set start_raw = workout.image_exercise_start %}
+                        {% if start_raw %}
+                            {% if start_raw[:4]|lower == 'http' %}
+                                {% set start_src = start_raw %}
+                            {% elif start_raw.startswith('/static/') %}
+                                {% set start_src = start_raw %}
+                            {% elif '/' in start_raw %}
+                                {% set start_src = url_for('static', filename=start_raw.lstrip('/')) %}
+                            {% else %}
+                                {% set start_src = url_for('static', filename='images/' ~ start_raw) %}
+                            {% endif %}
+                        {% else %}
+                            {% set start_src = None %}
+                        {% endif %}
+                        {% set end_raw = workout.image_exercise_end %}
+                        {% if end_raw %}
+                            {% if end_raw[:4]|lower == 'http' %}
+                                {% set end_src = end_raw %}
+                            {% elif end_raw.startswith('/static/') %}
+                                {% set end_src = end_raw %}
+                            {% elif '/' in end_raw %}
+                                {% set end_src = url_for('static', filename=end_raw.lstrip('/')) %}
+                            {% else %}
+                                {% set end_src = url_for('static', filename='images/' ~ end_raw) %}
+                            {% endif %}
+                        {% else %}
+                            {% set end_src = None %}
+                        {% endif %}
                         <div class="col">
                             <div class="card h-100 lookup-result-card shadow-sm"
                                  data-workout-card="{{ workout_id }}"
-                                 data-exercise-type="{{ 'cardio' if is_cardio else ('hold' if is_plank else 'strength') }}"
-                                 data-history-window="90d">
+                                 data-exercise-type="{{ 'cardio' if is_cardio else ('hold' if is_plank else ('reps' if is_bodyweight_chart else 'strength')) }}"
+                                 data-history-window="all">
                                 <div class="card-body d-flex flex-column">
                                     <div class="d-flex justify-content-center align-items-center text-center">
                                         <h5 class="card-title text-primary fw-bold mb-0">{{ workout_name }}</h5>
                                     </div>
+                                    {% if start_src or end_src %}
+                                        <div class="lookup-card-media exercise-media-row d-flex flex-nowrap justify-content-center gap-3 mt-3 w-100">
+                                            {% if start_src %}
+                                                <div class="exercise-media-figure text-center">
+                                                    <p class="exercise-media-label mb-2 text-uppercase small fw-semibold">Start</p>
+                                                    <img src="{{ start_src }}"
+                                                         alt="{{ workout_name }} start position"
+                                                         loading="lazy"
+                                                         class="clickable-img exercise-media-image"
+                                                         data-group="{{ media_group }}"
+                                                         data-index="0" />
+                                                </div>
+                                            {% endif %}
+                                            {% if end_src %}
+                                                <div class="exercise-media-figure text-center">
+                                                    <p class="exercise-media-label mb-2 text-uppercase small fw-semibold">End</p>
+                                                    <img src="{{ end_src }}"
+                                                         alt="{{ workout_name }} end position"
+                                                         loading="lazy"
+                                                         class="clickable-img exercise-media-image"
+                                                         data-group="{{ media_group }}"
+                                                         data-index="1" />
+                                                </div>
+                                            {% endif %}
+                                        </div>
+                                    {% endif %}
                                     <div class="personal-best max-summary mt-3 text-center"
                                          data-id="{{ workout_id }}"
                                          data-category="{{ workout_category }}"
                                          data-bodyweight="{{ 'true' if is_btn_bodyweight else 'false' }}"
                                          data-plank="{{ 'true' if is_plank else 'false' }}">
                                         <span class="max-label text-uppercase fw-semibold d-block small text-muted">Your Max</span>
-                                        <div class="max-pill-group d-inline-flex gap-2">
+                                        <div class="max-pill-row">
                                             <span class="max-pill max-pill-weight">{{ weight_display }}</span>
+                                            <span class="max-times">×</span>
                                             <span class="max-pill max-pill-reps">{{ reps_display }}</span>
                                         </div>
                                         <span class="personal-max-text d-none">Your Max: {{ weight_display }} × {{ reps_display }}</span>
@@ -79,6 +155,8 @@
                                         <span class="max-label text-uppercase fw-semibold d-block small text-muted">
                                             {% if is_cardio or is_plank %}
                                                 Best Time
+                                            {% elif is_bodyweight_chart %}
+                                                Best Reps
                                             {% else %}
                                                 <span class="d-inline-flex align-items-center justify-content-center gap-2">
                                                     Est. 1RM
@@ -93,9 +171,11 @@
                                         </span>
                                         <div class="exercise-metric-value fw-semibold"
                                              data-metric-value
-                                             data-metric-type="{{ 'cardio' if is_cardio else ('hold' if is_plank else 'strength') }}"
+                                             data-metric-type="{{ 'cardio' if is_cardio else ('hold' if is_plank else ('reps' if is_bodyweight_chart else 'strength')) }}"
                                              data-workout-id="{{ workout_id }}">
-                                            {% if not is_cardio and initial_one_rm is not none %}
+                                            {% if is_bodyweight_chart and workout.max_reps is not none %}
+                                                {{ reps_display }}
+                                            {% elif not is_cardio and initial_one_rm is not none %}
                                                 {{ ('%.0f' % initial_one_rm) }} lbs
                                             {% else %}
                                                 —
@@ -107,9 +187,9 @@
                                         <div class="chart-placeholder text-muted small">Log a max to unlock this chart.</div>
                                     </div>
                                     <div class="chart-window-controls btn-group btn-group-sm justify-content-center mt-2" role="group" aria-label="History Range">
-                                        <button type="button" class="btn btn-outline-secondary chart-window-btn active" data-window="90d">90d</button>
+                                        <button type="button" class="btn btn-outline-secondary chart-window-btn" data-window="90d">90d</button>
                                         <button type="button" class="btn btn-outline-secondary chart-window-btn" data-window="1y">1y</button>
-                                        <button type="button" class="btn btn-outline-secondary chart-window-btn" data-window="all">All</button>
+                                        <button type="button" class="btn btn-outline-secondary chart-window-btn active" data-window="all">All</button>
                                     </div>
                                     <div class="d-flex flex-column flex-sm-column gap-2 mt-3">
                                         <button class="btn btn-outline-secondary btn-sm max-action-btn update-pr-link update-max-btn"
@@ -195,9 +275,152 @@
     </div>
 </div>
 
+<!-- Exercise Lightbox -->
+<div class="persona-lightbox persona-lightbox--exercise" id="exerciseLightbox" aria-hidden="true">
+    <div class="persona-lightbox__content" role="dialog" aria-modal="true" aria-label="Exercise image preview">
+        <button type="button" class="persona-lightbox__close" id="exerciseLightboxClose" aria-label="Close preview">&times;</button>
+        <div class="persona-lightbox__frame">
+            <img id="exerciseLightboxImage" src="" alt="Exercise preview image">
+        </div>
+        <div class="persona-lightbox__arrows-stack">
+            <button type="button" class="persona-lightbox__arrow persona-lightbox__arrow--prev" id="exerciseLightboxPrev" aria-label="Show previous image">
+                <i class="bi bi-chevron-left" aria-hidden="true"></i>
+            </button>
+            <button type="button" class="persona-lightbox__arrow persona-lightbox__arrow--next" id="exerciseLightboxNext" aria-label="Show next image">
+                <i class="bi bi-chevron-right" aria-hidden="true"></i>
+            </button>
+        </div>
+    </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="{{ url_for('static', filename='js/exercise_history.js') }}"></script>
 <script>
+const exerciseLightboxState = {
+    initialized: false,
+    lightbox: null,
+    image: null,
+    closeBtn: null,
+    prevBtn: null,
+    nextBtn: null,
+    currentGroup: null,
+    currentIndex: 0,
+    groupImages: [],
+    touchStartX: null,
+};
+
+function bindImageClickEvents() {
+    const state = exerciseLightboxState;
+    if (!state.lightbox) {
+        state.lightbox = document.getElementById('exerciseLightbox');
+        state.image = document.getElementById('exerciseLightboxImage');
+        state.closeBtn = document.getElementById('exerciseLightboxClose');
+        state.prevBtn = document.getElementById('exerciseLightboxPrev');
+        state.nextBtn = document.getElementById('exerciseLightboxNext');
+    }
+    if (!state.lightbox || !state.image) return;
+
+    const collectGroupImages = (group) => Array.from(document.querySelectorAll('.clickable-img')).filter((img) => img.dataset.group === group);
+
+    const showImageAt = (index) => {
+        if (!state.groupImages.length) return;
+        const target = state.groupImages[index];
+        if (!target) return;
+        state.currentIndex = index;
+        state.image.src = target.src || '';
+        state.image.alt = target.alt || 'Exercise preview image';
+    };
+
+    const openLightbox = (group, index) => {
+        const images = collectGroupImages(group);
+        if (!images.length) return;
+        state.groupImages = images;
+        state.currentGroup = group;
+        const normalizedIndex = ((index % images.length) + images.length) % images.length;
+        showImageAt(normalizedIndex);
+        state.lightbox.classList.add('persona-lightbox--visible');
+        state.lightbox.setAttribute('aria-hidden', 'false');
+        document.body.classList.add('persona-lightbox-open');
+    };
+
+    const closeLightbox = () => {
+        state.lightbox.classList.remove('persona-lightbox--visible');
+        state.lightbox.setAttribute('aria-hidden', 'true');
+        document.body.classList.remove('persona-lightbox-open');
+        state.image.src = '';
+        state.groupImages = [];
+        state.currentGroup = null;
+        state.currentIndex = 0;
+        state.touchStartX = null;
+    };
+
+    const changeImage = (delta) => {
+        if (!state.groupImages.length) return;
+        const total = state.groupImages.length;
+        const nextIndex = (state.currentIndex + delta + total) % total;
+        showImageAt(nextIndex);
+    };
+
+    if (!state.initialized) {
+        state.initialized = true;
+        state.closeBtn?.addEventListener('click', (event) => {
+            event.preventDefault();
+            closeLightbox();
+        });
+        state.prevBtn?.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            changeImage(-1);
+        });
+        state.nextBtn?.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            changeImage(1);
+        });
+        state.lightbox.addEventListener('click', (event) => {
+            if (event.target === state.lightbox) {
+                closeLightbox();
+            }
+        });
+        document.addEventListener('keydown', (event) => {
+            if (!state.lightbox.classList.contains('persona-lightbox--visible')) return;
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                closeLightbox();
+            } else if (event.key === 'ArrowRight') {
+                event.preventDefault();
+                changeImage(1);
+            } else if (event.key === 'ArrowLeft') {
+                event.preventDefault();
+                changeImage(-1);
+            }
+        });
+        state.lightbox.addEventListener('touchstart', (event) => {
+            if (!state.lightbox.classList.contains('persona-lightbox--visible')) return;
+            state.touchStartX = event.changedTouches[0].screenX;
+        }, { passive: true });
+        state.lightbox.addEventListener('touchend', (event) => {
+            if (state.touchStartX === null || !state.lightbox.classList.contains('persona-lightbox--visible')) return;
+            const deltaX = event.changedTouches[0].screenX - state.touchStartX;
+            if (Math.abs(deltaX) > 50) {
+                changeImage(deltaX < 0 ? 1 : -1);
+            }
+            state.touchStartX = null;
+        }, { passive: true });
+    }
+
+    document.querySelectorAll('.clickable-img').forEach((img) => {
+        if (img.dataset.lightboxBound === 'true') return;
+        img.dataset.lightboxBound = 'true';
+        img.addEventListener('click', (event) => {
+            event.preventDefault();
+            const group = img.dataset.group || '';
+            const index = parseInt(img.dataset.index || '0', 10) || 0;
+            openLightbox(group, index);
+        });
+    });
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     const modal = document.getElementById('updateMaxModal');
     const workoutIdInput = document.getElementById('modalWorkoutId');
@@ -589,9 +812,11 @@ document.addEventListener('DOMContentLoaded', () => {
         window.FitBaseExerciseHistory.initCharts({
             cardSelector: '.lookup-result-card',
             historyUrl: historyEndpoint,
-            defaultWindow: '90d',
+            defaultWindow: 'all',
         });
     }
+
+    bindImageClickEvents();
 });
 </script>
 

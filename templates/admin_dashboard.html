@@ -41,7 +41,7 @@
                                id="admin-dashboard-search"
                                name="search"
                                class="form-control admin-search-input"
-                               placeholder="Search by name, username, or email"
+                               placeholder="Search users..."
                                value="{{ search_term }}">
                         <button class="btn btn-brand admin-search-button" type="submit">Search</button>
                     </div>
@@ -70,8 +70,8 @@
                         <thead>
                             <tr>
                                 <th scope="col" class="text-center">ID</th>
-                                <th scope="col">Username</th>
                                 <th scope="col">Name</th>
+                                <th scope="col">Username</th>
                                 <th scope="col">Email</th>
                                 <th scope="col" class="text-center">Role</th>
                                 <th scope="col" class="text-center">Subscription</th>
@@ -86,13 +86,13 @@
                                     <td class="text-center fw-semibold">{{ user[0] }}</td>
                                     <td>
                                         <a href="{{ url_for('admin_user_profile', user_id=user[0]) }}" class="admin-user-link table-link-pill text-decoration-none">
-                                            <span>{{ user[1] }}</span>
+                                            <span>{{ user[2] }} {{ user[3] }}</span>
                                             <span class="visually-hidden">Open user profile</span>
                                         </a>
                                     </td>
                                     <td>
                                         <a href="{{ url_for('admin_user_profile', user_id=user[0]) }}" class="admin-user-link table-link-pill text-decoration-none">
-                                            <span>{{ user[2] }} {{ user[3] }}</span>
+                                            <span>{{ user[1] }}</span>
                                             <span class="visually-hidden">Open user profile</span>
                                         </a>
                                     </td>

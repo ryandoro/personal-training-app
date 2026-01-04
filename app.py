@@ -319,6 +319,16 @@ def _is_plank_exercise(name):
     return 'plank' in normalized
 
 
+def _is_bodyweight_exercise(name):
+    if not name:
+        return False
+    try:
+        normalized = str(name).strip().lower()
+    except Exception:
+        return False
+    return 'bodyweight' in normalized
+
+
 def _estimate_one_rep_max(weight, reps):
     weight_val = _coerce_float(weight)
     reps_val = _coerce_float(reps)
@@ -8256,6 +8266,8 @@ def exercise_history_data():
     category_label = (workout_row.get('category') or '').strip()
     is_cardio = category_label.lower() == 'cardio'
     is_time_hold = _is_plank_exercise(workout_name)
+    is_bodyweight_name = _is_bodyweight_exercise(workout_name)
+    use_rep_trend = bool(is_bodyweight_name and not is_cardio and not is_time_hold)
     history_payload = []
     best_value = None
 
@@ -8271,8 +8283,8 @@ def exercise_history_data():
             else:
                 reps_value = int(round(reps_numeric))
 
-        est_one_rm = None if is_cardio else _estimate_one_rep_max(weight_val, reps_value)
-        if is_cardio or is_time_hold:
+        est_one_rm = None if (is_cardio or use_rep_trend) else _estimate_one_rep_max(weight_val, reps_value)
+        if is_cardio or is_time_hold or use_rep_trend:
             display_value = reps_value
         else:
             display_value = est_one_rm
@@ -8327,6 +8339,10 @@ def exercise_history_data():
         chart_label = "Hold Time"
         chart_unit = "seconds"
         value_mode = "time_hold"
+    elif use_rep_trend:
+        chart_label = "Best Reps"
+        chart_unit = "reps"
+        value_mode = "bodyweight_reps"
     else:
         chart_label = "Estimated 1RM (lbs)"
         chart_unit = "lbs"
@@ -8341,6 +8357,7 @@ def exercise_history_data():
         },
         'is_cardio': is_cardio,
         'is_time_hold': is_time_hold,
+        'is_bodyweight_reps': use_rep_trend,
         'value_mode': value_mode,
         'chart_label': chart_label,
         'chart_unit': chart_unit,
@@ -8357,7 +8374,12 @@ def search():
 
     if not query:
         flash("Please enter a search term.", "warning")
-        return redirect("/training")
+        return render_template(
+            "search_results.html",
+            query="",
+            results=[],
+            NOTES_PLACEHOLDER=WORKOUT_NOTES_PLACEHOLDER,
+        )
 
     with get_connection() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
@@ -8367,6 +8389,8 @@ def search():
                        w.name,
                        w.description,
                        w.category,
+                       w.image_exercise_start,
+                       w.image_exercise_end,
                        uep.max_weight,
                        uep.max_reps,
                        uep.notes
