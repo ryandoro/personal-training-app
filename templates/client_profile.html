@@ -897,6 +897,8 @@
         </div>
     </div>
 
+    {% include 'components/exercise_picker_modal.html' %}
+
     <div id="trainerHomeEquipmentModal" class="modal-overlay" style="display: none;">
         <div class="modal-card custom-workout-modal selection-modal">
             <button type="button" id="trainerHomeEquipmentModalClose" class="btn-close"></button>
@@ -1002,11 +1004,13 @@
     'historyClientId': client.id,
     'notesPlaceholder': NOTES_PLACEHOLDER,
     'trainerWorkoutReorderUrl': url_for('trainer_reorder_client_workout_exercises', client_id=client.id) if active_workout and active_workout.plan else '',
-    'trainerExerciseRefreshTemplate': url_for('trainer_refresh_client_workout_exercise', client_id=client.id, workout_id=0) if active_workout and active_workout.plan else ''
+    'trainerExerciseRefreshTemplate': url_for('trainer_refresh_client_workout_exercise', client_id=client.id, workout_id=0) if active_workout and active_workout.plan else '',
+    'trainerExerciseAlternatesTemplate': url_for('trainer_list_client_workout_alternates', client_id=client.id, workout_id=0) if active_workout and active_workout.plan else ''
 }|tojson }}
 </script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="{{ url_for('static', filename='js/exercise_history.js') }}"></script>
+<script src="{{ url_for('static', filename='js/exercise_picker.js') }}"></script>
 <script>
 (function(){
     const configNode = document.getElementById('client-profile-config');
@@ -1025,7 +1029,8 @@
         historyClientId = null,
         notesPlaceholder: NOTES_PLACEHOLDER = 'No notes yet.',
         trainerWorkoutReorderUrl = '',
-        trainerExerciseRefreshTemplate = ''
+        trainerExerciseRefreshTemplate = '',
+        trainerExerciseAlternatesTemplate = ''
     } = serverConfig;
 
     const toast = document.getElementById('toastSuccess');
@@ -1071,6 +1076,22 @@
     const trainerHomeEquipmentCancel = document.getElementById('trainerHomeEquipmentCancel');
     const trainerHomeEquipmentClear = document.getElementById('trainerHomeEquipmentClear');
     const trainerHomeEquipmentCheckboxes = trainerHomeEquipmentModal ? Array.from(trainerHomeEquipmentModal.querySelectorAll('.trainer-home-equipment-checkbox')) : [];
+    let trainerExercisePickerInstance = null;
+
+    function getTrainerExercisePicker() {
+        if (trainerExercisePickerInstance) {
+            return trainerExercisePickerInstance;
+        }
+        if (typeof window.ExercisePickerModal !== 'function') {
+            return null;
+        }
+        const pickerRoot = document.getElementById('exercisePickerModal');
+        if (!pickerRoot) {
+            return null;
+        }
+        trainerExercisePickerInstance = new window.ExercisePickerModal(pickerRoot);
+        return trainerExercisePickerInstance;
+    }
     const exerciseLightboxState = {
         initialized: false,
         lightbox: null,
@@ -1382,6 +1403,99 @@
         return trainerExerciseRefreshTemplate.replace('/0/refresh', `/${workoutId}/refresh`);
     }
 
+    function getAlternatesUrlForButton(button) {
+        if (!button) return '';
+        const datasetUrl = button.dataset.alternatesUrl || '';
+        if (datasetUrl) return datasetUrl;
+        const workoutId = button.dataset.workoutId || '';
+        if (!trainerExerciseAlternatesTemplate || !workoutId) return '';
+        return trainerExerciseAlternatesTemplate.replace('/0/alternatives', `/${workoutId}/alternatives`);
+    }
+
+    function fetchTrainerAlternates(url, subcategory) {
+        if (!url || !subcategory) {
+            return Promise.reject(new Error('Missing exercise info.'));
+        }
+        const separator = url.includes('?') ? '&' : '?';
+        const requestUrl = `${url}${separator}subcategory=${encodeURIComponent(subcategory)}`;
+        return fetch(requestUrl)
+            .then((res) => res.json().catch(() => ({})))
+            .then((data) => {
+                if (!data?.success) {
+                    throw new Error(data?.error || 'Unable to load exercises.');
+                }
+                return Array.isArray(data.exercises) ? data.exercises : [];
+            });
+    }
+
+    function submitTrainerExerciseSwap({ refreshUrl, subcategory, listItem, refreshBtn, replacementWorkoutId = null }) {
+        if (!refreshUrl || !subcategory || !listItem || !refreshBtn) {
+            return Promise.reject(new Error('Unable to refresh this exercise.'));
+        }
+        refreshBtn.disabled = true;
+        refreshBtn.classList.add('is-refreshing');
+        const payload = { subcategory };
+        if (replacementWorkoutId) {
+            payload.replacement_workout_id = replacementWorkoutId;
+        }
+        return fetch(refreshUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        })
+        .then((res) => res.json().catch(() => ({})))
+        .then((data) => {
+            if (!data?.success || !data?.card_html) {
+                throw new Error(data?.error || 'Unable to refresh this exercise.');
+            }
+            const newItem = createExerciseListItem(data.card_html);
+            if (!newItem) {
+                throw new Error('Unable to render the updated exercise.');
+            }
+            listItem.replaceWith(newItem);
+            bindImageClickEvents();
+            updateCardsForCompactState();
+            showToast('Exercise updated!');
+            return data;
+        })
+        .finally(() => {
+            refreshBtn.disabled = false;
+            refreshBtn.classList.remove('is-refreshing');
+        });
+    }
+
+    function openTrainerExercisePicker(refreshBtn) {
+        const picker = getTrainerExercisePicker();
+        if (!picker) {
+            return false;
+        }
+        const listItem = refreshBtn.closest('.exercise-list-item');
+        const subcategory = listItem?.dataset.subcategory || '';
+        const alternatesUrl = getAlternatesUrlForButton(refreshBtn);
+        const refreshUrl = getRefreshUrlForButton(refreshBtn);
+        if (!listItem || !subcategory || !alternatesUrl || !refreshUrl) {
+            return false;
+        }
+        picker.open({
+            subcategory,
+            fetchOptions: () => fetchTrainerAlternates(alternatesUrl, subcategory),
+            onSelect: (choice) => {
+                const replacementId = choice?.workout_id;
+                if (!replacementId) {
+                    return Promise.reject(new Error('Invalid exercise selection.'));
+                }
+                return submitTrainerExerciseSwap({
+                    refreshUrl,
+                    subcategory,
+                    listItem,
+                    refreshBtn,
+                    replacementWorkoutId: replacementId,
+                });
+            },
+        });
+        return true;
+    }
+
     function createExerciseListItem(html) {
         if (!html) return null;
         const template = document.createElement('template');
@@ -1399,33 +1513,17 @@
         const subcategory = listItem.dataset.subcategory || '';
         const refreshUrl = getRefreshUrlForButton(refreshBtn);
         if (!refreshUrl || !subcategory) return;
-        refreshBtn.disabled = true;
-        refreshBtn.classList.add('is-refreshing');
-        fetch(refreshUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ subcategory }),
-        })
-        .then((res) => res.json().catch(() => ({})))
-        .then((data) => {
-            if (!data?.success || !data?.card_html) {
-                throw new Error(data?.error || 'Unable to refresh this exercise.');
-            }
-            const newItem = createExerciseListItem(data.card_html);
-            if (!newItem) {
-                throw new Error('Unable to render the updated exercise.');
-            }
-            listItem.replaceWith(newItem);
-            bindImageClickEvents();
-            updateCardsForCompactState();
-            showToast('Exercise updated!');
+        if (openTrainerExercisePicker(refreshBtn)) {
+            return;
+        }
+        submitTrainerExerciseSwap({
+            refreshUrl,
+            subcategory,
+            listItem,
+            refreshBtn,
         })
         .catch((err) => {
             alert(err?.message || 'Unable to refresh this exercise right now.');
-        })
-        .finally(() => {
-            refreshBtn.disabled = false;
-            refreshBtn.classList.remove('is-refreshing');
         });
     }
 

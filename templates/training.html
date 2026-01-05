@@ -858,10 +858,12 @@
             'enablePersonalWorkoutCustomization': personal_workout_customization_enabled,
             'personalWorkoutReorderUrl': personal_workout_reorder_url,
             'personalExerciseRefreshTemplate': personal_exercise_refresh_template,
+            'personalExerciseAlternatesTemplate': personal_exercise_alternates_template,
             'notesPlaceholder': notes_placeholder
         }|tojson }}
         </script>
 
+        <script src="{{ url_for('static', filename='js/exercise_picker.js') }}"></script>
         <script>
             const categorySelect = document.getElementById('workout-category-select');
             const generateWorkoutBtn = document.getElementById('generate-workout-btn');
@@ -928,6 +930,7 @@
             const PERSONAL_CUSTOMIZATION_ENABLED = !!trainingWorkoutConfig.enablePersonalWorkoutCustomization;
             const PERSONAL_REORDER_URL = trainingWorkoutConfig.personalWorkoutReorderUrl || '';
             const PERSONAL_REFRESH_TEMPLATE = trainingWorkoutConfig.personalExerciseRefreshTemplate || '';
+            const PERSONAL_ALTERNATES_TEMPLATE = trainingWorkoutConfig.personalExerciseAlternatesTemplate || '';
             const NOTES_PLACEHOLDER = trainingWorkoutConfig.notesPlaceholder || '';
             const WORKOUT_COMPACT_STORAGE_KEY = 'fitbase_workout_compact_view';
             let compactWorkoutViewEnabled = false;
@@ -1176,6 +1179,22 @@
                 groupImages: [],
                 touchStartX: null
             };
+            let exercisePickerModalInstance = null;
+
+            function getExercisePickerModal() {
+                if (exercisePickerModalInstance) {
+                    return exercisePickerModalInstance;
+                }
+                if (typeof window.ExercisePickerModal !== 'function') {
+                    return null;
+                }
+                const pickerRoot = document.getElementById('exercisePickerModal');
+                if (!pickerRoot) {
+                    return null;
+                }
+                exercisePickerModalInstance = new window.ExercisePickerModal(pickerRoot);
+                return exercisePickerModalInstance;
+            }
 
             let toastSuccessTimeout;
 
@@ -1648,24 +1667,43 @@
                 return PERSONAL_REFRESH_TEMPLATE.replace('/0/refresh', `/${workoutId}/refresh`);
             }
 
-            function handleExerciseRefresh(event) {
-                const refreshBtn = event.target.closest('.exercise-refresh-btn');
-                if (!refreshBtn) return;
-                if (!canRefreshExercises()) return;
-                event.preventDefault();
-                if (refreshBtn.disabled) return;
-                const listItem = refreshBtn.closest('.exercise-list-item');
-                if (!listItem) return;
-                const subcategory = listItem.dataset.subcategory || refreshBtn.dataset.subcategory || '';
-                const workoutId = listItem.dataset.workoutId || refreshBtn.dataset.workoutId || '';
-                const refreshUrl = buildRefreshUrl(workoutId, refreshBtn);
-                if (!refreshUrl || !subcategory) return;
+            function buildAlternatesUrl(workoutId, button) {
+                const datasetUrl = button?.dataset.alternatesUrl || '';
+                if (datasetUrl) return datasetUrl;
+                if (!PERSONAL_ALTERNATES_TEMPLATE || !workoutId) return '';
+                return PERSONAL_ALTERNATES_TEMPLATE.replace('/0/alternatives', `/${workoutId}/alternatives`);
+            }
+
+            function fetchExerciseAlternates(url, subcategory) {
+                if (!url || !subcategory) {
+                    return Promise.reject(new Error('Missing exercise info.'));
+                }
+                const separator = url.includes('?') ? '&' : '?';
+                const requestUrl = `${url}${separator}subcategory=${encodeURIComponent(subcategory)}`;
+                return fetch(requestUrl)
+                    .then((res) => res.json().catch(() => ({})))
+                    .then((data) => {
+                        if (!data?.success) {
+                            throw new Error(data?.error || 'Unable to load exercises.');
+                        }
+                        return Array.isArray(data.exercises) ? data.exercises : [];
+                    });
+            }
+
+            function submitExerciseSwap({ refreshUrl, subcategory, listItem, refreshBtn, replacementWorkoutId = null }) {
+                if (!refreshUrl || !subcategory || !listItem || !refreshBtn) {
+                    return Promise.reject(new Error('Unable to refresh this exercise.'));
+                }
                 refreshBtn.disabled = true;
                 refreshBtn.classList.add('is-refreshing');
-                fetch(refreshUrl, {
+                const payload = { subcategory };
+                if (replacementWorkoutId) {
+                    payload.replacement_workout_id = replacementWorkoutId;
+                }
+                return fetch(refreshUrl, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ subcategory }),
+                    body: JSON.stringify(payload),
                 })
                 .then((res) => res.json().catch(() => ({})))
                 .then((data) => {
@@ -1681,13 +1719,70 @@
                     updateCardsForCompactState();
                     syncExerciseDraggability();
                     showToastMessage('Exercise updated!');
-                })
-                .catch((err) => {
-                    alert(err?.message || 'Unable to refresh this exercise right now.');
+                    return data;
                 })
                 .finally(() => {
                     refreshBtn.disabled = false;
                     refreshBtn.classList.remove('is-refreshing');
+                });
+            }
+
+            function openExercisePickerForButton(refreshBtn) {
+                const picker = getExercisePickerModal();
+                if (!picker) {
+                    return false;
+                }
+                const listItem = refreshBtn.closest('.exercise-list-item');
+                const subcategory = listItem?.dataset.subcategory || refreshBtn.dataset.subcategory || '';
+                const workoutId = listItem?.dataset.workoutId || refreshBtn.dataset.workoutId || '';
+                const refreshUrl = buildRefreshUrl(workoutId, refreshBtn);
+                const alternatesUrl = buildAlternatesUrl(workoutId, refreshBtn);
+                if (!listItem || !subcategory || !refreshUrl || !alternatesUrl) {
+                    return false;
+                }
+                picker.open({
+                    subcategory,
+                    fetchOptions: () => fetchExerciseAlternates(alternatesUrl, subcategory),
+                    onSelect: (choice) => {
+                        const replacementId = choice?.workout_id;
+                        if (!replacementId) {
+                            return Promise.reject(new Error('Invalid exercise selection.'));
+                        }
+                        return submitExerciseSwap({
+                            refreshUrl,
+                            subcategory,
+                            listItem,
+                            refreshBtn,
+                            replacementWorkoutId: replacementId,
+                        });
+                    },
+                });
+                return true;
+            }
+
+            function handleExerciseRefresh(event) {
+                const refreshBtn = event.target.closest('.exercise-refresh-btn');
+                if (!refreshBtn) return;
+                if (!canRefreshExercises()) return;
+                event.preventDefault();
+                if (refreshBtn.disabled) return;
+                if (openExercisePickerForButton(refreshBtn)) {
+                    return;
+                }
+                const listItem = refreshBtn.closest('.exercise-list-item');
+                if (!listItem) return;
+                const subcategory = listItem.dataset.subcategory || refreshBtn.dataset.subcategory || '';
+                const workoutId = listItem.dataset.workoutId || refreshBtn.dataset.workoutId || '';
+                const refreshUrl = buildRefreshUrl(workoutId, refreshBtn);
+                if (!refreshUrl || !subcategory) return;
+                submitExerciseSwap({
+                    refreshUrl,
+                    subcategory,
+                    listItem,
+                    refreshBtn,
+                })
+                .catch((err) => {
+                    alert(err?.message || 'Unable to refresh this exercise right now.');
                 });
             }
 
@@ -2402,6 +2497,8 @@
                 </div>
             </div>
         </div>
+
+        {% include 'components/exercise_picker_modal.html' %}
 
         <!-- Home Equipment Modal -->
         <div id="homeEquipmentModal" class="modal-overlay" style="display: none;">

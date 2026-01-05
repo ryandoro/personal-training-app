@@ -347,10 +347,10 @@ def _record_exercise_history(user_id, workout_id, max_weight, max_reps):
             with history_conn.cursor() as history_cursor:
                 history_cursor.execute(
                     """
-                    INSERT INTO user_exercise_history (user_id, workout_id, weight, reps)
-                    VALUES (%s, %s, %s, %s)
+                    INSERT INTO user_exercise_history (user_id, workout_id, weight, reps, source)
+                    VALUES (%s, %s, %s, %s, %s)
                     """,
-                    (user_id, workout_id, max_weight, max_reps),
+                    (user_id, workout_id, max_weight, max_reps, 'pr_update'),
                 )
     except psycopg2.errors.UndefinedTable:
         logging.warning("user_exercise_history table missing; skipping history insert for workout_id=%s", workout_id)
@@ -374,8 +374,8 @@ def _log_workout_session_history(user_id: int, category_label: str, session_entr
             with conn.cursor() as cursor:
                 insert_sql = """
                     INSERT INTO user_exercise_history
-                        (user_id, workout_id, weight, reps, recorded_at, session_id, category, subcategory, notes)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        (user_id, workout_id, weight, reps, recorded_at, session_id, category, subcategory, notes, source)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """
                 for entry in session_entries:
                     workout_id = entry.get('workout_id')
@@ -397,6 +397,7 @@ def _log_workout_session_history(user_id: int, category_label: str, session_entr
                             category_label,
                             subcategory,
                             notes,
+                            'session_complete',
                         ),
                     )
             conn.commit()
@@ -1593,6 +1594,9 @@ def training():
     personal_exercise_refresh_template = (
         url_for('personal_refresh_workout_exercise', workout_id=0) if personal_workout_customization_enabled else ''
     )
+    personal_exercise_alternates_template = (
+        url_for('personal_list_workout_alternatives', workout_id=0) if personal_workout_customization_enabled else ''
+    )
 
     return render_template(
         'training.html', 
@@ -1626,6 +1630,7 @@ def training():
         personal_workout_customization_enabled=personal_workout_customization_enabled,
         personal_workout_reorder_url=personal_workout_reorder_url,
         personal_exercise_refresh_template=personal_exercise_refresh_template,
+        personal_exercise_alternates_template=personal_exercise_alternates_template,
         notes_placeholder=WORKOUT_NOTES_PLACEHOLDER,
     )
 
@@ -7082,6 +7087,149 @@ def _apply_formatted_exercise(entry, formatted_exercise):
         for idx, value in enumerate(fields):
             entry_list[idx] = value
         return entry_list
+
+
+def _resolve_refresh_context(workout_payload, subcategory, workout_id):
+    if not isinstance(workout_payload, dict):
+        return None, ({'success': False, 'error': 'Active workout plan is missing.'}, 400)
+    plan = workout_payload.get('plan')
+    if not isinstance(plan, list):
+        return None, ({'success': False, 'error': 'Active workout plan is missing.'}, 400)
+    normalized_subcategory = (subcategory or '').strip().lower()
+    target_block = None
+    for block in plan:
+        label = str(block.get('subcategory') or '').strip()
+        if label.lower() == normalized_subcategory:
+            target_block = block
+            break
+    if not target_block:
+        return None, ({'success': False, 'error': 'Workout category not found.'}, 404)
+    exercises = target_block.get('exercises') or []
+    if not exercises:
+        return None, ({'success': False, 'error': 'No exercises available for this category.'}, 400)
+    existing_ids = set()
+    replacement_index = None
+    for idx, entry in enumerate(exercises):
+        entry_id = _exercise_entry_workout_id(entry)
+        if entry_id is None:
+            return None, ({'success': False, 'error': 'An exercise is missing its identifier.'}, 400)
+        try:
+            entry_int = int(entry_id)
+        except (TypeError, ValueError):
+            return None, ({'success': False, 'error': 'Invalid exercise identifier detected.'}, 400)
+        existing_ids.add(entry_int)
+        if entry_int == workout_id:
+            replacement_index = idx
+    if replacement_index is None:
+        return None, ({'success': False, 'error': 'Exercise not found in this workout.'}, 404)
+
+    equipment_tokens = []
+    raw_equipment = workout_payload.get('home_equipment')
+    if raw_equipment:
+        equipment_tokens = normalize_home_equipment_selection(raw_equipment)
+    equipment_clause = ""
+    equipment_params = []
+    allow_cardio_bodyweight = False
+    if equipment_tokens:
+        equipment_clause, equipment_params, allow_cardio_bodyweight = build_home_equipment_clause(equipment_tokens)
+    restrict_barbell = bool(equipment_tokens) and 'BARBELL' not in equipment_tokens
+    restrict_dumbbell = bool(equipment_tokens) and 'DUMBBELL' not in equipment_tokens
+
+    subcategory_key = (subcategory or "").strip().upper()
+    use_cardio_override = allow_cardio_bodyweight and subcategory_key == 'CARDIO'
+
+    context = {
+        'target_block': target_block,
+        'exercises': exercises,
+        'replacement_index': replacement_index,
+        'existing_ids': existing_ids,
+        'equipment_clause': equipment_clause,
+        'equipment_params': equipment_params,
+        'use_cardio_override': use_cardio_override,
+        'restrict_barbell': restrict_barbell,
+        'restrict_dumbbell': restrict_dumbbell,
+    }
+    return context, None
+
+
+def _build_alternate_exercise_query(
+    target_user_id,
+    subcategory,
+    user_level,
+    existing_ids,
+    equipment_clause,
+    equipment_params,
+    use_cardio_override,
+    restrict_barbell,
+    restrict_dumbbell,
+    *,
+    selected_workout_id=None,
+    random_order=True,
+):
+    query_parts = [
+        """
+        SELECT
+            w.id AS workout_id,
+            w.name,
+            w.description,
+            w.youtube_id,
+            w.image_exercise_start,
+            w.image_exercise_end,
+            uep.max_weight,
+            uep.max_reps,
+            uep.notes
+        FROM workouts w
+        LEFT JOIN user_exercise_progress uep
+            ON w.id = uep.workout_id AND uep.user_id = %s
+        WHERE w.category = %s
+          AND w.level <= %s
+        """
+    ]
+    params = [target_user_id, subcategory, user_level]
+    excluded_ids = sorted(existing_ids or [])
+    if excluded_ids:
+        placeholders = ','.join(['%s'] * len(excluded_ids))
+        query_parts.append(f" AND w.id NOT IN ({placeholders})")
+        params.extend(excluded_ids)
+    equipment_clause = equipment_clause or ""
+    equipment_params = list(equipment_params or [])
+    if equipment_clause:
+        if use_cardio_override:
+            placeholders = ",".join(["%s"] * len(CARDIO_BODYWEIGHT_WORKOUTS))
+            query_parts.append(f" AND (({equipment_clause}) OR w.name IN ({placeholders}))")
+            params.extend(equipment_params)
+            params.extend(CARDIO_BODYWEIGHT_WORKOUTS)
+        else:
+            query_parts.append(f" AND {equipment_clause}")
+            params.extend(equipment_params)
+    elif use_cardio_override:
+        placeholders = ",".join(["%s"] * len(CARDIO_BODYWEIGHT_WORKOUTS))
+        query_parts.append(f" AND w.name IN ({placeholders})")
+        params.extend(CARDIO_BODYWEIGHT_WORKOUTS)
+    if restrict_barbell:
+        query_parts.append(" AND LOWER(w.name) NOT LIKE %s")
+        params.append("%barbell%")
+    if restrict_dumbbell:
+        query_parts.append(" AND LOWER(w.name) NOT LIKE %s")
+        params.append("%dumbbell%")
+    if selected_workout_id:
+        query_parts.append(" AND w.id = %s")
+        params.append(selected_workout_id)
+    if random_order:
+        query_parts.append(" ORDER BY RANDOM() LIMIT 1")
+    else:
+        query_parts.append(
+            """
+            ORDER BY
+                CASE w.movement_type
+                    WHEN 'compound' THEN 1
+                    WHEN 'accessory' THEN 2
+                    ELSE 3
+                END,
+                w.name
+            """
+        )
+    return "".join(query_parts), params
     return fields
 
 
@@ -7358,6 +7506,59 @@ def personal_reorder_workout_exercises():
     return jsonify({'success': True})
 
 
+@app.get('/training/workout/exercises/<int:workout_id>/alternatives')
+@login_required
+def personal_list_workout_alternatives(workout_id):
+    user_id = session['user_id']
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            cursor.execute(
+                "SELECT role, subscription_type, exercise_history FROM users WHERE id = %s",
+                (user_id,),
+            )
+            user_row = cursor.fetchone()
+    if not _user_can_customize_personal_workout(user_row):
+        return jsonify({'success': False, 'error': 'Trainer Pro access required.'}), 403
+
+    subcategory = (request.args.get('subcategory') or '').strip()
+    if not subcategory:
+        return jsonify({'success': False, 'error': 'Workout category is required.'}), 400
+
+    active = get_active_workout(user_id)
+    if not active:
+        return jsonify({'success': False, 'error': 'No active workout to update.'}), 404
+    workout_payload = active.get('workout_data') or {}
+    context, error = _resolve_refresh_context(workout_payload, subcategory, workout_id)
+    if error:
+        payload, status = error
+        return jsonify(payload), status
+
+    user_level = get_user_level(user_row.get('exercise_history'))
+    query, params = _build_alternate_exercise_query(
+        user_id,
+        subcategory,
+        user_level,
+        context['existing_ids'],
+        context['equipment_clause'],
+        context['equipment_params'],
+        context['use_cardio_override'],
+        context['restrict_barbell'],
+        context['restrict_dumbbell'],
+        random_order=False,
+    )
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            cursor.execute(query, params)
+            rows = cursor.fetchall() or []
+
+    formatted = [_format_exercise(subcategory, row) for row in rows]
+    return jsonify({
+        'success': True,
+        'exercises': formatted,
+        'subcategory': context['target_block'].get('subcategory') or subcategory,
+    })
+
+
 @app.post('/training/workout/exercises/<int:workout_id>/refresh')
 @login_required
 def personal_refresh_workout_exercise(workout_id):
@@ -7376,113 +7577,57 @@ def personal_refresh_workout_exercise(workout_id):
     subcategory = (payload.get('subcategory') or '').strip()
     if not subcategory:
         return jsonify({'success': False, 'error': 'Workout category is required.'}), 400
+    replacement_id_raw = payload.get('replacement_workout_id')
+    replacement_workout_id = None
+    if replacement_id_raw not in (None, ''):
+        try:
+            replacement_workout_id = int(replacement_id_raw)
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'error': 'Invalid alternate exercise selected.'}), 400
+        if replacement_workout_id <= 0:
+            return jsonify({'success': False, 'error': 'Invalid alternate exercise selected.'}), 400
 
     active = get_active_workout(user_id)
     if not active:
         return jsonify({'success': False, 'error': 'No active workout to update.'}), 404
     workout_payload = active.get('workout_data') or {}
-    plan = workout_payload.get('plan')
-    if not isinstance(plan, list):
-        return jsonify({'success': False, 'error': 'Active workout plan is missing.'}), 400
-
-    normalized_subcategory = subcategory.lower()
-    target_block = None
-    for block in plan:
-        label = str(block.get('subcategory') or '').strip()
-        if label.lower() == normalized_subcategory:
-            target_block = block
-            break
-    if not target_block:
-        return jsonify({'success': False, 'error': 'Workout category not found.'}), 404
-
-    exercises = target_block.get('exercises') or []
-    if not exercises:
-        return jsonify({'success': False, 'error': 'No exercises available for this category.'}), 400
-
-    existing_ids = set()
-    replacement_index = None
-    for idx, entry in enumerate(exercises):
-        entry_id = _exercise_entry_workout_id(entry)
-        if entry_id is None:
-            return jsonify({'success': False, 'error': 'An exercise is missing its identifier.'}), 400
-        try:
-            entry_int = int(entry_id)
-        except (TypeError, ValueError):
-            return jsonify({'success': False, 'error': 'Invalid exercise identifier detected.'}), 400
-        existing_ids.add(entry_int)
-        if entry_int == workout_id:
-            replacement_index = idx
-    if replacement_index is None:
-        return jsonify({'success': False, 'error': 'Exercise not found in this workout.'}), 404
+    context, error = _resolve_refresh_context(workout_payload, subcategory, workout_id)
+    if error:
+        payload, status = error
+        return jsonify(payload), status
+    if replacement_workout_id and replacement_workout_id in context['existing_ids']:
+        return jsonify({'success': False, 'error': 'That exercise is already in this workout.'}), 400
 
     user_level = get_user_level(user_row.get('exercise_history'))
-    equipment_tokens = []
-    raw_equipment = workout_payload.get('home_equipment')
-    if raw_equipment:
-        equipment_tokens = normalize_home_equipment_selection(raw_equipment)
-    equipment_clause = ""
-    equipment_params = []
-    allow_cardio_bodyweight = False
-    if equipment_tokens:
-        equipment_clause, equipment_params, allow_cardio_bodyweight = build_home_equipment_clause(equipment_tokens)
-    restrict_barbell = bool(equipment_tokens) and 'BARBELL' not in equipment_tokens
-    restrict_dumbbell = bool(equipment_tokens) and 'DUMBBELL' not in equipment_tokens
-
-    subcategory_key = (subcategory or "").strip().upper()
-    use_cardio_bodyweight_override = allow_cardio_bodyweight and subcategory_key == 'CARDIO'
-
-    query = """
-        SELECT
-            w.id AS workout_id,
-            w.name,
-            w.description,
-            w.youtube_id,
-            w.image_exercise_start,
-            w.image_exercise_end,
-            uep.max_weight,
-            uep.max_reps,
-            uep.notes
-        FROM workouts w
-        LEFT JOIN user_exercise_progress uep
-            ON w.id = uep.workout_id AND uep.user_id = %s
-        WHERE w.category = %s
-          AND w.level <= %s
-    """
-    params = [user_id, subcategory, user_level]
-    excluded_ids = sorted(existing_ids)
-    if excluded_ids:
-        placeholders = ','.join(['%s'] * len(excluded_ids))
-        query += f" AND w.id NOT IN ({placeholders})"
-        params.extend(excluded_ids)
-    if equipment_clause:
-        if use_cardio_bodyweight_override:
-            placeholders = ",".join(["%s"] * len(CARDIO_BODYWEIGHT_WORKOUTS))
-            query += f" AND (({equipment_clause}) OR w.name IN ({placeholders}))"
-            params.extend(equipment_params)
-            params.extend(CARDIO_BODYWEIGHT_WORKOUTS)
-        else:
-            query += f" AND {equipment_clause}"
-            params.extend(equipment_params)
-    elif use_cardio_bodyweight_override:
-        placeholders = ",".join(["%s"] * len(CARDIO_BODYWEIGHT_WORKOUTS))
-        query += f" AND w.name IN ({placeholders})"
-        params.extend(CARDIO_BODYWEIGHT_WORKOUTS)
-    if restrict_barbell:
-        query += " AND LOWER(w.name) NOT LIKE %s"
-        params.append("%barbell%")
-    if restrict_dumbbell:
-        query += " AND LOWER(w.name) NOT LIKE %s"
-        params.append("%dumbbell%")
-    query += " ORDER BY RANDOM() LIMIT 1"
+    query, params = _build_alternate_exercise_query(
+        user_id,
+        subcategory,
+        user_level,
+        context['existing_ids'],
+        context['equipment_clause'],
+        context['equipment_params'],
+        context['use_cardio_override'],
+        context['restrict_barbell'],
+        context['restrict_dumbbell'],
+        selected_workout_id=replacement_workout_id,
+        random_order=replacement_workout_id is None,
+    )
 
     with get_connection() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
             cursor.execute(query, params)
             replacement_row = cursor.fetchone()
         if not replacement_row:
-            return jsonify({'success': False, 'error': "No alternates match your level or equipment setup right now."}), 404
+            error_msg = (
+                'Selected exercise is no longer available.'
+                if replacement_workout_id
+                else "No alternates match your level or equipment setup right now."
+            )
+            return jsonify({'success': False, 'error': error_msg}), 404
 
         formatted_exercise = _format_exercise(subcategory, replacement_row)
+        exercises = context['exercises']
+        replacement_index = context['replacement_index']
         exercises[replacement_index] = _apply_formatted_exercise(
             exercises[replacement_index],
             formatted_exercise,
@@ -7503,7 +7648,7 @@ def personal_refresh_workout_exercise(workout_id):
         'success': True,
         'exercise': formatted_exercise,
         'workout_id': formatted_exercise.get('workout_id'),
-        'subcategory': target_block.get('subcategory') or subcategory,
+        'subcategory': context['target_block'].get('subcategory') or subcategory,
     })
 
 
@@ -7591,16 +7736,15 @@ def trainer_reorder_client_workout_exercises(client_id):
     return jsonify({'success': True})
 
 
-@app.post('/trainer/clients/<int:client_id>/workout/exercises/<int:workout_id>/refresh')
+@app.get('/trainer/clients/<int:client_id>/workout/exercises/<int:workout_id>/alternatives')
 @login_required
-def trainer_refresh_client_workout_exercise(client_id, workout_id):
+def trainer_list_client_workout_alternates(client_id, workout_id):
     trainer_id = session['user_id']
     trainer = _require_trainer(trainer_id)
     if not trainer:
         return jsonify({'success': False, 'error': 'Trainer access required.'}), 403
 
-    payload = request.get_json(silent=True) or {}
-    subcategory = (payload.get('subcategory') or '').strip()
+    subcategory = (request.args.get('subcategory') or '').strip()
     if not subcategory:
         return jsonify({'success': False, 'error': 'Workout category is required.'}), 400
 
@@ -7621,108 +7765,113 @@ def trainer_refresh_client_workout_exercise(client_id, workout_id):
     if not active:
         return jsonify({'success': False, 'error': 'No active workout to update.'}), 404
     workout_payload = active.get('workout_data') or {}
-    plan = workout_payload.get('plan')
-    if not isinstance(plan, list):
-        return jsonify({'success': False, 'error': 'Active workout plan is missing.'}), 400
-
-    normalized_subcategory = subcategory.lower()
-    target_block = None
-    for block in plan:
-        label = str(block.get('subcategory') or '').strip()
-        if label.lower() == normalized_subcategory:
-            target_block = block
-            break
-    if not target_block:
-        return jsonify({'success': False, 'error': 'Workout category not found.'}), 404
-
-    exercises = target_block.get('exercises') or []
-    if not exercises:
-        return jsonify({'success': False, 'error': 'No exercises available for this category.'}), 400
-
-    existing_ids = set()
-    replacement_index = None
-    for idx, entry in enumerate(exercises):
-        entry_id = _exercise_entry_workout_id(entry)
-        if entry_id is None:
-            return jsonify({'success': False, 'error': 'An exercise is missing its identifier.'}), 400
-        try:
-            entry_int = int(entry_id)
-        except (TypeError, ValueError):
-            return jsonify({'success': False, 'error': 'Invalid exercise identifier detected.'}), 400
-        existing_ids.add(entry_int)
-        if entry_int == workout_id:
-            replacement_index = idx
-    if replacement_index is None:
-        return jsonify({'success': False, 'error': 'Exercise not found in this workout.'}), 404
+    context, error = _resolve_refresh_context(workout_payload, subcategory, workout_id)
+    if error:
+        payload, status = error
+        return jsonify(payload), status
 
     user_level = get_user_level(client_row.get('exercise_history'))
-    equipment_tokens = []
-    raw_equipment = workout_payload.get('home_equipment')
-    if raw_equipment:
-        equipment_tokens = normalize_home_equipment_selection(raw_equipment)
-    equipment_clause = ""
-    equipment_params = []
-    allow_cardio_bodyweight = False
-    if equipment_tokens:
-        equipment_clause, equipment_params, allow_cardio_bodyweight = build_home_equipment_clause(equipment_tokens)
-    restrict_barbell = bool(equipment_tokens) and 'BARBELL' not in equipment_tokens
-    restrict_dumbbell = bool(equipment_tokens) and 'DUMBBELL' not in equipment_tokens
+    query, params = _build_alternate_exercise_query(
+        client_id,
+        subcategory,
+        user_level,
+        context['existing_ids'],
+        context['equipment_clause'],
+        context['equipment_params'],
+        context['use_cardio_override'],
+        context['restrict_barbell'],
+        context['restrict_dumbbell'],
+        random_order=False,
+    )
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            cursor.execute(query, params)
+            rows = cursor.fetchall() or []
 
-    subcategory_key = (subcategory or "").strip().upper()
-    use_cardio_bodyweight_override = allow_cardio_bodyweight and subcategory_key == 'CARDIO'
+    formatted = [_format_exercise(subcategory, row) for row in rows]
+    return jsonify({
+        'success': True,
+        'exercises': formatted,
+        'subcategory': context['target_block'].get('subcategory') or subcategory,
+    })
 
-    query = """
-        SELECT
-            w.id AS workout_id,
-            w.name,
-            w.description,
-            w.youtube_id,
-            w.image_exercise_start,
-            w.image_exercise_end,
-            uep.max_weight,
-            uep.max_reps,
-            uep.notes
-        FROM workouts w
-        LEFT JOIN user_exercise_progress uep
-            ON w.id = uep.workout_id AND uep.user_id = %s
-        WHERE w.category = %s
-          AND w.level <= %s
-    """
-    params = [client_id, subcategory, user_level]
-    excluded_ids = sorted(existing_ids)
-    if excluded_ids:
-        placeholders = ','.join(['%s'] * len(excluded_ids))
-        query += f" AND w.id NOT IN ({placeholders})"
-        params.extend(excluded_ids)
-    if equipment_clause:
-        if use_cardio_bodyweight_override:
-            placeholders = ",".join(["%s"] * len(CARDIO_BODYWEIGHT_WORKOUTS))
-            query += f" AND (({equipment_clause}) OR w.name IN ({placeholders}))"
-            params.extend(equipment_params)
-            params.extend(CARDIO_BODYWEIGHT_WORKOUTS)
-        else:
-            query += f" AND {equipment_clause}"
-            params.extend(equipment_params)
-    elif use_cardio_bodyweight_override:
-        placeholders = ",".join(["%s"] * len(CARDIO_BODYWEIGHT_WORKOUTS))
-        query += f" AND w.name IN ({placeholders})"
-        params.extend(CARDIO_BODYWEIGHT_WORKOUTS)
-    if restrict_barbell:
-        query += " AND LOWER(w.name) NOT LIKE %s"
-        params.append("%barbell%")
-    if restrict_dumbbell:
-        query += " AND LOWER(w.name) NOT LIKE %s"
-        params.append("%dumbbell%")
-    query += " ORDER BY RANDOM() LIMIT 1"
+
+@app.post('/trainer/clients/<int:client_id>/workout/exercises/<int:workout_id>/refresh')
+@login_required
+def trainer_refresh_client_workout_exercise(client_id, workout_id):
+    trainer_id = session['user_id']
+    trainer = _require_trainer(trainer_id)
+    if not trainer:
+        return jsonify({'success': False, 'error': 'Trainer access required.'}), 403
+
+    payload = request.get_json(silent=True) or {}
+    subcategory = (payload.get('subcategory') or '').strip()
+    if not subcategory:
+        return jsonify({'success': False, 'error': 'Workout category is required.'}), 400
+    replacement_id_raw = payload.get('replacement_workout_id')
+    replacement_workout_id = None
+    if replacement_id_raw not in (None, ''):
+        try:
+            replacement_workout_id = int(replacement_id_raw)
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'error': 'Invalid alternate exercise selected.'}), 400
+        if replacement_workout_id <= 0:
+            return jsonify({'success': False, 'error': 'Invalid alternate exercise selected.'}), 400
+
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            cursor.execute(
+                "SELECT trainer_id, exercise_history FROM users WHERE id = %s",
+                (client_id,),
+            )
+            client_row = cursor.fetchone()
+    if not client_row:
+        return jsonify({'success': False, 'error': 'Client not found.'}), 404
+    is_admin = (trainer.get('role') or '').lower() == 'admin'
+    if client_row.get('trainer_id') != trainer_id and not is_admin:
+        return jsonify({'success': False, 'error': 'You do not have access to that client.'}), 403
+
+    active = get_active_workout(client_id)
+    if not active:
+        return jsonify({'success': False, 'error': 'No active workout to update.'}), 404
+    workout_payload = active.get('workout_data') or {}
+    context, error = _resolve_refresh_context(workout_payload, subcategory, workout_id)
+    if error:
+        payload, status = error
+        return jsonify(payload), status
+    if replacement_workout_id and replacement_workout_id in context['existing_ids']:
+        return jsonify({'success': False, 'error': 'That exercise is already in this workout.'}), 400
+
+    user_level = get_user_level(client_row.get('exercise_history'))
+    query, params = _build_alternate_exercise_query(
+        client_id,
+        subcategory,
+        user_level,
+        context['existing_ids'],
+        context['equipment_clause'],
+        context['equipment_params'],
+        context['use_cardio_override'],
+        context['restrict_barbell'],
+        context['restrict_dumbbell'],
+        selected_workout_id=replacement_workout_id,
+        random_order=replacement_workout_id is None,
+    )
 
     with get_connection() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
             cursor.execute(query, params)
             replacement_row = cursor.fetchone()
         if not replacement_row:
-            return jsonify({'success': False, 'error': "No alternates match this client's level or equipment setup right now."}), 404
+            error_msg = (
+                'Selected exercise is no longer available.'
+                if replacement_workout_id
+                else "No alternates match this client's level or equipment setup right now."
+            )
+            return jsonify({'success': False, 'error': error_msg}), 404
 
         formatted_exercise = _format_exercise(subcategory, replacement_row)
+        exercises = context['exercises']
+        replacement_index = context['replacement_index']
         exercises[replacement_index] = _apply_formatted_exercise(
             exercises[replacement_index],
             formatted_exercise,
@@ -7742,7 +7891,7 @@ def trainer_refresh_client_workout_exercise(client_id, workout_id):
     card_html = render_template(
         'components/exercise_card.html',
         exercise=formatted_exercise,
-        subcategory_name=target_block.get('subcategory') or subcategory,
+        subcategory_name=context['target_block'].get('subcategory') or subcategory,
         exercise_loop_index=replacement_index,
         notes_placeholder=WORKOUT_NOTES_PLACEHOLDER,
         client_id=client_id,
@@ -8222,6 +8371,7 @@ def exercise_history_data():
                 "   AND workout_id = %s",
             ]
             params = [target_user_id, workout_id]
+            history_query.append("   AND (source IS NULL OR source = 'pr_update')")
             if window_delta:
                 window_start = now_utc - window_delta
                 history_query.append("   AND recorded_at >= %s")
@@ -8247,6 +8397,7 @@ def exercise_history_data():
                         "   AND workout_id = %s",
                     ]
                     candidate_params = [target_user_id, workout_id]
+                    candidate_query.append("   AND (source IS NULL OR source = 'pr_update')")
                     if candidate_delta:
                         candidate_start = now_utc - candidate_delta
                         candidate_query.append("   AND recorded_at >= %s")

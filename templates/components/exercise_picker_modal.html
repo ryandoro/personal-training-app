@@ -1,0 +1,38 @@
+<div id="exercisePickerModal" class="exercise-picker-overlay" aria-hidden="true">
+    <div class="exercise-picker-dialog" role="dialog" aria-modal="true" aria-labelledby="exercisePickerTitle">
+        <button type="button"
+                class="exercise-picker-close"
+                aria-label="Close picker"
+                data-role="picker-close">&times;</button>
+        <div class="exercise-picker-header">
+            <h5 id="exercisePickerTitle" class="mb-1">Swap Exercise</h5>
+            <p class="small mb-0">
+                Showing options for <span data-role="picker-subcategory">this workout</span>
+            </p>
+        </div>
+        <div class="exercise-picker-body-wrapper">
+            <div class="exercise-picker-body" data-role="picker-wheel">
+                <div class="exercise-picker-state" data-role="picker-loading">
+                    <div class="spinner-border text-primary spinner-border-sm" role="status" aria-hidden="true"></div>
+                    <span class="ms-2">Loading exercises…</span>
+                </div>
+                <div class="exercise-picker-state text-danger" data-role="picker-error" hidden>
+                    <span data-role="picker-error-text">Unable to load exercises.</span>
+                    <button type="button" class="btn btn-link btn-sm px-1" data-role="picker-retry">Retry</button>
+                </div>
+                <div class="exercise-picker-state text-muted" data-role="picker-empty" hidden>
+                    No alternate exercises are available for this category right now.
+                </div>
+                <ul class="exercise-picker-list list-unstyled mb-0" data-role="picker-list"></ul>
+            </div>
+            <div class="exercise-picker-highlight" aria-hidden="true"></div>
+        </div>
+        <div class="exercise-picker-footer">
+            <span class="small" data-role="picker-selection-label">Pick an exercise to continue.</span>
+            <div class="d-flex gap-2">
+                <button type="button" class="btn btn-outline-secondary" data-role="picker-cancel">Cancel</button>
+                <button type="button" class="btn btn-brand" data-role="picker-confirm" disabled>Use Exercise</button>
+            </div>
+        </div>
+    </div>
+</div>
