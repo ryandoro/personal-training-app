@@ -70,14 +70,14 @@ CUSTOM_WORKOUT_CATEGORIES = (
 
 # Weighted baseline so condensed sessions still hit big movers first.
 CUSTOM_WORKOUT_BASE_COUNTS = {
-    "LEGS": 8,
-    "BACK": 6,
-    "CHEST": 6,
-    "SHOULDERS": 5,
-    "BICEPS": 4,
-    "TRICEPS": 4,
-    "ABS": 4,
-    "CARDIO": 3,
+    "LEGS": 6,
+    "BACK": 5,
+    "CHEST": 5,
+    "SHOULDERS": 4,
+    "BICEPS": 3,
+    "TRICEPS": 3,
+    "ABS": 3,
+    "CARDIO": 2,
 }
 
 CUSTOM_WORKOUT_SELECTION_LIMITS = {
@@ -87,12 +87,21 @@ CUSTOM_WORKOUT_SELECTION_LIMITS = {
     60: {"min": 1, "max": 8},
 }
 
-CUSTOM_WORKOUT_TOTAL_EXERCISES = {
+DURATION_TOTAL_EXERCISES = {
     20: 3,
-    30: 4,
+    30: 5,
     45: 7,
-    60: 10,
+    60: 9,
 }
+DEFAULT_EXERCISES_PER_HOUR = DURATION_TOTAL_EXERCISES.get(60, 10)
+DEFAULT_EXERCISES_PER_MINUTE = max(0.1, DEFAULT_EXERCISES_PER_HOUR / 60.0)
+
+CATEGORY_TOTAL_OVERRIDES = {
+    "Cardio": {20: 2, 30: 3, 45: 4, 60: 4},
+    "Abs": {20: 3, 30: 4, 45: 5, 60: 6},
+}
+
+CUSTOM_CATEGORY_TOTAL_OVERRIDES = {key.upper(): value for key, value in CATEGORY_TOTAL_OVERRIDES.items()}
 
 HOME_EQUIPMENT_OPTIONS = [
     {"token": "BODYWEIGHT", "label": "Bodyweight"},
@@ -204,6 +213,42 @@ def normalize_custom_workout_categories(categories) -> list[str]:
             seen.add(token)
             normalized.append(token)
     return normalized
+
+
+def base_duration_total(duration_minutes: int) -> int:
+    """Return the default exercise count for a given session length."""
+    base = DURATION_TOTAL_EXERCISES.get(duration_minutes)
+    if base is not None:
+        return max(1, int(base))
+    minutes = max(1, int(duration_minutes or 60))
+    estimated = round(minutes * DEFAULT_EXERCISES_PER_MINUTE)
+    return max(3, estimated)
+
+
+def resolve_duration_total(duration_minutes: int, category_name: str | None = None) -> int:
+    """Apply category-specific overrides to the default duration totals."""
+    total = base_duration_total(duration_minutes)
+    if category_name:
+        override = CATEGORY_TOTAL_OVERRIDES.get(category_name)
+        if override:
+            total = override.get(duration_minutes, total)
+    return max(1, total)
+
+
+def resolve_custom_duration_total(duration_minutes: int, categories: list[str]) -> int:
+    """
+    Determine the total exercise budget for a custom workout, allowing cardio/abs-only
+    sessions to inherit their stricter caps.
+    """
+    total = base_duration_total(duration_minutes)
+    normalized = [token for token in categories or [] if token]
+    unique_tokens = {token.upper() for token in normalized}
+    if len(unique_tokens) == 1:
+        token = next(iter(unique_tokens))
+        override = CUSTOM_CATEGORY_TOTAL_OVERRIDES.get(token)
+        if override:
+            total = override.get(duration_minutes, total)
+    return max(len(normalized), total)
 
 
 def custom_selection_bounds(duration_minutes: int) -> tuple[int, int]:
@@ -747,12 +792,8 @@ def generate_workout(
     except (TypeError, ValueError):
         duration_minutes = 60
 
-    BASE_MINUTES = 60  # new baseline
-    scale = duration_minutes / BASE_MINUTES
-
-    # Clamp scale to avoid crazy extremes
-    scale = max(0.33, min(1.0, scale))
-    # → 20 mins = ~0.33x, 30 = 0.5x, 45 = 0.75x, 60 = 1.0x
+    BASE_MINUTES = 60
+    scale = max(0.33, min(1.0, duration_minutes / BASE_MINUTES))
 
     category_key = (selected_category or "").strip()
     is_custom = category_key in CUSTOMIZABLE_WORKOUT_TOKENS
@@ -761,6 +802,8 @@ def generate_workout(
     equipment_clause = ""
     equipment_params: list[str] = []
     allow_cardio_bodyweight = False
+
+    total_target = None
 
     if is_custom:
         normalized = normalize_custom_workout_categories(custom_categories)
@@ -776,12 +819,7 @@ def generate_workout(
             (cat, CUSTOM_WORKOUT_BASE_COUNTS.get(cat, 2))
             for cat in normalized
         )
-        total_target = CUSTOM_WORKOUT_TOTAL_EXERCISES.get(duration_minutes)
-        if total_target is None:
-            # Default to a proportional scale similar to main program (roughly 10 exercises per hour)
-            proportional = max(3, round((duration_minutes or 60) * (10 / 60)))
-            total_target = proportional
-        total_target = max(len(normalized), total_target)
+        total_target = resolve_custom_duration_total(duration_minutes, normalized)
         equipment_tokens = normalize_home_equipment_selection(equipment_filters) if is_home else []
         if is_home:
             if not equipment_tokens:
@@ -793,6 +831,7 @@ def generate_workout(
         if not subcategories:
             raise ValueError("Invalid workout category selected.")
         subcategories = OrderedDict(subcategories.items())
+        total_target = resolve_duration_total(duration_minutes, category_key)
 
     restrict_barbell = bool(equipment_tokens) and "BARBELL" not in equipment_tokens
     restrict_dumbbell = bool(equipment_tokens) and "DUMBBELL" not in equipment_tokens
@@ -807,7 +846,7 @@ def generate_workout(
         subcategories,
         scale,
         priority_key,
-        total_override=total_target if is_custom else None,
+        total_override=total_target,
     )
 
     skipped = {
@@ -991,13 +1030,13 @@ def get_guidelines(exercise_history, fitness_goals):
             "Feel Better": {"Sets": "3-4", "Reps": "10-15", "Rest": "30-45 seconds"}
         },
         3: {  # Advanced
-            "Lose Weight": {"Sets": "4-5", "Reps": "8-12", "Rest": "15-30 seconds"},
-            "Gain Muscle": {"Sets": "5", "Reps": "6-10", "Rest": "30-60 seconds"},
-            "Tone Muscle": {"Sets": "4-5", "Reps": "8-10", "Rest": "30 seconds"},
-            "Abs": {"Sets": "4-5", "Reps": "15-25", "Rest": "30 seconds"},
-            "Increase Strength": {"Sets": "5", "Reps": "3-5", "Rest": "2-3minutes"},
-            "Increase Endurance": {"Sets": "4-5", "Reps": "20-30", "Rest": "15-30 seconds"},
-            "Feel Better": {"Sets": "4", "Reps": "12-15", "Rest": "30 seconds"}
+            "Lose Weight": {"Sets": "3-5", "Reps": "8-12", "Rest": "15-30 seconds"},
+            "Gain Muscle": {"Sets": "3-5", "Reps": "6-10", "Rest": "30-60 seconds"},
+            "Tone Muscle": {"Sets": "3-5", "Reps": "8-10", "Rest": "30 seconds"},
+            "Abs": {"Sets": "3-5", "Reps": "15-25", "Rest": "30 seconds"},
+            "Increase Strength": {"Sets": "3-5", "Reps": "3-5", "Rest": "2-3 minutes"},
+            "Increase Endurance": {"Sets": "3-5", "Reps": "20-30", "Rest": "15-30 seconds"},
+            "Feel Better": {"Sets": "3-4", "Reps": "12-15", "Rest": "30 seconds"}
         }
     }
 
