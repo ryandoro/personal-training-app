@@ -4683,7 +4683,7 @@ iframe.fullscreen-sim {
   background: rgba(30, 164, 230);
   color: #ffffff;
   border-color: rgba(30, 164, 230, 0.95);
-  box-shadow: 0 14px 30px rgba(30, 164, 230, 0.35);
+  box-shadow: none;
 }
 
 .trainer-backtotop-link:hover,
@@ -4843,6 +4843,18 @@ iframe.fullscreen-sim {
   padding: 1.25rem;
 }
 
+.trainer-client-table-wrapper {
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .trainer-client-table-wrapper {
+    overscroll-behavior: contain;
+  }
+}
+
 @media (max-width: 1199.98px) {
   .admin-users-table-wrapper {
     overflow-x: scroll;
@@ -4938,23 +4950,44 @@ iframe.fullscreen-sim {
 
 .trainer-client-action {
   border-radius: 999px;
-  border: 1px solid rgba(30, 164, 230, 0.55);
-  background: rgba(30, 164, 230, 0.08);
-  color: #1EA4E6;
+  border: 1px solid rgba(30, 164, 230, 0.35);
+  background: #FFFFFF;
+  color: #F7931A;
+  font-size: 0.85rem;
   font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  padding: 0.45rem 1.6rem;
-  box-shadow: 0 10px 24px rgba(30, 164, 230, 0.18);
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.1rem;
+  padding: 0.35rem 1rem;
+  white-space: normal;
+  line-height: 1.1;
+  text-align: center;
+  box-shadow: 0 2px 6px rgba(30, 164, 230, 0.12);
   transition: background 0.2s ease, color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.book-client-action-text {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.05rem;
+  line-height: 1;
+}
+
+.book-client-action-text span {
+  display: block;
 }
 
 .trainer-client-action:hover,
 .trainer-client-action:focus-visible {
-  background: linear-gradient(135deg, #1EA4E6 0%, #33C3F0 100%);
-  color: #ffffff;
+  background: #FFF2E4;
+  color: #F7931A;
   transform: translateY(-1px);
-  box-shadow: 0 16px 30px rgba(30, 164, 230, 0.28);
+  box-shadow: 0 4px 10px rgba(30, 164, 230, 0.18);
 }
 
 @media (max-width: 768px) {
@@ -5818,6 +5851,67 @@ iframe.fullscreen-sim {
   cursor: pointer;
   box-shadow: none;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.agenda-card .pagination {
+  flex-wrap: nowrap;
+  justify-content: center;
+  gap: 0.25rem;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.agenda-card .pagination::-webkit-scrollbar {
+  display: none;
+}
+
+.agenda-card .pagination .page-item {
+  flex: 0 0 auto;
+}
+
+.agenda-card .pagination .page-link {
+  min-width: 2.25rem;
+  text-align: center;
+  padding-inline: 0.5rem;
+}
+
+@media (max-width: 768px) {
+  .agenda-card .card-footer {
+    flex-direction: column;
+    align-items: stretch !important;
+    text-align: center;
+    gap: 1rem;
+  }
+
+  .agenda-card .card-footer .small {
+    width: 100%;
+  }
+
+  .agenda-card .card-footer > .d-flex {
+    width: 100%;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .agenda-card .card-footer .ms-auto {
+    margin-left: 0 !important;
+  }
+
+  .agenda-per-page {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .agenda-per-page label {
+    text-align: center;
+  }
+}
+
+@media (max-width: 420px) {
+  .agenda-card .pagination {
+    flex-wrap: wrap;
+    overflow-x: visible;
+  }
 }
 
 .agenda-table .form-check-input:focus {

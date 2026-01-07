@@ -103,6 +103,11 @@ CATEGORY_TOTAL_OVERRIDES = {
 
 CUSTOM_CATEGORY_TOTAL_OVERRIDES = {key.upper(): value for key, value in CATEGORY_TOTAL_OVERRIDES.items()}
 
+# Short custom sessions (20–30 min) only yield up to five exercises, so let each
+# selected bucket get a stronger foothold before biasing toward larger muscles.
+SHORT_CUSTOM_SESSION_EXERCISE_CAP = 5
+SHORT_CUSTOM_MIN_PER_CATEGORY = 2
+
 HOME_EQUIPMENT_OPTIONS = [
     {"token": "BODYWEIGHT", "label": "Bodyweight"},
     {"token": "DUMBBELL", "label": "Dumbbells"},
@@ -644,11 +649,29 @@ def allocate_counts(subcategories: dict, scale: float, selected_category: str, t
     # ---- 3) Start everyone at 0 ----
     counts = {k: 0 for k in subcategories}
 
+    # Custom sessions with very small budgets (20–30 min → <=5 exercises)
+    # should guarantee a higher floor so secondary groups aren't starved.
+    minimum_floor = 1
+    if (
+        selected_category in CUSTOMIZABLE_WORKOUT_TOKENS
+        and target_total <= SHORT_CUSTOM_SESSION_EXERCISE_CAP
+        and subcategories
+    ):
+        bucket_count = max(1, len(subcategories))
+        desired_floor = SHORT_CUSTOM_MIN_PER_CATEGORY
+        max_supported_floor = max(1, target_total // bucket_count)
+        minimum_floor = max(1, min(desired_floor, max_supported_floor))
+
     # ---- 4) Ensure representation in priority order ----
-    i = 0
-    while i < len(ordered_keys) and sum(counts.values()) < target_total:
-        counts[ordered_keys[i]] += 1
-        i += 1
+    for floor_level in range(minimum_floor):
+        for key in ordered_keys:
+            if sum(counts.values()) >= target_total:
+                break
+            if counts[key] < (floor_level + 1):
+                counts[key] += 1
+        else:
+            continue
+        break
 
     # ---- 5) Distribute remaining based on "desire" (how far from base pattern),
     #         tie-breaking by priority rank ----

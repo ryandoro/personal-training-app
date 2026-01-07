@@ -375,7 +375,7 @@
                                                      data-workout-card="{{ workout.workout_id }}"
                                                      data-client-id="{{ client.id }}"
                                                      data-exercise-type="{{ 'cardio' if is_cardio else ('hold' if is_plank else ('reps' if is_bodyweight_chart else 'strength')) }}"
-                                                     data-history-window="90d">
+                                                     data-history-window="all">
                                                     <div class="card-body d-flex flex-column">
                                                         <div class="d-flex justify-content-center align-items-center">
                                                             <h5 class="card-title text-primary fw-bold mb-0">{{ workout_name }}</h5>
@@ -416,9 +416,9 @@
                                                             <div class="chart-placeholder text-muted small">Log a max to unlock this chart.</div>
                                                         </div>
                                                         <div class="chart-window-controls btn-group btn-group-sm justify-content-center mt-2" role="group" aria-label="History Range">
-                                                            <button type="button" class="btn btn-outline-secondary chart-window-btn active" data-window="90d">90d</button>
+                                                            <button type="button" class="btn btn-outline-secondary chart-window-btn" data-window="90d">90d</button>
                                                             <button type="button" class="btn btn-outline-secondary chart-window-btn" data-window="1y">1y</button>
-                                                            <button type="button" class="btn btn-outline-secondary chart-window-btn" data-window="all">All</button>
+                                                            <button type="button" class="btn btn-outline-secondary chart-window-btn active" data-window="all">All</button>
                                                         </div>
                                                         <div class="d-flex flex-column flex-sm-column gap-2 mt-3">
                                                             <button class="btn btn-outline-secondary btn-sm max-action-btn update-pr-link" data-id="{{ workout.workout_id }}" data-category="{{ workout_category }}" data-plank="{{ 'true' if is_plank else 'false' }}">Update Max</button>
@@ -2807,13 +2807,13 @@
         });
 
         if (window.FitBaseExerciseHistory) {
-        window.FitBaseExerciseHistory.initCharts({
-            cardSelector: '#exercise-lookup-results .lookup-result-card',
-            historyUrl: historyEndpoint,
-            clientId: historyClientId,
-            defaultWindow: '90d',
-        });
-    }
+            window.FitBaseExerciseHistory.initCharts({
+                cardSelector: '#exercise-lookup-results .lookup-result-card',
+                historyUrl: historyEndpoint,
+                clientId: historyClientId,
+                defaultWindow: 'all',
+            });
+        }
 
         const resultsSection = document.getElementById('exercise-lookup-results');
         const hasExerciseLookupQuery = resultsSection?.dataset.hasQuery === 'true';

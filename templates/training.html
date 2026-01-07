@@ -859,7 +859,8 @@
             'personalWorkoutReorderUrl': personal_workout_reorder_url,
             'personalExerciseRefreshTemplate': personal_exercise_refresh_template,
             'personalExerciseAlternatesTemplate': personal_exercise_alternates_template,
-            'notesPlaceholder': notes_placeholder
+            'notesPlaceholder': notes_placeholder,
+            'isFreeUser': user is not none and user.subscription_type == 'free'
         }|tojson }}
         </script>
 
@@ -932,6 +933,7 @@
             const PERSONAL_REFRESH_TEMPLATE = trainingWorkoutConfig.personalExerciseRefreshTemplate || '';
             const PERSONAL_ALTERNATES_TEMPLATE = trainingWorkoutConfig.personalExerciseAlternatesTemplate || '';
             const NOTES_PLACEHOLDER = trainingWorkoutConfig.notesPlaceholder || '';
+            const IS_FREE_USER = Boolean(trainingWorkoutConfig.isFreeUser);
             const WORKOUT_COMPACT_STORAGE_KEY = 'fitbase_workout_compact_view';
             let compactWorkoutViewEnabled = false;
             try {
@@ -1955,27 +1957,19 @@
                                             data-group="${safeExerciseName}" data-index="1">
                                     </div>
                 ` : '';
-                const mediaRow = (startImageBlock || endImageBlock) ? `
+                const mediaRow = IS_FREE_USER
+                    ? ''
+                    : (startImageBlock || endImageBlock)
+                        ? `
                                 <div class="exercise-media-row d-flex justify-content-center flex-nowrap mb-3 px-2">
                                     ${startImageBlock}${endImageBlock}
                                 </div>
-                ` : '';
+                          `
+                        : '';
+                const videoSection = IS_FREE_USER ? '' : youtubeSection;
 
                 const subcategoryAttr = escapeHtml(subcategoryName || '');
-
-                return `
-                    <li class="mb-4 exercise-list-item"
-                        data-subcategory="${subcategoryAttr}"
-                        data-workout-id="${workoutIdAttr}">
-                        <div class="card shadow text-center w-100 exercise-card"
-                             data-workout-card="${sanitizedKey}">
-                            <div class="exercise-card-header">
-                                <button class="exercise-card-toggle" type="button" aria-expanded="true" aria-controls="${bodyId}">
-                                    <span class="exercise-name">${safeExerciseName}</span>
-                                    <span class="exercise-card-toggle-icon" aria-hidden="true">
-                                        <i class="bi bi-chevron-down"></i>
-                                    </span>
-                                </button>
+                const cardControlsHtml = IS_FREE_USER ? '' : `
                                 <div class="exercise-card-controls">
                                     <button type="button"
                                         class="exercise-refresh-btn"
@@ -1990,10 +1984,8 @@
                                         <i class="bi bi-grip-vertical"></i>
                                     </span>
                                 </div>
-                            </div>
-                            <div id="${bodyId}" class="exercise-card-body">
-                                ${mediaRow}
-                                ${youtubeSection}
+                `;
+                const progressSection = IS_FREE_USER ? '' : `
                                 <div class="d-flex flex-column align-items-center gap-3 max-actions">
                                     <div class="personal-best max-summary" data-id="${workoutIdAttr}" data-category="${categoryAttr}" data-bodyweight="${isBodyweight && !isCardio}" data-plank="${isPlank}">
                                         <span class="max-label text-uppercase fw-semibold">Your Max</span>
@@ -2018,9 +2010,19 @@
                                         </button>
                                     </div>
                                 </div>
+                `;
+                const descriptionSection = IS_FREE_USER
+                    ? `
+                                <div class="exercise-description mt-3 text-center">
+                                    <p class="small text-muted mb-0">${description}</p>
+                                </div>
+                    `
+                    : `
                                 <div id="${descId}" class="exercise-description mt-3 text-center" style="display: none;">
                                     <p class="small text-muted mb-0">${description}</p>
                                 </div>
+                    `;
+                const notesSection = IS_FREE_USER ? '' : `
                                 <div class="exercise-notes mt-3 text-start">
                                     <div class="d-flex justify-content-between align-items-center mb-2">
                                         <i class="bi bi-journal-text text-primary"></i>
@@ -2033,6 +2035,29 @@
                                     </div>
                                     <div class="notes-body small" data-id="${workoutIdAttr}">${notesDisplay}</div>
                                 </div>
+                `;
+
+                return `
+                    <li class="mb-4 exercise-list-item"
+                        data-subcategory="${subcategoryAttr}"
+                        data-workout-id="${workoutIdAttr}">
+                        <div class="card shadow text-center w-100 exercise-card"
+                             data-workout-card="${sanitizedKey}">
+                            <div class="exercise-card-header">
+                                <button class="exercise-card-toggle" type="button" aria-expanded="true" aria-controls="${bodyId}">
+                                    <span class="exercise-name">${safeExerciseName}</span>
+                                    <span class="exercise-card-toggle-icon" aria-hidden="true">
+                                        <i class="bi bi-chevron-down"></i>
+                                    </span>
+                                </button>
+                                ${cardControlsHtml}
+                            </div>
+                            <div id="${bodyId}" class="exercise-card-body">
+                                ${mediaRow}
+                                ${videoSection}
+                                ${progressSection}
+                                ${descriptionSection}
+                                ${notesSection}
                             </div>
                         </div>
                     </li>

@@ -110,11 +110,11 @@
                         <thead>
                             <tr>
                                 <th scope="col">Name</th>
-                                <th scope="col" class="text-center">Workouts Completed</th>
-                                <th scope="col" class="text-center">Sessions Booked</th>
-                                <th scope="col" class="text-center">Sessions Completed</th>
                                 <th scope="col" class="text-center">Sessions Left</th>
                                 <th scope="col" class="text-center">Actions</th>
+                                <th scope="col" class="text-center">Sessions Booked</th>
+                                <th scope="col" class="text-center">Sessions Completed</th>
+                                <th scope="col" class="text-center">Workouts Completed</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -130,9 +130,6 @@
                                                 <span class="visually-hidden">Open client profile</span>
                                             </a>
                                         </td>
-                                        <td class="text-center workouts-completed-cell">{{ client.workouts_completed or 0 }}</td>
-                                        <td class="text-center sessions-booked-cell">{{ client.sessions_booked or 0 }}</td>
-                                        <td class="text-center sessions-completed-cell">{{ client.sessions_completed_count }}</td>
                                         <td class="text-center sessions-left-cell">
                                             {% if client.sessions_total is not none %}
                                                 {{ client.sessions_left }} / {{ client.sessions_total }}
@@ -151,9 +148,15 @@
                                                     data-sessions-booked="{{ client.sessions_booked or 0 }}"
                                                     data-sessions-completed="{{ client.sessions_completed_count }}"
                                                     data-workouts-completed="{{ client.workouts_completed or 0 }}">
-                                                    Book Now
+                                                    <span class="book-client-action-text">
+                                                        <span>Book</span>
+                                                        <span>Now</span>
+                                                    </span>
                                                 </button>
                                         </td>
+                                        <td class="text-center sessions-booked-cell">{{ client.sessions_booked or 0 }}</td>
+                                        <td class="text-center sessions-completed-cell">{{ client.sessions_completed_count }}</td>
+                                        <td class="text-center workouts-completed-cell">{{ client.workouts_completed or 0 }}</td>
                                     </tr>
                                 {% endfor %}
                             {% else %}
@@ -290,7 +293,7 @@
                     </button>
                 </div>
                 <div class="col-12">
-                    <label for="timeOffNote" class="form-label small text-uppercase text-muted">Trainer Note (optional)</label>
+                    <label for="timeOffNote" class="form-label small text-center text-muted">Trainer Note (optional)</label>
                     <textarea class="form-control" id="timeOffNote" rows="2" maxlength="1000" placeholder="Add a private reminder about this block"></textarea>
                     <div class="form-text">Only you can see these notes.</div>
                 </div>
@@ -407,6 +410,9 @@
                         <div class="form-text text-danger mt-2 d-none" id="eventRescheduleError"></div>
                     </div>
                 </form>
+                <div class="form-text mt-2 text-muted" id="eventStatusInfo" role="status" aria-live="polite">
+                    Sessions remaining for client: —
+                </div>
             </div>
 
             <button type="button" class="btn btn-outline-primary w-100" id="eventViewProfile">
@@ -427,9 +433,6 @@
                         <i class="bi bi-check2-circle me-1"></i>Apply
                     </button>
                 </form>
-                <div class="form-text mt-2 text-muted" id="eventStatusInfo" role="status" aria-live="polite">
-                    Status changes update client balances immediately.
-                </div>
             </div>
 
             <div class="event-session-modal__section d-none" id="timeOffEditSection">
@@ -464,7 +467,7 @@
             </div>
             <div class="event-session-modal__section">
                 <div class="event-session-modal__noteform-wrapper">
-                    <div class="event-session-modal__noteform-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <div class="event-session-modal__noteform-header d-flex justify-content-center align-items-center flex-wrap gap-2">
                         <label for="eventNoteInput" class="form-label small text-uppercase text-muted mb-0">Trainer Note</label>
                     </div>
                     <form id="eventNoteForm" class="event-session-modal__noteform" novalidate>
@@ -592,7 +595,7 @@
 </template>
 
 <script>
-(function(){
+document.addEventListener('DOMContentLoaded', () => {
     const calendarRoot = document.getElementById('trainer-calendar');
     if (!calendarRoot) return;
 
@@ -692,7 +695,7 @@
     const trainerSessionsCompletedEls = document.querySelectorAll('.trainer-sessions-completed-value');
     const trainerSessionsCompletedAllTimeEls = document.querySelectorAll('.trainer-sessions-completed-alltime-value');
     const trainerStats = JSON.parse('{{ {"totalClients": trainer_stats.total_clients|default(0, true), "sessionsCompleted": trainer_stats.sessions_completed|default(0, true), "sessionsCompletedAllTime": trainer_stats.sessions_completed_all_time|default(0, true)} | tojson | safe }}');
-    const STATUS_INFO_DEFAULT_SESSION = 'Status changes update client balances immediately.';
+    const STATUS_INFO_DEFAULT_SESSION = 'Sessions remaining for client: —';
     const STATUS_INFO_DEFAULT_TIME_OFF = 'Personal time blocks prevent new sessions during this window.';
     const STATUS_INFO_DEFAULT_VARIANT = 'muted';
 
@@ -828,6 +831,18 @@
         }
     }
 
+    function buildSelectedClientMessage(fullName, sessionsLeft, sessionsTotal) {
+        const safeName = (fullName || 'Client').trim() || 'Client';
+        let suffix = '';
+        if (sessionsTotal === null || typeof sessionsTotal === 'undefined') {
+            suffix = ' (\u221E)';
+        } else if (typeof sessionsLeft === 'number' && Number.isFinite(sessionsLeft)) {
+            const normalized = Math.max(0, Math.round(sessionsLeft));
+            suffix = ` (${normalized})`;
+        }
+        return `Booking for ${safeName}${suffix}`;
+    }
+
     const VIEW_MODE_STORAGE_KEY = 'trainerCalendarViewMode';
 
     function loadStoredViewMode() {
@@ -881,6 +896,77 @@
         dragHoldInfo: null,
         dragHoldTimer: null
     };
+
+    function getClientSessionSnapshot(clientId) {
+        const fallback = { sessionsLeft: null, sessionsTotal: null };
+        if (clientId === null || typeof clientId === 'undefined') {
+            return fallback;
+        }
+        const idString = String(clientId);
+        if (state.selectedClient && String(state.selectedClient.id) === idString) {
+            return {
+                sessionsLeft: state.selectedClient.sessionsLeft,
+                sessionsTotal: state.selectedClient.sessions
+            };
+        }
+        const button = document.querySelector(`.book-client-btn[data-client-id="${idString}"]`);
+        if (button) {
+            return {
+                sessionsLeft: parseSessionValue(button.dataset.sessionsLeft),
+                sessionsTotal: parseSessionValue(button.dataset.sessions)
+            };
+        }
+        if (state.modalEvent && state.modalEvent.client_id !== undefined && String(state.modalEvent.client_id) === idString) {
+            return {
+                sessionsLeft: parseSessionValue(state.modalEvent.sessions_left),
+                sessionsTotal: parseSessionValue(state.modalEvent.sessions_remaining)
+            };
+        }
+        return fallback;
+    }
+
+    function formatSessionsRemainingMessage(clientId) {
+        const snapshot = getClientSessionSnapshot(clientId);
+        const total = snapshot.sessionsTotal;
+        const left = snapshot.sessionsLeft;
+        if (total === null || typeof total === 'undefined') {
+            return 'Sessions remaining for client: ∞';
+        }
+        if (typeof left === 'number' && Number.isFinite(left)) {
+            const normalized = Math.max(0, Math.round(left));
+            return `Sessions remaining for client: ${normalized}`;
+        }
+        return STATUS_INFO_DEFAULT_SESSION;
+    }
+
+    function updateModalSessionsRemaining(clientId = null) {
+        if (!state.modalEvent || (state.modalEvent.type || 'session') === 'time_off') return;
+        const targetId = clientId !== null ? clientId : state.modalEvent.client_id;
+        if (targetId === null || typeof targetId === 'undefined') return;
+        if (String(state.modalEvent.client_id) !== String(targetId)) return;
+        const message = formatSessionsRemainingMessage(targetId);
+        rememberEventStatusDefault(message, STATUS_INFO_DEFAULT_VARIANT);
+        if (eventModalTitle && state.modalEvent) {
+            const baseTitle = (state.modalEvent.client_display_name || eventModalTitle.textContent || '').replace(/\s*\([^)]*\)\s*$/, '') || 'Client Session';
+            const match = message.match(/:\s*(.+)$/);
+            const suffix = match ? match[1] : '';
+            eventModalTitle.textContent = suffix && suffix !== '—' ? `${baseTitle} (${suffix})` : baseTitle;
+        }
+    }
+
+    function refreshSelectedClientLabel() {
+        if (!state.selectedClient) {
+            setSelectedClientDisplay('No client selected', true);
+            if (state.modalEvent && (state.modalEvent.type || 'session') !== 'time_off') {
+                rememberEventStatusDefault(STATUS_INFO_DEFAULT_SESSION, STATUS_INFO_DEFAULT_VARIANT);
+            }
+            return;
+        }
+        const fullName = `${state.selectedClient.name || ''} ${state.selectedClient.last || ''}`.trim() || 'Client';
+        const message = buildSelectedClientMessage(fullName, state.selectedClient.sessionsLeft, state.selectedClient.sessions);
+        setSelectedClientDisplay(message, false);
+        updateModalSessionsRemaining(state.selectedClient.id);
+    }
 
     updateViewToggleUI(initialMode);
     calendarRoot.classList.toggle('calendar-mode-full', initialMode === 'full');
@@ -1087,6 +1173,25 @@
         }
     }
 
+    function updateStatusSelectAppearance(status) {
+        const baseClasses = ['status-select--booked', 'status-select--completed', 'status-select--cancelled'];
+        eventStatusWrapper?.classList.remove(...baseClasses);
+        const normalized = (status || 'booked').toLowerCase();
+        const appliedClass = normalized === 'completed'
+            ? 'status-select--completed'
+            : normalized === 'cancelled'
+                ? 'status-select--cancelled'
+                : 'status-select--booked';
+        eventStatusWrapper?.classList.add(appliedClass);
+    }
+
+    function setRepeatInfoMessage(message) {
+        if (!eventRepeatInfo) return;
+        const text = message ? String(message) : '';
+        eventRepeatInfo.textContent = text;
+        eventRepeatInfo.classList.toggle('d-none', !text);
+    }
+
     function setEventStatusInfoMessage(message, variant = STATUS_INFO_DEFAULT_VARIANT) {
         if (!eventStatusInfo) return;
         const text = message ? String(message) : '';
@@ -1119,25 +1224,6 @@
         const defaultMessage = eventStatusInfo.dataset.defaultMessage || STATUS_INFO_DEFAULT_SESSION;
         const defaultVariant = eventStatusInfo.dataset.defaultVariant || STATUS_INFO_DEFAULT_VARIANT;
         setEventStatusInfoMessage(defaultMessage, defaultVariant);
-    }
-
-    function updateStatusSelectAppearance(status) {
-        const baseClasses = ['status-select--booked', 'status-select--completed', 'status-select--cancelled'];
-        eventStatusWrapper?.classList.remove(...baseClasses);
-        const normalized = (status || 'booked').toLowerCase();
-        const appliedClass = normalized === 'completed'
-            ? 'status-select--completed'
-            : normalized === 'cancelled'
-                ? 'status-select--cancelled'
-                : 'status-select--booked';
-        eventStatusWrapper?.classList.add(appliedClass);
-    }
-
-    function setRepeatInfoMessage(message) {
-        if (!eventRepeatInfo) return;
-        const text = message ? String(message) : '';
-        eventRepeatInfo.textContent = text;
-        eventRepeatInfo.classList.toggle('d-none', !text);
     }
 
     function updateNoteWrapperHighlight(value) {
@@ -1366,6 +1452,7 @@
                     state.selectedClientButton.dataset.workoutsCompleted = String(workoutsCompleted);
                 }
             }
+            refreshSelectedClientLabel();
         }
     }
 
@@ -1378,8 +1465,6 @@
         button.classList.add('active');
         const name = button.dataset.clientName || 'Client';
         const last = button.dataset.clientLastname || '';
-        const fullName = `${name} ${last}`.trim();
-        setSelectedClientDisplay(`Booking for ${fullName}`, false);
         const sessionsTotal = parseSessionValue(button.dataset.sessions);
         const sessionsLeft = parseSessionValue(button.dataset.sessionsLeft);
         const sessionsBooked = Number(button.dataset.sessionsBooked || '0');
@@ -1396,6 +1481,7 @@
             workoutsCompleted
         };
         state.selectedClientButton = button;
+        refreshSelectedClientLabel();
     }
 
     function applyStatusBadge(status) {
@@ -1491,12 +1577,20 @@
         const status = (modalData.status || 'booked').toLowerCase();
         const start = new Date(modalData.start_time);
         const end = new Date(modalData.end_time);
-        if (eventModalTitle) {
-            if (eventType === 'time_off') {
+        if (eventType === 'time_off') {
+            delete state.modalEvent.client_display_name;
+            if (eventModalTitle) {
                 eventModalTitle.textContent = modalData.title || 'Personal Time';
-            } else {
-                const fullName = modalData.client_name ? `${modalData.client_name} ${modalData.client_last_name || ''}`.trim() : modalData.client_username;
-                eventModalTitle.textContent = fullName || 'Client Session';
+            }
+        } else {
+            const fullName = modalData.client_name ? `${modalData.client_name} ${modalData.client_last_name || ''}`.trim() : modalData.client_username;
+            const baseTitle = fullName || 'Client Session';
+            state.modalEvent.client_display_name = baseTitle;
+            const sessionsLeftMessage = formatSessionsRemainingMessage(modalData.client_id);
+            const match = sessionsLeftMessage.match(/:\s*(.+)$/);
+            const suffix = match ? match[1] : '';
+            if (eventModalTitle) {
+                eventModalTitle.textContent = suffix && suffix !== '—' ? `${baseTitle} (${suffix})` : baseTitle;
             }
         }
         const dateStr = start.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
@@ -1547,10 +1641,11 @@
             updateStatusSelectAppearance(selectStatus);
         }
         if (eventStatusInfo) {
-            const statusMessage = eventType === 'time_off'
-                ? STATUS_INFO_DEFAULT_TIME_OFF
-                : STATUS_INFO_DEFAULT_SESSION;
-            rememberEventStatusDefault(statusMessage);
+            if (eventType === 'time_off') {
+                rememberEventStatusDefault(STATUS_INFO_DEFAULT_TIME_OFF, STATUS_INFO_DEFAULT_VARIANT);
+            } else {
+                rememberEventStatusDefault(formatSessionsRemainingMessage(modalData.client_id), STATUS_INFO_DEFAULT_VARIANT);
+            }
         }
         if (eventStatusUpdate) {
             eventStatusUpdate.disabled = false;
@@ -2215,8 +2310,6 @@ function applyWeekPicker(event) {
         button.classList.add('active');
         const name = button.dataset.clientName || 'Client';
         const last = button.dataset.clientLastname || '';
-        const fullName = `${name} ${last}`.trim();
-        setSelectedClientDisplay(`Booking for ${fullName}`, false);
         const sessionsTotal = parseSessionValue(button.dataset.sessions);
         const sessionsLeft = parseSessionValue(button.dataset.sessionsLeft);
         const sessionsBooked = Number(button.dataset.sessionsBooked || '0');
@@ -2241,6 +2334,7 @@ function applyWeekPicker(event) {
             bookButtons.forEach(btn => btn.classList.remove('active'));
             return;
         }
+        refreshSelectedClientLabel();
         calendarRoot.scrollIntoView({ behavior: 'smooth', block: 'start' });
         renderEvents();
     }
@@ -3617,6 +3711,6 @@ function applyWeekPicker(event) {
 
     init();
     applyInitialFocus();
-})();
+});
 </script>
 {% endblock %}

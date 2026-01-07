@@ -134,6 +134,7 @@ HISTORY_WINDOW_DELTAS = {
 }
 DEFAULT_HISTORY_WINDOW = '90d'
 WORKOUT_NOTES_PLACEHOLDER = "No notes yet."
+FREE_SUBSCRIPTION_CATEGORY = "Shoulders and Abs"
 
 TRAINER_CLIENT_COUNT_BUCKETS = [
     {'code': 1, 'label': '0-5 active clients', 'min': 0, 'max': 5},
@@ -498,6 +499,8 @@ def home():
 
     # Get the user ID from the session
     user_id = session['user_id']
+    check_and_downgrade_trial(user_id)
+    check_subscription_expiry(user_id)
     now_utc = datetime.now(timezone.utc)
     _, workout_details_timezone, workout_details_tz_offset = _resolve_request_timezone('workout_session')
 
@@ -1587,6 +1590,14 @@ def training():
             cursor.execute("SELECT * FROM users WHERE id = %s", (user_id,))
             user = cursor.fetchone()
 
+    is_free_user = bool(((user or {}).get('subscription_type') or '').lower() == 'free')
+    if is_free_user:
+        grouped_workouts = {
+            key: value
+            for key, value in grouped_workouts.items()
+            if key == FREE_SUBSCRIPTION_CATEGORY
+        }
+
     personal_workout_customization_enabled = _user_can_customize_personal_workout(user)
     personal_workout_reorder_url = (
         url_for('personal_reorder_workout_exercises') if personal_workout_customization_enabled else ''
@@ -2419,6 +2430,7 @@ def _schedule_conflicts(cursor, trainer_id: int, client_id: int, start_dt: datet
          WHERE trainer_id = %s
            AND end_time > %s
            AND start_time < %s
+           AND is_self_booked = FALSE
            {exclude_clause}
          LIMIT 1
         """,
@@ -2460,6 +2472,7 @@ def _time_off_conflicts(cursor, trainer_id: int, start_dt: datetime, end_dt: dat
          WHERE trainer_id = %s
            AND end_time > %s
            AND start_time < %s
+           AND is_self_booked = FALSE
         LIMIT 1
         """,
         (trainer_id, start_dt, end_dt),
@@ -3952,7 +3965,8 @@ def _fetch_trainer_sessions(
     start_time_from: datetime | None = None,
     start_time_to: datetime | None = None,
 ):
-    base_conditions = ["ts.trainer_id = %s"]
+    # Trainers should only see client sessions in this agenda so filter out self bookings
+    base_conditions = ["ts.trainer_id = %s", "ts.is_self_booked = FALSE"]
     base_params = [trainer_id]
 
     cursor.execute(
@@ -4385,6 +4399,16 @@ def trainer_client_agenda(client_id):
             'end_time_iso': end_iso,
         })
 
+    page_totals = {
+        'booked': 0,
+        'cancelled': 0,
+        'completed': 0,
+    }
+    for event in agenda_events:
+        status = event.get('status')
+        if status in page_totals:
+            page_totals[status] += 1
+
     if total_filtered:
         page_start_index = offset + 1 if agenda_events else 0
         page_end_index = offset + len(agenda_events)
@@ -4437,6 +4461,7 @@ def trainer_client_agenda(client_id):
         bulk_action=bulk_action if request.method == 'POST' else '',
         timezone_name=timezone_name,
         tz_offset_minutes=tz_offset_minutes,
+        page_session_totals=page_totals,
     )
 
 
@@ -4660,6 +4685,16 @@ def client_self_agenda():
             'end_time_iso': end_iso,
         })
 
+    page_totals = {
+        'booked': 0,
+        'cancelled': 0,
+        'completed': 0,
+    }
+    for event in agenda_events:
+        status = event.get('status')
+        if status in page_totals:
+            page_totals[status] += 1
+
     if filtered_total:
         page_start_index = offset + 1 if agenda_events else 0
         page_end_index = offset + len(agenda_events)
@@ -4713,6 +4748,7 @@ def client_self_agenda():
         view_only=True,
         timezone_name=timezone_name,
         tz_offset_minutes=tz_offset_minutes,
+        page_session_totals=page_totals,
     )
 
 
@@ -5030,6 +5066,16 @@ def trainer_agenda():
             'end_time_iso': end_iso,
         })
 
+    page_totals = {
+        'booked': 0,
+        'cancelled': 0,
+        'completed': 0,
+    }
+    for event in agenda_events:
+        status = event.get('status')
+        if status in page_totals:
+            page_totals[status] += 1
+
     if total_filtered:
         page_start_index = offset + 1 if agenda_events else 0
         page_end_index = offset + len(agenda_events)
@@ -5081,6 +5127,7 @@ def trainer_agenda():
         bulk_action=bulk_action if request.method == 'POST' else '',
         timezone_name=timezone_name,
         tz_offset_minutes=tz_offset_minutes,
+        page_session_totals=page_totals,
     )
 
 
@@ -5438,6 +5485,8 @@ def client_schedule_preferences():
 @login_required
 def client_schedule_view():
     user_id = session['user_id']
+    check_and_downgrade_trial(user_id)
+    check_subscription_expiry(user_id)
     role = session.get('role')
 
     if role == 'trainer' or role == 'admin':
@@ -5856,7 +5905,7 @@ def generate_client_workout(client_id):
         if subscription_type == 'free' or (
             subscription_type == 'premium' and trial_end_date and today > trial_end_date
         ):
-            if selected_category != 'Shoulders and Abs':
+            if selected_category != FREE_SUBSCRIPTION_CATEGORY:
                 flash("This client needs Premium access to use that category.", "warning")
                 return redirect(url_for('client_profile', client_id=client_id))
 
@@ -6671,7 +6720,7 @@ def generate_workout_route():
 
             today = datetime.today().date()
             if subscription_type == 'free' or (subscription_type == 'premium' and trial_end_date and today > trial_end_date):
-                if selected_category != 'Shoulders and Abs':
+                if selected_category != FREE_SUBSCRIPTION_CATEGORY:
                     return jsonify({'success': False, 'error': 'Upgrade to Premium to access this category.'})
 
             user_level = get_user_level(exercise_history)
@@ -8521,6 +8570,9 @@ def exercise_history_data():
 @app.route("/search")
 @login_required
 def search():
+    user_id = session['user_id']
+    check_and_downgrade_trial(user_id)
+    check_subscription_expiry(user_id)
     query = request.args.get("q", "").strip()
 
     if not query:
@@ -8557,7 +8609,7 @@ def search():
                           END,
                           w.name
                 """,
-                (session["user_id"], f"%{query}%"),
+                (user_id, f"%{query}%"),
             )
             results = cursor.fetchall() or []
 

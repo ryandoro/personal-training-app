@@ -252,6 +252,42 @@
                                     <ul class="pagination pagination-sm mb-0">
                                         <li class="page-item {% if page == 1 %}disabled{% endif %}">
                                             {% if page == 1 %}
+                                                <span class="page-link" aria-label="First page">
+                                                    <span aria-hidden="true">&laquo;</span>
+                                                </span>
+                                            {% else %}
+                                                {% if view_only %}
+                                                    <a class="page-link"
+                                                       href="{{ url_for('client_self_agenda',
+                                                                        page=1,
+                                                                        per_page=per_page,
+                                                                        view=view_query_param,
+                                                                        start_date=start_query_param,
+                                                                        end_date=end_query_param,
+                                                                        timezone=timezone_query_param,
+                                                                        tz_offset=tz_offset_query_param) }}#agendaTable"
+                                                       aria-label="First page">
+                                                        <span aria-hidden="true">&laquo;</span>
+                                                    </a>
+                                                {% else %}
+                                                    <a class="page-link"
+                                                       href="{{ url_for('trainer_client_agenda',
+                                                                        client_id=client.id,
+                                                                        page=1,
+                                                                        per_page=per_page,
+                                                                        view=view_query_param,
+                                                                        start_date=start_query_param,
+                                                                        end_date=end_query_param,
+                                                                        timezone=timezone_query_param,
+                                                                        tz_offset=tz_offset_query_param) }}#agendaTable"
+                                                       aria-label="First page">
+                                                        <span aria-hidden="true">&laquo;</span>
+                                                    </a>
+                                                {% endif %}
+                                            {% endif %}
+                                        </li>
+                                        <li class="page-item {% if page == 1 %}disabled{% endif %}">
+                                            {% if page == 1 %}
                                                 <span class="page-link">Previous</span>
                                             {% else %}
                                                 {% if view_only %}
@@ -348,6 +384,42 @@
                                                 {% endif %}
                                             {% endif %}
                                         </li>
+                                        <li class="page-item {% if page == total_pages %}disabled{% endif %}">
+                                            {% if page == total_pages %}
+                                                <span class="page-link" aria-label="Last page">
+                                                    <span aria-hidden="true">&raquo;</span>
+                                                </span>
+                                            {% else %}
+                                                {% if view_only %}
+                                                    <a class="page-link"
+                                                       href="{{ url_for('client_self_agenda',
+                                                                        page=total_pages,
+                                                                        per_page=per_page,
+                                                                        view=view_query_param,
+                                                                        start_date=start_query_param,
+                                                                        end_date=end_query_param,
+                                                                        timezone=timezone_query_param,
+                                                                        tz_offset=tz_offset_query_param) }}#agendaTable"
+                                                       aria-label="Last page">
+                                                        <span aria-hidden="true">&raquo;</span>
+                                                    </a>
+                                                {% else %}
+                                                    <a class="page-link"
+                                                       href="{{ url_for('trainer_client_agenda',
+                                                                        client_id=client.id,
+                                                                        page=total_pages,
+                                                                        per_page=per_page,
+                                                                        view=view_query_param,
+                                                                        start_date=start_query_param,
+                                                                        end_date=end_query_param,
+                                                                        timezone=timezone_query_param,
+                                                                        tz_offset=tz_offset_query_param) }}#agendaTable"
+                                                       aria-label="Last page">
+                                                        <span aria-hidden="true">&raquo;</span>
+                                                    </a>
+                                                {% endif %}
+                                            {% endif %}
+                                        </li>
                                     </ul>
                                 </nav>
                             {% endif %}
@@ -362,6 +434,23 @@
                         </div>
                     </div>
                 </form>
+                <div class="agenda-session-summary mt-4 pt-3 border-top">
+                    {% set session_totals = page_session_totals or {'booked': 0, 'cancelled': 0, 'completed': 0} %}
+                    <div class="d-flex flex-wrap justify-content-center gap-3 align-items-center" aria-live="polite">
+                        <div class="client-pill client-pill--stat trainer-week-pill">
+                            <span class="trainer-week-pill__label text-uppercase">Booked</span>
+                            <span class="trainer-week-pill__value">{{ session_totals.booked }}</span>
+                        </div>
+                        <div class="client-pill client-pill--stat trainer-week-pill">
+                            <span class="trainer-week-pill__label text-uppercase">Cancelled</span>
+                            <span class="trainer-week-pill__value">{{ session_totals.cancelled }}</span>
+                        </div>
+                        <div class="client-pill client-pill--stat trainer-week-pill">
+                            <span class="trainer-week-pill__label text-uppercase">Completed</span>
+                            <span class="trainer-week-pill__value">{{ session_totals.completed }}</span>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -447,9 +536,48 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const perPageSelect = document.getElementById('perPageSelect');
     if (perPageSelect) {
-        perPageSelect.addEventListener('change', () => {
+        const perPageStorageKey = 'clientAgendaPerPage';
+        const optionValues = new Set(Array.from(perPageSelect.options).map(option => option.value));
+        const getStoredPerPage = () => {
+            try {
+                return localStorage.getItem(perPageStorageKey);
+            } catch (err) {
+                return null;
+            }
+        };
+        const setStoredPerPage = (value) => {
+            try {
+                localStorage.setItem(perPageStorageKey, value);
+            } catch (err) {
+                // ignore unable to persist
+            }
+        };
+        const isValidPerPage = (value) => optionValues.has(value);
+
+        const storedPerPage = getStoredPerPage();
+        const currentPerPage = perPageSelect.value;
+        if (storedPerPage && isValidPerPage(storedPerPage) && storedPerPage !== currentPerPage) {
             const params = new URLSearchParams(window.location.search);
-            params.set('per_page', perPageSelect.value);
+            if (params.get('per_page') !== storedPerPage) {
+                params.set('per_page', storedPerPage);
+                params.set('page', '1');
+                const query = params.toString();
+                const basePath = window.location.pathname;
+                const target = query ? `${basePath}?${query}` : basePath;
+                window.location.replace(`${target}#agendaTable`);
+                return;
+            }
+        } else if (!storedPerPage || !isValidPerPage(storedPerPage)) {
+            setStoredPerPage(currentPerPage);
+        }
+
+        perPageSelect.addEventListener('change', () => {
+            const chosen = perPageSelect.value;
+            if (isValidPerPage(chosen)) {
+                setStoredPerPage(chosen);
+            }
+            const params = new URLSearchParams(window.location.search);
+            params.set('per_page', chosen);
             params.set('page', '1');
             const query = params.toString();
             const basePath = window.location.pathname;
