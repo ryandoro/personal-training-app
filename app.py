@@ -1,5 +1,5 @@
 import os, re, logging, json, math, uuid, psycopg2, psycopg2.extras, psycopg2.errors, stripe, requests
-from flask import Flask, flash, redirect, render_template, request, session, jsonify, url_for, current_app, abort
+from flask import Flask, flash, redirect, render_template, request, session, jsonify, url_for, current_app, abort, send_from_directory
 from markupsafe import Markup
 from werkzeug.security import generate_password_hash, check_password_hash
 from helpers import (
@@ -1181,6 +1181,15 @@ def logout():
     return redirect('/login')
 
 
+@app.route('/favicon.ico')
+def favicon():
+    """Serve the favicon from the static directory."""
+    return send_from_directory(
+        os.path.join(app.root_path, 'static'),
+        'favicon.png',
+        mimetype='image/png',
+    )
+
 
 @app.route('/training', methods=['GET', 'POST'])
 @login_required
@@ -1589,14 +1598,6 @@ def training():
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
             cursor.execute("SELECT * FROM users WHERE id = %s", (user_id,))
             user = cursor.fetchone()
-
-    is_free_user = bool(((user or {}).get('subscription_type') or '').lower() == 'free')
-    if is_free_user:
-        grouped_workouts = {
-            key: value
-            for key, value in grouped_workouts.items()
-            if key == FREE_SUBSCRIPTION_CATEGORY
-        }
 
     personal_workout_customization_enabled = _user_can_customize_personal_workout(user)
     personal_workout_reorder_url = (
