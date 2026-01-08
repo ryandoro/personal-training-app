@@ -6244,7 +6244,7 @@ iframe.fullscreen-sim {
   cursor: grab;
 }
 
-.training-container .exercise-card-controls {
+.exercise-card-controls {
   display: flex;
   align-items: center;
   gap: 0.25rem;
@@ -6326,6 +6326,43 @@ iframe.fullscreen-sim {
   font-size: 1.05rem;
 }
 
+.exercise-card-controls .exercise-card-toggle-mobile {
+  display: none;
+}
+
+.exercise-card-toggle-mobile {
+  border: 1.5px solid rgba(247, 147, 26, 0.45);
+  background: transparent;
+  color: #f7931a;
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s ease, transform 0.2s ease;
+  padding: 0;
+}
+
+.exercise-card-toggle-mobile .bi {
+  font-size: 1.05rem;
+  line-height: 1;
+}
+
+.exercise-card-toggle-mobile .exercise-card-toggle-icon {
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+
+.exercise-card-toggle-mobile:hover,
+.exercise-card-toggle-mobile:focus-visible {
+  transform: translateY(-1px);
+  outline: 0;
+}
+
 .training-container .exercise-drag-handle {
   display: flex;
   align-items: center;
@@ -6333,12 +6370,10 @@ iframe.fullscreen-sim {
   padding: 0.2rem 0.35rem;
   min-width: 1.75rem;
   min-height: 2.5rem;
-  color: rgba(30, 164, 230, 0.8);
-  background: rgba(30, 164, 230, 0.08);
-  border-radius: 10px;
+  color: #1ea4e6;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.2s ease, background 0.2s ease, min-width 0.2s ease, min-height 0.2s ease;
+  transition: opacity 0.2s ease, min-width 0.2s ease, min-height 0.2s ease;
 }
 
 .training-container .exercise-drag-handle .bi {
@@ -6387,44 +6422,156 @@ iframe.fullscreen-sim {
   animation: exercise-refresh-spin 0.85s linear infinite;
 }
 
+.exercise-card-controls .exercise-remove-btn {
+  background: transparent;
+  border: 0;
+  color: #dc3545;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s ease, transform 0.2s ease;
+}
+
+.exercise-card-controls .exercise-remove-btn:hover,
+.exercise-card-controls .exercise-remove-btn:focus-visible {
+  color: #a71d2a;
+  transform: scale(1.05);
+}
+
+.exercise-card-controls .exercise-remove-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.exercise-card-controls .exercise-remove-btn i {
+  font-size: 1.3rem;
+  line-height: 1;
+}
+
 @keyframes exercise-refresh-spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
 
 @media (max-width: 576px) {
-  .training-container .exercise-card-header {
-    align-items: center;
-    gap: 0.35rem;
+  .exercise-card--customizable .exercise-card-header {
+    align-items: flex-start;
+    gap: 0.4rem;
+    margin-bottom: 0.5rem;
   }
 
-  .training-container .exercise-card-toggle {
+  .exercise-card-toggle {
     text-align: left;
   }
 
-  .training-container .exercise-card-controls {
-    flex-direction: column;
-    align-items: center;
-    gap: 0.45rem;
-    align-self: stretch;
+  .exercise-card--customizable .exercise-card-toggle:not(.exercise-card-toggle-mobile) .exercise-card-toggle-icon {
+    display: none;
   }
 
-  .training-container .exercise-card-controls .exercise-drag-handle {
-    order: -1;
+  .exercise-card--customizable .exercise-card-toggle .exercise-name {
+    padding-right: 0.85rem;
+  }
+
+.exercise-card--customizable .exercise-card-controls {
+  display: grid;
+  grid-template-columns: repeat(2, 34px);
+  grid-template-rows: repeat(2, 34px);
+  grid-template-areas:
+    "toggle drag"
+    "refresh remove";
+  gap: 0.35rem;
+  align-items: center;
+  justify-items: center;
+}
+
+  .exercise-card--customizable .exercise-card-controls .exercise-card-toggle-mobile {
+    display: inline-flex;
+    grid-area: toggle;
+  }
+
+  .exercise-card--customizable .exercise-card-controls .exercise-drag-handle {
+    grid-area: drag;
     width: 38px;
     min-width: auto;
-    min-height: 54px;
+    min-height: 38px;
+    height: 38px;
+    align-items: center;
+    justify-content: center;
   }
 
-  .training-container .exercise-card-controls .exercise-refresh-btn {
-    width: 32px;
-    height: 32px;
+  .exercise-card--customizable .exercise-card-controls .exercise-refresh-btn {
+    grid-area: refresh;
+    width: 34px;
+    height: 34px;
+  }
+
+  .exercise-card--customizable .exercise-card-controls .exercise-remove-btn {
+    grid-area: remove;
+    width: 38px;
+    height: 38px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
 }
 
 .training-container .exercise-list {
   margin: 0;
   padding: 0;
+}
+
+.exercise-list-footer {
+  display: flex;
+  justify-content: center;
+  padding: 0;
+  margin-top: -0.25rem;
+  margin-bottom: -0.15rem;
+  flex-shrink: 0;
+}
+
+.exercise-list--locked {
+  position: relative;
+}
+
+.exercise-insert-control {
+  display: flex;
+  justify-content: center;
+  margin: -0.08rem 0 -0.08rem;
+}
+
+.exercise-insert-control .exercise-add-btn {
+  border: 0;
+  outline: none;
+  color: #198754;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 250px;
+  background-color: transparent;
+  box-shadow: none;
+  transition: transform 0.2s ease;
+}
+
+.exercise-insert-control .exercise-add-btn i {
+  font-size: 1.35rem;
+}
+
+.exercise-insert-control .exercise-add-btn:hover,
+.exercise-insert-control .exercise-add-btn:focus-visible {
+  transform: translateY(-2px);
+  outline: none;
+}
+
+.exercise-insert-control .exercise-add-btn.is-refreshing {
+  opacity: 0.65;
+  pointer-events: none;
 }
 
 .training-container .exercise-list-item {

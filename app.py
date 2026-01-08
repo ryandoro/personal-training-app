@@ -1609,6 +1609,12 @@ def training():
     personal_exercise_alternates_template = (
         url_for('personal_list_workout_alternatives', workout_id=0) if personal_workout_customization_enabled else ''
     )
+    personal_exercise_add_template = (
+        url_for('personal_add_workout_exercise', workout_id=0) if personal_workout_customization_enabled else ''
+    )
+    personal_exercise_remove_template = (
+        url_for('personal_remove_workout_exercise', workout_id=0) if personal_workout_customization_enabled else ''
+    )
 
     return render_template(
         'training.html', 
@@ -1643,6 +1649,8 @@ def training():
         personal_workout_reorder_url=personal_workout_reorder_url,
         personal_exercise_refresh_template=personal_exercise_refresh_template,
         personal_exercise_alternates_template=personal_exercise_alternates_template,
+        personal_exercise_add_template=personal_exercise_add_template,
+        personal_exercise_remove_template=personal_exercise_remove_template,
         notes_placeholder=WORKOUT_NOTES_PLACEHOLDER,
     )
 
@@ -1853,6 +1861,17 @@ def _user_can_customize_personal_workout(user_row: dict | None) -> bool:
     return subscription == 'pro'
 
 
+def _trainer_has_pro_access(trainer_row: dict | None) -> bool:
+    """Return True when a trainer or admin has Pro-level customization access."""
+    if not trainer_row:
+        return False
+    role = (trainer_row.get('role') or '').lower()
+    subscription = (trainer_row.get('subscription_type') or '').lower()
+    if role not in {'trainer', 'admin'}:
+        return False
+    return subscription == 'pro'
+
+
 def _get_trainer_link_invite(conn, token_id: int) -> dict | None:
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
         cursor.execute(
@@ -2055,6 +2074,7 @@ def client_profile(client_id):
     )
     trainer_can_generate_premium = trainer_has_premium_generation_access(trainer)
     premium_generation_allowed = client_has_premium_access or trainer_can_generate_premium
+    trainer_add_remove_enabled = _trainer_has_pro_access(trainer)
 
     active_workout = None
     active_skipped = {}
@@ -2134,6 +2154,7 @@ def client_profile(client_id):
         session_summary=session_summary,
         session_packages=session_summary.get('packages', []) if session_summary else [],
         NOTES_PLACEHOLDER=WORKOUT_NOTES_PLACEHOLDER,
+        trainer_add_remove_enabled=trainer_add_remove_enabled,
     )
 
 
@@ -7139,6 +7160,19 @@ def _apply_formatted_exercise(entry, formatted_exercise):
         return entry_list
 
 
+def _build_new_exercise_entry(exercises, formatted_exercise):
+    """Create a new exercise entry matching the structure of the existing plan."""
+    sample_entry = None
+    if isinstance(exercises, list):
+        for entry in exercises:
+            if entry is not None:
+                sample_entry = entry
+                break
+    if sample_entry is None:
+        return formatted_exercise
+    return _apply_formatted_exercise(sample_entry, formatted_exercise)
+
+
 def _resolve_refresh_context(workout_payload, subcategory, workout_id):
     if not isinstance(workout_payload, dict):
         return None, ({'success': False, 'error': 'Active workout plan is missing.'}, 400)
@@ -7192,6 +7226,61 @@ def _resolve_refresh_context(workout_payload, subcategory, workout_id):
         'target_block': target_block,
         'exercises': exercises,
         'replacement_index': replacement_index,
+        'existing_ids': existing_ids,
+        'equipment_clause': equipment_clause,
+        'equipment_params': equipment_params,
+        'use_cardio_override': use_cardio_override,
+        'restrict_barbell': restrict_barbell,
+        'restrict_dumbbell': restrict_dumbbell,
+    }
+    return context, None
+
+
+def _resolve_block_without_anchor(workout_payload, subcategory):
+    if not isinstance(workout_payload, dict):
+        return None, ({'success': False, 'error': 'Active workout plan is missing.'}, 400)
+    plan = workout_payload.get('plan')
+    if not isinstance(plan, list):
+        return None, ({'success': False, 'error': 'Active workout plan is missing.'}, 400)
+    normalized_subcategory = (subcategory or '').strip().lower()
+    target_block = None
+    for block in plan:
+        label = str(block.get('subcategory') or '').strip()
+        if label.lower() == normalized_subcategory:
+            target_block = block
+            break
+    if not target_block:
+        return None, ({'success': False, 'error': 'Workout category not found.'}, 404)
+    exercises = target_block.get('exercises') or []
+    existing_ids = set()
+    for entry in exercises:
+        entry_id = _exercise_entry_workout_id(entry)
+        if entry_id is None:
+            return None, ({'success': False, 'error': 'An exercise is missing its identifier.'}, 400)
+        try:
+            entry_int = int(entry_id)
+        except (TypeError, ValueError):
+            return None, ({'success': False, 'error': 'Invalid exercise identifier detected.'}, 400)
+        existing_ids.add(entry_int)
+
+    equipment_tokens = []
+    raw_equipment = workout_payload.get('home_equipment')
+    if raw_equipment:
+        equipment_tokens = normalize_home_equipment_selection(raw_equipment)
+    equipment_clause = ""
+    equipment_params = []
+    allow_cardio_bodyweight = False
+    if equipment_tokens:
+        equipment_clause, equipment_params, allow_cardio_bodyweight = build_home_equipment_clause(equipment_tokens)
+    restrict_barbell = bool(equipment_tokens) and 'BARBELL' not in equipment_tokens
+    restrict_dumbbell = bool(equipment_tokens) and 'DUMBBELL' not in equipment_tokens
+
+    subcategory_key = (subcategory or "").strip().upper()
+    use_cardio_override = allow_cardio_bodyweight and subcategory_key == 'CARDIO'
+
+    context = {
+        'target_block': target_block,
+        'exercises': exercises,
         'existing_ids': existing_ids,
         'equipment_clause': equipment_clause,
         'equipment_params': equipment_params,
@@ -7578,7 +7667,12 @@ def personal_list_workout_alternatives(workout_id):
     if not active:
         return jsonify({'success': False, 'error': 'No active workout to update.'}), 404
     workout_payload = active.get('workout_data') or {}
-    context, error = _resolve_refresh_context(workout_payload, subcategory, workout_id)
+    if workout_id > 0:
+        context, error = _resolve_refresh_context(workout_payload, subcategory, workout_id)
+        anchor_index = context['replacement_index'] if not error else 0
+    else:
+        context, error = _resolve_block_without_anchor(workout_payload, subcategory)
+        anchor_index = len(context['exercises']) - 1 if not error else 0
     if error:
         payload, status = error
         return jsonify(payload), status
@@ -7641,10 +7735,18 @@ def personal_refresh_workout_exercise(workout_id):
     if not active:
         return jsonify({'success': False, 'error': 'No active workout to update.'}), 404
     workout_payload = active.get('workout_data') or {}
-    context, error = _resolve_refresh_context(workout_payload, subcategory, workout_id)
-    if error:
-        payload, status = error
-        return jsonify(payload), status
+    if workout_id > 0:
+        context, error = _resolve_refresh_context(workout_payload, subcategory, workout_id)
+        if error:
+            payload, status = error
+            return jsonify(payload), status
+        anchor_index = context['replacement_index']
+    else:
+        context, error = _resolve_block_without_anchor(workout_payload, subcategory)
+        if error:
+            payload, status = error
+            return jsonify(payload), status
+        anchor_index = max(0, len(context['exercises']) - 1)
     if replacement_workout_id and replacement_workout_id in context['existing_ids']:
         return jsonify({'success': False, 'error': 'That exercise is already in this workout.'}), 400
 
@@ -7698,6 +7800,168 @@ def personal_refresh_workout_exercise(workout_id):
         'success': True,
         'exercise': formatted_exercise,
         'workout_id': formatted_exercise.get('workout_id'),
+        'subcategory': context['target_block'].get('subcategory') or subcategory,
+    })
+
+
+@app.post('/training/workout/exercises/<int:workout_id>/add')
+@login_required
+def personal_add_workout_exercise(workout_id):
+    user_id = session['user_id']
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            cursor.execute(
+                "SELECT role, subscription_type, exercise_history FROM users WHERE id = %s",
+                (user_id,),
+            )
+            user_row = cursor.fetchone()
+    if not _user_can_customize_personal_workout(user_row):
+        return jsonify({'success': False, 'error': 'Trainer Pro access required.'}), 403
+
+    payload = request.get_json(silent=True) or {}
+    subcategory = (payload.get('subcategory') or '').strip()
+    if not subcategory:
+        return jsonify({'success': False, 'error': 'Workout category is required.'}), 400
+    position = (payload.get('position') or 'after').strip().lower()
+    if position not in {'before', 'after'}:
+        position = 'after'
+    replacement_id_raw = payload.get('replacement_workout_id')
+    replacement_workout_id = None
+    if replacement_id_raw not in (None, ''):
+        try:
+            replacement_workout_id = int(replacement_id_raw)
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'error': 'Invalid exercise selected.'}), 400
+        if replacement_workout_id <= 0:
+            return jsonify({'success': False, 'error': 'Invalid exercise selected.'}), 400
+
+    active = get_active_workout(user_id)
+    if not active:
+        return jsonify({'success': False, 'error': 'No active workout to update.'}), 404
+    workout_payload = active.get('workout_data') or {}
+    if workout_id > 0:
+        context, error = _resolve_refresh_context(workout_payload, subcategory, workout_id)
+        anchor_index = context['replacement_index'] if not error else 0
+    else:
+        context, error = _resolve_block_without_anchor(workout_payload, subcategory)
+        anchor_index = len(context['exercises']) - 1 if not error else 0
+    if error:
+        payload, status = error
+        return jsonify(payload), status
+    if replacement_workout_id and replacement_workout_id in context['existing_ids']:
+        return jsonify({'success': False, 'error': 'That exercise is already in this workout.'}), 400
+
+    user_level = get_user_level(user_row.get('exercise_history'))
+    query, params = _build_alternate_exercise_query(
+        user_id,
+        subcategory,
+        user_level,
+        context['existing_ids'],
+        context['equipment_clause'],
+        context['equipment_params'],
+        context['use_cardio_override'],
+        context['restrict_barbell'],
+        context['restrict_dumbbell'],
+        selected_workout_id=replacement_workout_id,
+        random_order=replacement_workout_id is None,
+    )
+
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            cursor.execute(query, params)
+            new_row = cursor.fetchone()
+        if not new_row:
+            error_msg = (
+                'Selected exercise is no longer available.'
+                if replacement_workout_id
+                else "No alternates match your level or equipment setup right now."
+            )
+            return jsonify({'success': False, 'error': error_msg}), 404
+
+        formatted_exercise = _format_exercise(subcategory, new_row)
+        exercises = context['exercises']
+        new_entry = _build_new_exercise_entry(exercises, formatted_exercise)
+        insert_index = anchor_index if position == 'before' else anchor_index + 1
+        insert_index = max(0, min(insert_index, len(exercises)))
+        exercises.insert(insert_index, new_entry)
+
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE active_workouts
+                   SET workout_data = %s
+                 WHERE user_id = %s
+                """,
+                (psycopg2.extras.Json(workout_payload), user_id),
+            )
+        conn.commit()
+
+    return jsonify({
+        'success': True,
+        'exercise': formatted_exercise,
+        'workout_id': formatted_exercise.get('workout_id'),
+        'subcategory': context['target_block'].get('subcategory') or subcategory,
+        'anchor_workout_id': workout_id,
+        'insert_position': position,
+    })
+
+
+@app.post('/training/workout/exercises/<int:workout_id>/remove')
+@login_required
+def personal_remove_workout_exercise(workout_id):
+    user_id = session['user_id']
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            cursor.execute(
+                "SELECT role, subscription_type FROM users WHERE id = %s",
+                (user_id,),
+            )
+            user_row = cursor.fetchone()
+    if not _user_can_customize_personal_workout(user_row):
+        return jsonify({'success': False, 'error': 'Trainer Pro access required.'}), 403
+
+    payload = request.get_json(silent=True) or {}
+    subcategory = (payload.get('subcategory') or '').strip()
+    if not subcategory:
+        return jsonify({'success': False, 'error': 'Workout category is required.'}), 400
+
+    active = get_active_workout(user_id)
+    if not active:
+        return jsonify({'success': False, 'error': 'No active workout to update.'}), 404
+    workout_payload = active.get('workout_data') or {}
+    if workout_id > 0:
+        context, error = _resolve_refresh_context(workout_payload, subcategory, workout_id)
+        anchor_index = context['replacement_index'] if not error else 0
+    else:
+        context, error = _resolve_block_without_anchor(workout_payload, subcategory)
+        anchor_index = len(context['exercises']) - 1 if not error else 0
+    if error:
+        payload, status = error
+        return jsonify(payload), status
+
+    exercises = context['exercises']
+    if not exercises:
+        return jsonify({'success': False, 'error': 'No exercises available for this category.'}), 400
+    removal_index = context['replacement_index']
+    if removal_index < 0 or removal_index >= len(exercises):
+        return jsonify({'success': False, 'error': 'Exercise not found in this workout.'}), 404
+    exercises.pop(removal_index)
+
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE active_workouts
+                   SET workout_data = %s
+                 WHERE user_id = %s
+                """,
+                (psycopg2.extras.Json(workout_payload), user_id),
+            )
+            conn.commit()
+
+    return jsonify({
+        'success': True,
+        'removed_workout_id': workout_id,
         'subcategory': context['target_block'].get('subcategory') or subcategory,
     })
 
@@ -7815,7 +8079,12 @@ def trainer_list_client_workout_alternates(client_id, workout_id):
     if not active:
         return jsonify({'success': False, 'error': 'No active workout to update.'}), 404
     workout_payload = active.get('workout_data') or {}
-    context, error = _resolve_refresh_context(workout_payload, subcategory, workout_id)
+    if workout_id > 0:
+        context, error = _resolve_refresh_context(workout_payload, subcategory, workout_id)
+        anchor_index = context['replacement_index'] if not error else 0
+    else:
+        context, error = _resolve_block_without_anchor(workout_payload, subcategory)
+        anchor_index = len(context['exercises']) - 1 if not error else 0
     if error:
         payload, status = error
         return jsonify(payload), status
@@ -7885,10 +8154,18 @@ def trainer_refresh_client_workout_exercise(client_id, workout_id):
     if not active:
         return jsonify({'success': False, 'error': 'No active workout to update.'}), 404
     workout_payload = active.get('workout_data') or {}
-    context, error = _resolve_refresh_context(workout_payload, subcategory, workout_id)
-    if error:
-        payload, status = error
-        return jsonify(payload), status
+    if workout_id > 0:
+        context, error = _resolve_refresh_context(workout_payload, subcategory, workout_id)
+        if error:
+            payload, status = error
+            return jsonify(payload), status
+        anchor_index = context['replacement_index']
+    else:
+        context, error = _resolve_block_without_anchor(workout_payload, subcategory)
+        if error:
+            payload, status = error
+            return jsonify(payload), status
+        anchor_index = max(0, len(context['exercises']) - 1)
     if replacement_workout_id and replacement_workout_id in context['existing_ids']:
         return jsonify({'success': False, 'error': 'That exercise is already in this workout.'}), 400
 
@@ -7945,6 +8222,7 @@ def trainer_refresh_client_workout_exercise(client_id, workout_id):
         exercise_loop_index=replacement_index,
         notes_placeholder=WORKOUT_NOTES_PLACEHOLDER,
         client_id=client_id,
+        trainer_can_customize=True,
     )
 
     return jsonify({
@@ -7952,6 +8230,190 @@ def trainer_refresh_client_workout_exercise(client_id, workout_id):
         'exercise': formatted_exercise,
         'workout_id': formatted_exercise.get('workout_id'),
         'card_html': card_html,
+    })
+
+
+@app.post('/trainer/clients/<int:client_id>/workout/exercises/<int:workout_id>/add')
+@login_required
+def trainer_add_client_workout_exercise(client_id, workout_id):
+    trainer_id = session['user_id']
+    trainer = _require_trainer(trainer_id)
+    if not trainer:
+        return jsonify({'success': False, 'error': 'Trainer access required.'}), 403
+    if not _trainer_has_pro_access(trainer):
+        return jsonify({'success': False, 'error': 'Trainer Pro access required.'}), 403
+
+    payload = request.get_json(silent=True) or {}
+    subcategory = (payload.get('subcategory') or '').strip()
+    if not subcategory:
+        return jsonify({'success': False, 'error': 'Workout category is required.'}), 400
+    position = (payload.get('position') or 'after').strip().lower()
+    if position not in {'before', 'after'}:
+        position = 'after'
+    replacement_id_raw = payload.get('replacement_workout_id')
+    replacement_workout_id = None
+    if replacement_id_raw not in (None, ''):
+        try:
+            replacement_workout_id = int(replacement_id_raw)
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'error': 'Invalid exercise selected.'}), 400
+        if replacement_workout_id <= 0:
+            return jsonify({'success': False, 'error': 'Invalid exercise selected.'}), 400
+
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            cursor.execute(
+                "SELECT trainer_id, exercise_history FROM users WHERE id = %s",
+                (client_id,),
+            )
+            client_row = cursor.fetchone()
+    if not client_row:
+        return jsonify({'success': False, 'error': 'Client not found.'}), 404
+    is_admin = (trainer.get('role') or '').lower() == 'admin'
+    if client_row.get('trainer_id') != trainer_id and not is_admin:
+        return jsonify({'success': False, 'error': 'You do not have access to that client.'}), 403
+
+    active = get_active_workout(client_id)
+    if not active:
+        return jsonify({'success': False, 'error': 'No active workout to update.'}), 404
+    workout_payload = active.get('workout_data') or {}
+    if workout_id > 0:
+        context, error = _resolve_refresh_context(workout_payload, subcategory, workout_id)
+        anchor_index = context['replacement_index'] if not error else 0
+    else:
+        context, error = _resolve_block_without_anchor(workout_payload, subcategory)
+        anchor_index = len(context['exercises']) - 1 if not error else 0
+    if error:
+        payload, status = error
+        return jsonify(payload), status
+    if replacement_workout_id and replacement_workout_id in context['existing_ids']:
+        return jsonify({'success': False, 'error': 'That exercise is already in this workout.'}), 400
+
+    user_level = get_user_level(client_row.get('exercise_history'))
+    query, params = _build_alternate_exercise_query(
+        client_id,
+        subcategory,
+        user_level,
+        context['existing_ids'],
+        context['equipment_clause'],
+        context['equipment_params'],
+        context['use_cardio_override'],
+        context['restrict_barbell'],
+        context['restrict_dumbbell'],
+        selected_workout_id=replacement_workout_id,
+        random_order=replacement_workout_id is None,
+    )
+
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            cursor.execute(query, params)
+            new_row = cursor.fetchone()
+        if not new_row:
+            error_msg = (
+                'Selected exercise is no longer available.'
+                if replacement_workout_id
+                else "No alternates match this client's level or equipment setup right now."
+            )
+            return jsonify({'success': False, 'error': error_msg}), 404
+
+        formatted_exercise = _format_exercise(subcategory, new_row)
+        exercises = context['exercises']
+        new_entry = _build_new_exercise_entry(exercises, formatted_exercise)
+        insert_index = anchor_index if position == 'before' else anchor_index + 1
+        insert_index = max(0, min(insert_index, len(exercises)))
+        exercises.insert(insert_index, new_entry)
+
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE active_workouts
+                   SET workout_data = %s
+                 WHERE user_id = %s
+                """,
+                (psycopg2.extras.Json(workout_payload), client_id),
+            )
+        conn.commit()
+
+    card_html = render_template(
+        'components/exercise_card.html',
+        exercise=formatted_exercise,
+        subcategory_name=context['target_block'].get('subcategory') or subcategory,
+        exercise_loop_index=insert_index,
+        notes_placeholder=WORKOUT_NOTES_PLACEHOLDER,
+        client_id=client_id,
+        trainer_can_customize=True,
+    )
+
+    return jsonify({
+        'success': True,
+        'workout_id': formatted_exercise.get('workout_id'),
+        'card_html': card_html,
+        'anchor_workout_id': workout_id,
+        'insert_position': position,
+    })
+
+
+@app.post('/trainer/clients/<int:client_id>/workout/exercises/<int:workout_id>/remove')
+@login_required
+def trainer_remove_client_workout_exercise(client_id, workout_id):
+    trainer_id = session['user_id']
+    trainer = _require_trainer(trainer_id)
+    if not trainer:
+        return jsonify({'success': False, 'error': 'Trainer access required.'}), 403
+    if not _trainer_has_pro_access(trainer):
+        return jsonify({'success': False, 'error': 'Trainer Pro access required.'}), 403
+
+    payload = request.get_json(silent=True) or {}
+    subcategory = (payload.get('subcategory') or '').strip()
+    if not subcategory:
+        return jsonify({'success': False, 'error': 'Workout category is required.'}), 400
+
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            cursor.execute(
+                "SELECT trainer_id FROM users WHERE id = %s",
+                (client_id,),
+            )
+            client_row = cursor.fetchone()
+    if not client_row:
+        return jsonify({'success': False, 'error': 'Client not found.'}), 404
+    is_admin = (trainer.get('role') or '').lower() == 'admin'
+    if client_row.get('trainer_id') != trainer_id and not is_admin:
+        return jsonify({'success': False, 'error': 'You do not have access to that client.'}), 403
+
+    active = get_active_workout(client_id)
+    if not active:
+        return jsonify({'success': False, 'error': 'No active workout to update.'}), 404
+    workout_payload = active.get('workout_data') or {}
+    context, error = _resolve_refresh_context(workout_payload, subcategory, workout_id)
+    if error:
+        payload, status = error
+        return jsonify(payload), status
+
+    exercises = context['exercises']
+    if not exercises:
+        return jsonify({'success': False, 'error': 'No exercises available for this category.'}), 400
+    removal_index = context['replacement_index']
+    if removal_index < 0 or removal_index >= len(exercises):
+        return jsonify({'success': False, 'error': 'Exercise not found in this workout.'}), 404
+    exercises.pop(removal_index)
+
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE active_workouts
+                   SET workout_data = %s
+                 WHERE user_id = %s
+                """,
+                (psycopg2.extras.Json(workout_payload), client_id),
+            )
+            conn.commit()
+
+    return jsonify({
+        'success': True,
+        'removed_workout_id': workout_id,
+        'subcategory': context['target_block'].get('subcategory') or subcategory,
     })
 
 

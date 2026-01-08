@@ -859,6 +859,8 @@
             'personalWorkoutReorderUrl': personal_workout_reorder_url,
             'personalExerciseRefreshTemplate': personal_exercise_refresh_template,
             'personalExerciseAlternatesTemplate': personal_exercise_alternates_template,
+            'personalExerciseAddTemplate': personal_exercise_add_template,
+            'personalExerciseRemoveTemplate': personal_exercise_remove_template,
             'notesPlaceholder': notes_placeholder,
             'isFreeUser': user is not none and user.subscription_type == 'free'
         }|tojson }}
@@ -916,6 +918,7 @@
                 container: null,
                 subcategory: '',
                 originalOrder: [],
+                hadLockedHeight: false,
             };
             let dragPreviewNode = null;
             const trainingConfigNode = document.getElementById('training-workout-config');
@@ -932,6 +935,8 @@
             const PERSONAL_REORDER_URL = trainingWorkoutConfig.personalWorkoutReorderUrl || '';
             const PERSONAL_REFRESH_TEMPLATE = trainingWorkoutConfig.personalExerciseRefreshTemplate || '';
             const PERSONAL_ALTERNATES_TEMPLATE = trainingWorkoutConfig.personalExerciseAlternatesTemplate || '';
+            const PERSONAL_ADD_TEMPLATE = trainingWorkoutConfig.personalExerciseAddTemplate || '';
+            const PERSONAL_REMOVE_TEMPLATE = trainingWorkoutConfig.personalExerciseRemoveTemplate || '';
             const NOTES_PLACEHOLDER = trainingWorkoutConfig.notesPlaceholder || '';
             const IS_FREE_USER = Boolean(trainingWorkoutConfig.isFreeUser);
             const WORKOUT_COMPACT_STORAGE_KEY = 'fitbase_workout_compact_view';
@@ -1008,12 +1013,19 @@
                 return PERSONAL_CUSTOMIZATION_ENABLED && !!PERSONAL_REFRESH_TEMPLATE;
             }
 
+            function canAddRemoveExercises() {
+                return PERSONAL_CUSTOMIZATION_ENABLED
+                    && !!PERSONAL_ADD_TEMPLATE
+                    && !!PERSONAL_REMOVE_TEMPLATE;
+            }
+
             function syncExerciseDraggability() {
                 const items = document.querySelectorAll('#workout-details .exercise-list-item');
                 items.forEach((item) => {
                     const card = item.querySelector('.exercise-card');
                     const handle = item.querySelector('.exercise-drag-handle');
                     const refreshBtn = item.querySelector('.exercise-refresh-btn');
+                    const removeBtn = item.querySelector('.exercise-remove-btn');
                     const controls = item.querySelector('.exercise-card-controls');
                     const dragEnabled = canReorderExercises();
                     if (card) {
@@ -1031,6 +1043,49 @@
                         const enableRefresh = canRefreshExercises();
                         refreshBtn.style.display = enableRefresh ? '' : 'none';
                         refreshBtn.disabled = !enableRefresh;
+                    }
+                    if (removeBtn) {
+                        const enableRemoval = canAddRemoveExercises();
+                        removeBtn.style.display = enableRemoval ? '' : 'none';
+                        removeBtn.disabled = !enableRemoval;
+                    }
+                });
+                updateExerciseInsertControls();
+            }
+
+            function createInsertControlNode(list, footer, { anchorWorkoutId = null } = {}) {
+                if (!list || !footer) return null;
+                const subcategory = list.dataset.subcategory || footer.dataset.subcategoryFooter || '';
+                if (!subcategory) return null;
+                const workoutId = anchorWorkoutId || '';
+                const wrapper = document.createElement('div');
+                wrapper.className = 'exercise-insert-control';
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'btn btn-outline-success btn-sm exercise-add-btn';
+                button.dataset.anchorWorkoutId = workoutId;
+                button.dataset.subcategory = subcategory;
+                button.dataset.position = 'after';
+                button.setAttribute('aria-label', 'Add exercise');
+                button.innerHTML = '<i class="bi bi-plus"></i>';
+                wrapper.appendChild(button);
+                return wrapper;
+            }
+
+            function updateExerciseInsertControls() {
+                const footers = document.querySelectorAll('#workout-details .exercise-list-footer');
+                footers.forEach((footer) => {
+                    footer.innerHTML = '';
+                    if (!canAddRemoveExercises()) return;
+                    const list = footer.previousElementSibling?.classList.contains('exercise-list')
+                        ? footer.previousElementSibling
+                        : footer.parentElement?.querySelector('.exercise-list');
+                    if (!list) return;
+                    const lastItem = list.querySelector('.exercise-list-item:last-of-type');
+                    const anchorWorkoutId = lastItem?.dataset.workoutId || '0';
+                    const control = createInsertControlNode(list, footer, { anchorWorkoutId });
+                    if (control) {
+                        footer.appendChild(control);
                     }
                 });
             }
@@ -1058,10 +1113,15 @@
                 if (dragState.sourceItem) {
                     dragState.sourceItem.classList.remove('is-dragging');
                 }
+                if (dragState.container && dragState.hadLockedHeight) {
+                    dragState.container.style.minHeight = '';
+                    dragState.container.classList.remove('exercise-list--locked');
+                }
                 dragState.sourceItem = null;
                 dragState.container = null;
                 dragState.subcategory = '';
                 dragState.originalOrder = [];
+                dragState.hadLockedHeight = false;
                 if (dragPreviewNode) {
                     dragPreviewNode.remove();
                     dragPreviewNode = null;
@@ -1131,10 +1191,10 @@
             function setCardExpanded(card, expanded) {
                 if (!card) return;
                 card.classList.toggle('exercise-card-collapsed', !expanded);
-                const toggle = card.querySelector('.exercise-card-toggle');
-                if (toggle) {
+                const toggles = card.querySelectorAll('.exercise-card-toggle');
+                toggles.forEach((toggle) => {
                     toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-                }
+                });
             }
 
             function updateCardsForCompactState() {
@@ -1598,6 +1658,14 @@
                 dragState.container = item.parentElement;
                 dragState.subcategory = item.dataset.subcategory || '';
                 dragState.originalOrder = getExerciseListOrder(dragState.container);
+                if (dragState.container) {
+                    const lockedHeight = dragState.container.getBoundingClientRect().height;
+                    dragState.container.style.minHeight = `${lockedHeight}px`;
+                    dragState.container.classList.add('exercise-list--locked');
+                    dragState.hadLockedHeight = true;
+                } else {
+                    dragState.hadLockedHeight = false;
+                }
                 item.classList.add('is-dragging');
                 if (event.dataTransfer) {
                     event.dataTransfer.effectAllowed = 'move';
@@ -1676,6 +1744,16 @@
                 return PERSONAL_ALTERNATES_TEMPLATE.replace('/0/alternatives', `/${workoutId}/alternatives`);
             }
 
+            function buildAddUrl(workoutId) {
+                if (!PERSONAL_ADD_TEMPLATE || !workoutId) return '';
+                return PERSONAL_ADD_TEMPLATE.replace('/0/add', `/${workoutId}/add`);
+            }
+
+            function buildRemoveUrl(workoutId) {
+                if (!PERSONAL_REMOVE_TEMPLATE || !workoutId) return '';
+                return PERSONAL_REMOVE_TEMPLATE.replace('/0/remove', `/${workoutId}/remove`);
+            }
+
             function fetchExerciseAlternates(url, subcategory) {
                 if (!url || !subcategory) {
                     return Promise.reject(new Error('Missing exercise info.'));
@@ -1729,6 +1807,100 @@
                 });
             }
 
+            function submitExerciseAddition({
+                addUrl,
+                subcategory,
+                position,
+                listElement,
+                anchorWorkoutId,
+                replacementWorkoutId = null,
+                addBtn = null,
+            }) {
+                if (!addUrl || !subcategory || !position || !listElement || !anchorWorkoutId) {
+                    return Promise.reject(new Error('Unable to add a new exercise.'));
+                }
+                const payload = { subcategory, position };
+                if (replacementWorkoutId) {
+                    payload.replacement_workout_id = replacementWorkoutId;
+                }
+                if (addBtn) {
+                    addBtn.disabled = true;
+                    addBtn.classList.add('is-refreshing');
+                }
+                return fetch(addUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                })
+                .then((res) => res.json().catch(() => ({})))
+                .then((data) => {
+                    if (!data?.success || !data?.exercise) {
+                        throw new Error(data?.error || 'Unable to add a new exercise.');
+                    }
+                    const newItem = createExerciseListItemElement(subcategory, data.exercise, 0);
+                    if (!newItem) {
+                        throw new Error('Unable to render the new exercise.');
+                    }
+                    let anchorItem = null;
+                    if (anchorWorkoutId !== '0') {
+                        anchorItem = listElement.querySelector(`.exercise-list-item[data-workout-id="${anchorWorkoutId}"]`);
+                        if (!anchorItem) {
+                            throw new Error('Anchor exercise not found.');
+                        }
+                    }
+                    if (!anchorItem) {
+                        listElement.appendChild(newItem);
+                    } else if (position === 'before') {
+                        listElement.insertBefore(newItem, anchorItem);
+                    } else {
+                        listElement.insertBefore(newItem, anchorItem.nextElementSibling);
+                    }
+                    bindImageClickEvents();
+                    updateCardsForCompactState();
+                    syncExerciseDraggability();
+                    showToastMessage('Exercise added!');
+                    return data;
+                })
+                .finally(() => {
+                    if (addBtn) {
+                        addBtn.disabled = false;
+                        addBtn.classList.remove('is-refreshing');
+                    }
+                });
+            }
+
+            function submitExerciseRemoval({ removeUrl, listItem, subcategory, removeBtn = null }) {
+                if (!removeUrl || !listItem || !subcategory) {
+                    return Promise.reject(new Error('Unable to remove this exercise.'));
+                }
+                if (removeBtn) {
+                    removeBtn.disabled = true;
+                    removeBtn.classList.add('is-refreshing');
+                }
+                return fetch(removeUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ subcategory }),
+                })
+                .then((res) => res.json().catch(() => ({})))
+                .then((data) => {
+                    if (!data?.success) {
+                        throw new Error(data?.error || 'Unable to remove this exercise.');
+                    }
+                    listItem.remove();
+                    updateCardsForCompactState();
+                    syncExerciseDraggability();
+                    showToastMessage('Exercise removed.');
+                    return data;
+                })
+                .finally(() => {
+                    if (removeBtn) {
+                        removeBtn.disabled = false;
+                        removeBtn.classList.remove('is-refreshing');
+                    }
+                });
+            }
+
             function openExercisePickerForButton(refreshBtn) {
                 const picker = getExercisePickerModal();
                 if (!picker) {
@@ -1762,6 +1934,47 @@
                 return true;
             }
 
+            function openExerciseAddPicker(addBtn) {
+                const picker = getExercisePickerModal();
+                if (!picker) {
+                    return false;
+                }
+                const subcategory = addBtn?.dataset.subcategory || '';
+                const anchorWorkoutId = addBtn?.dataset.anchorWorkoutId || '';
+                const position = addBtn?.dataset.position || 'after';
+                const alternatesUrl = buildAlternatesUrl(anchorWorkoutId, addBtn);
+                const addUrl = buildAddUrl(anchorWorkoutId);
+                const footer = addBtn?.closest('.exercise-list-footer');
+                const listElement = footer?.previousElementSibling?.classList.contains('exercise-list')
+                    ? footer.previousElementSibling
+                    : null;
+                if (!subcategory || !anchorWorkoutId || !alternatesUrl || !addUrl || !listElement) {
+                    return false;
+                }
+                picker.open({
+                    subcategory,
+                    title: 'Add Exercise',
+                    confirmLabel: 'Add Exercise',
+                    fetchOptions: () => fetchExerciseAlternates(alternatesUrl, subcategory),
+                    onSelect: (choice) => {
+                        const replacementId = choice?.workout_id;
+                        if (!replacementId) {
+                            return Promise.reject(new Error('Invalid exercise selection.'));
+                        }
+                        return submitExerciseAddition({
+                            addUrl,
+                            subcategory,
+                            position,
+                            listElement,
+                            anchorWorkoutId,
+                            replacementWorkoutId: replacementId,
+                            addBtn,
+                        });
+                    },
+                });
+                return true;
+            }
+
             function handleExerciseRefresh(event) {
                 const refreshBtn = event.target.closest('.exercise-refresh-btn');
                 if (!refreshBtn) return;
@@ -1785,6 +1998,48 @@
                 })
                 .catch((err) => {
                     alert(err?.message || 'Unable to refresh this exercise right now.');
+                });
+            }
+
+            function handleExerciseAddControl(event) {
+                const addBtn = event.target.closest('.exercise-add-btn');
+                if (!addBtn) return;
+                if (!canAddRemoveExercises()) return;
+                event.preventDefault();
+                if (addBtn.disabled) return;
+                if (openExerciseAddPicker(addBtn)) {
+                    return;
+                }
+                alert('Unable to open the Add Exercise picker right now.');
+            }
+
+            function handleExerciseRemove(event) {
+                const removeBtn = event.target.closest('.exercise-remove-btn');
+                if (!removeBtn) return;
+                if (!canAddRemoveExercises()) return;
+                event.preventDefault();
+                if (removeBtn.disabled) return;
+                const listItem = removeBtn.closest('.exercise-list-item');
+                if (!listItem) return;
+                const subcategory = listItem.dataset.subcategory;
+                const workoutId = listItem.dataset.workoutId;
+                const removeUrl = buildRemoveUrl(workoutId);
+                if (!removeUrl || !subcategory) return;
+                const exerciseName = listItem.querySelector('.exercise-name')?.textContent?.trim();
+                const confirmMessage = exerciseName
+                    ? `Remove "${exerciseName}" from this workout?`
+                    : 'Remove this exercise from the workout?';
+                if (!window.confirm(confirmMessage)) {
+                    return;
+                }
+                submitExerciseRemoval({
+                    removeUrl,
+                    listItem,
+                    subcategory,
+                    removeBtn,
+                })
+                .catch((err) => {
+                    alert(err?.message || 'Unable to remove this exercise right now.');
                 });
             }
 
@@ -1969,8 +2224,18 @@
                 const videoSection = IS_FREE_USER ? '' : youtubeSection;
 
                 const subcategoryAttr = escapeHtml(subcategoryName || '');
-                const cardControlsHtml = IS_FREE_USER ? '' : `
+                const showCardControls = canCustomizeWorkout();
+                const cardControlsHtml = showCardControls ? `
                                 <div class="exercise-card-controls">
+                                    <button type="button"
+                                        class="exercise-card-toggle exercise-card-toggle-mobile"
+                                        aria-controls="${bodyId}"
+                                        aria-expanded="true"
+                                        aria-label="Toggle exercise details">
+                                        <span class="exercise-card-toggle-icon" aria-hidden="true">
+                                            <i class="bi bi-chevron-down"></i>
+                                        </span>
+                                    </button>
                                     <button type="button"
                                         class="exercise-refresh-btn"
                                         data-subcategory="${subcategoryAttr}"
@@ -1978,13 +2243,20 @@
                                         aria-label="Swap exercise">
                                         <i class="bi bi-arrow-repeat"></i>
                                     </button>
+                                    <button type="button"
+                                        class="exercise-remove-btn"
+                                        data-subcategory="${subcategoryAttr}"
+                                        data-workout-id="${workoutIdAttr}"
+                                        aria-label="Remove exercise">
+                                        <i class="bi bi-dash"></i>
+                                    </button>
                                     <span class="exercise-drag-handle"
                                           title="Drag to reorder"
                                           aria-hidden="true">
                                         <i class="bi bi-grip-vertical"></i>
                                     </span>
                                 </div>
-                `;
+                ` : '';
                 const progressSection = IS_FREE_USER ? '' : `
                                 <div class="d-flex flex-column align-items-center gap-3 max-actions">
                                     <div class="personal-best max-summary" data-id="${workoutIdAttr}" data-category="${categoryAttr}" data-bodyweight="${isBodyweight && !isCardio}" data-plank="${isPlank}">
@@ -2037,11 +2309,13 @@
                                 </div>
                 `;
 
+                const cardCustomClass = showCardControls ? ' exercise-card--customizable' : '';
+
                 return `
                     <li class="mb-4 exercise-list-item"
                         data-subcategory="${subcategoryAttr}"
                         data-workout-id="${workoutIdAttr}">
-                        <div class="card shadow text-center w-100 exercise-card"
+                        <div class="card shadow text-center w-100 exercise-card${cardCustomClass}"
                              data-workout-card="${sanitizedKey}">
                             <div class="exercise-card-header">
                                 <button class="exercise-card-toggle" type="button" aria-expanded="true" aria-controls="${bodyId}">
@@ -2093,6 +2367,7 @@
                             <ul class="list-unstyled mb-0 exercise-list" data-subcategory="${safeSubcategory}">
                                 ${exerciseItems}
                             </ul>
+                            <div class="exercise-list-footer" data-subcategory-footer="${safeSubcategory}"></div>
                         </div>
                     </div>
                     `;
@@ -2172,6 +2447,7 @@
                 }
 
                 bindImageClickEvents();
+                syncExerciseDraggability();
             }
 
             window.renderWorkout = renderWorkout;
@@ -2453,6 +2729,8 @@
             document.addEventListener('drop', handleExerciseDrop);
             document.addEventListener('dragend', handleExerciseDragEnd);
             document.addEventListener('click', handleExerciseRefresh);
+            document.addEventListener('click', handleExerciseAddControl);
+            document.addEventListener('click', handleExerciseRemove);
 
             window.addEventListener('resize', () => {
                 const customVisible = customWorkoutModal && customWorkoutModal.classList.contains('show');

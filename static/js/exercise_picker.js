@@ -11,6 +11,7 @@
             this.highlightNode = root?.querySelector('.exercise-picker-highlight') || null;
             this.subcategoryNode = root?.querySelector('[data-role="picker-subcategory"]') || null;
             this.selectionLabel = root?.querySelector('[data-role="picker-selection-label"]') || null;
+            this.titleNode = root?.querySelector('#exercisePickerTitle') || null;
             this.confirmBtn = root?.querySelector('[data-role="picker-confirm"]') || null;
             this.cancelBtn = root?.querySelector('[data-role="picker-cancel"]') || null;
             this.retryBtn = root?.querySelector('[data-role="picker-retry"]') || null;
@@ -20,6 +21,8 @@
             this.options = [];
             this.selectedIndex = -1;
             this.confirmDefaultText = this.confirmBtn ? this.confirmBtn.textContent : '';
+            this.currentConfirmText = this.confirmDefaultText;
+            this.defaultTitle = this.titleNode ? this.titleNode.textContent : '';
 
             if (!root) {
                 return;
@@ -116,10 +119,18 @@
             return !!this.root && this.root.classList.contains('is-visible');
         }
 
-        open({ subcategory = '', fetchOptions = null, onSelect = null } = {}) {
+        open({ subcategory = '', fetchOptions = null, onSelect = null, title = null, confirmLabel = null } = {}) {
             if (!this.root) return;
             this.activeFetcher = typeof fetchOptions === 'function' ? fetchOptions : null;
             this.onConfirm = typeof onSelect === 'function' ? onSelect : null;
+            if (this.titleNode) {
+                const nextTitle = title || this.defaultTitle || 'Swap Exercise';
+                this.titleNode.textContent = nextTitle;
+            }
+            this.currentConfirmText = confirmLabel || this.confirmDefaultText || 'Use Exercise';
+            if (this.confirmBtn) {
+                this.confirmBtn.textContent = this.currentConfirmText;
+            }
             this.subcategoryNode && (this.subcategoryNode.textContent = subcategory || 'this workout');
             this.selectionLabel && (this.selectionLabel.textContent = 'Pick an exercise to continue.');
             this.selectedIndex = -1;
@@ -261,7 +272,8 @@
                 this.confirmBtn.textContent = 'Updating…';
             } else {
                 this.confirmBtn.dataset.loading = 'false';
-                this.confirmBtn.textContent = this.confirmDefaultText || 'Use Exercise';
+                const text = this.currentConfirmText || this.confirmDefaultText || 'Use Exercise';
+                this.confirmBtn.textContent = text;
                 this.confirmBtn.disabled = this.selectedIndex < 0;
             }
         }
