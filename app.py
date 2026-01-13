@@ -40,6 +40,7 @@ from helpers import (
     normalize_custom_workout_categories,
     normalize_home_equipment_selection,
     custom_selection_bounds,
+    convert_decimals,
 )
 from collections import OrderedDict
 from dotenv import load_dotenv
@@ -359,7 +360,12 @@ def _record_exercise_history(user_id, workout_id, max_weight, max_reps):
         logging.exception("Failed to record exercise history for workout_id=%s", workout_id)
 
 
-def _log_workout_session_history(user_id: int, category_label: str, session_entries: list[dict]) -> tuple[str | None, datetime | None]:
+def _log_workout_session_history(
+    user_id: int,
+    category_label: str,
+    session_entries: list[dict],
+    session_id: str | None = None,
+) -> tuple[str | None, datetime | None]:
     """
     Persist a snapshot of each exercise in a completed workout into user_exercise_history.
     Returns (session_id, completed_at) when successful.
@@ -367,7 +373,13 @@ def _log_workout_session_history(user_id: int, category_label: str, session_entr
     if not session_entries:
         return None, None
 
-    session_uuid = uuid.uuid4()
+    if session_id:
+        try:
+            session_uuid = uuid.UUID(str(session_id))
+        except (ValueError, TypeError):
+            session_uuid = uuid.uuid4()
+    else:
+        session_uuid = uuid.uuid4()
     completed_at = datetime.now(timezone.utc)
 
     try:
@@ -1959,6 +1971,7 @@ def client_profile(client_id):
 
     exercise_search_term = (request.args.get('exercise_q') or '').strip()
     exercise_search_results = []
+    selected_session_id = int_or_none(request.args.get('session_event_id'))
 
     sessions_completed_count = 0
     session_packages: list[dict] = []
@@ -2090,7 +2103,14 @@ def client_profile(client_id):
                 active_skipped = skipped_payload
 
         created_at = active.get('created_at')
+        created_iso = None
         if created_at:
+            try:
+                if created_at.tzinfo is None:
+                    created_at = created_at.replace(tzinfo=timezone.utc)
+                created_iso = created_at.isoformat()
+            except Exception:
+                created_iso = None
             try:
                 created_display = fmt_utc(created_at)
             except Exception:
@@ -2102,11 +2122,68 @@ def client_profile(client_id):
             'category': active.get('category'),
             'duration_minutes': workout_payload.get('duration_minutes') if isinstance(workout_payload, dict) else None,
             'created_at': created_display,
+            'created_at_iso': created_iso,
             'plan': formatted_plan,
             'skipped': active_skipped,
             'custom_categories': workout_payload.get('custom_categories') if isinstance(workout_payload, dict) else [],
             'home_equipment': workout_payload.get('home_equipment') if isinstance(workout_payload, dict) else [],
         }
+
+    schedule_trainer_id = trainer_id
+    if trainer.get('role') == 'admin' and client.get('trainer_id'):
+        schedule_trainer_id = client['trainer_id']
+    scheduled_sessions = []
+    selected_session = None
+    session_workout = None
+    if schedule_trainer_id:
+        with get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(
+                    """
+                    SELECT id,
+                           start_time,
+                           end_time,
+                           status,
+                           session_payload,
+                           session_category,
+                           session_id
+                      FROM trainer_schedule
+                     WHERE trainer_id = %s
+                       AND client_id = %s
+                       AND status = 'booked'
+                     ORDER BY start_time ASC
+                    """,
+                    (schedule_trainer_id, client_id),
+                )
+                rows = cursor.fetchall() or []
+        for row in rows:
+            payload = _parse_session_payload(row.get('session_payload'))
+            workout_category = payload.get('category') if isinstance(payload, dict) else None
+            scheduled_sessions.append({
+                'id': row.get('id'),
+                'start_time': row.get('start_time').isoformat() if row.get('start_time') else None,
+                'end_time': row.get('end_time').isoformat() if row.get('end_time') else None,
+                'session_category': row.get('session_category'),
+                'workout_category': workout_category,
+                'session_id': row.get('session_id'),
+                'has_workout': bool(row.get('session_payload')),
+            })
+            if selected_session_id and row.get('id') == selected_session_id:
+                selected_session = row
+        if selected_session_id and not selected_session:
+            flash("That session could not be found.", "warning")
+        if selected_session:
+            raw_payload = _parse_session_payload(selected_session.get('session_payload'))
+            if raw_payload and _session_payload_has_plan(raw_payload):
+                base_category = raw_payload.get('category') or selected_session.get('session_category')
+                formatted_plan = format_workout_for_response(base_category, raw_payload.get('plan'))
+                session_workout = {
+                    'category': base_category,
+                    'duration_minutes': raw_payload.get('duration_minutes'),
+                    'plan': formatted_plan,
+                    'custom_categories': raw_payload.get('custom_categories') if isinstance(raw_payload, dict) else [],
+                    'home_equipment': raw_payload.get('home_equipment') if isinstance(raw_payload, dict) else [],
+                }
 
     category_options = list(get_category_groups().keys())
     if CUSTOM_WORKOUT_TOKEN not in category_options:
@@ -2153,6 +2230,10 @@ def client_profile(client_id):
         sessions_completed=sessions_completed_count,
         session_summary=session_summary,
         session_packages=session_summary.get('packages', []) if session_summary else [],
+        scheduled_sessions=scheduled_sessions,
+        selected_session_id=selected_session_id,
+        selected_session=selected_session,
+        session_workout=session_workout,
         NOTES_PLACEHOLDER=WORKOUT_NOTES_PLACEHOLDER,
         trainer_add_remove_enabled=trainer_add_remove_enabled,
     )
@@ -2770,6 +2851,12 @@ def _compute_client_schedule_counts(trainer_id: int, client_ids: list[int], sync
 
 
 def _serialize_schedule_row(row):
+    has_session_workout = None
+    if 'has_session_workout' in row:
+        has_session_workout = bool(row.get('has_session_workout'))
+    elif 'session_payload' in row:
+        has_session_workout = row.get('session_payload') is not None
+
     return {
         'id': row['id'],
         'trainer_id': row['trainer_id'],
@@ -2784,8 +2871,9 @@ def _serialize_schedule_row(row):
         'note': row.get('note'),
         'session_id': str(row.get('session_id')) if row.get('session_id') else None,
         'session_category': row.get('session_category'),
-        'session_completed_at': row['session_completed_at'].isoformat() if row.get('session_completed_at') else None,
+        'session_completed_at': row.get('session_completed_at').isoformat() if row.get('session_completed_at') else None,
         'is_self_booked': bool(row.get('is_self_booked')),
+        **({'has_session_workout': has_session_workout} if has_session_workout is not None else {}),
     }
 
 
@@ -2829,6 +2917,7 @@ def trainer_schedule_data():
                 """
                 SELECT ts.id, ts.trainer_id, ts.client_id, ts.start_time, ts.end_time, ts.status, ts.note,
                        ts.session_id, ts.session_category, ts.session_completed_at, ts.is_self_booked,
+                       CASE WHEN ts.session_payload IS NULL THEN FALSE ELSE TRUE END AS has_session_workout,
                        c.name AS client_name, c.last_name AS client_last_name, c.username AS client_username
                   FROM trainer_schedule ts
                   JOIN users c ON c.id = ts.client_id
@@ -2857,8 +2946,18 @@ def trainer_schedule_data():
     session_events = []
     for row in session_rows:
         serialized = _serialize_schedule_row(row)
-        if serialized.get('session_id'):
+        if serialized.get('session_id') and (serialized.get('status') == 'completed' or serialized.get('session_completed_at')):
             serialized['session_url'] = url_for('workout_session_view', session_id=serialized['session_id'])
+        if (
+            serialized.get('has_session_workout')
+            and serialized.get('status') == 'booked'
+            and not serialized.get('session_completed_at')
+        ):
+            serialized['session_workout_url'] = url_for(
+                'client_profile',
+                client_id=serialized.get('client_id'),
+                session_event_id=serialized.get('id'),
+            )
         session_events.append(serialized)
     time_off_events = [_serialize_time_off_row(row) for row in time_off_rows]
     combined = sorted(session_events + time_off_events, key=lambda ev: ev['start_time'] or '')
@@ -3235,7 +3334,13 @@ def trainer_schedule_modify(event_id):
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
             cursor.execute(
                 """
-                SELECT id, client_id, status
+                SELECT id,
+                       client_id,
+                       status,
+                       session_payload,
+                       session_category,
+                       session_id,
+                       session_completed_at
                   FROM trainer_schedule
                  WHERE id = %s AND trainer_id = %s
                 """,
@@ -3303,7 +3408,21 @@ def trainer_schedule_modify(event_id):
         workout_delta = 0
         if new_status and new_status != current_status:
             if current_status != 'completed' and new_status == 'completed':
-                comp_success, comp_error, comp_meta = _complete_workout_for_user(client_id)
+                assigned_payload = _parse_session_payload(row.get('session_payload'))
+                if assigned_payload and _session_payload_has_plan(assigned_payload):
+                    base_category = (
+                        assigned_payload.get('category')
+                        if isinstance(assigned_payload, dict)
+                        else None
+                    ) or row.get('session_category')
+                    comp_success, comp_error, comp_meta = _complete_workout_from_payload(
+                        client_id,
+                        base_category,
+                        assigned_payload,
+                        session_id_override=row.get('session_id'),
+                    )
+                else:
+                    comp_success, comp_error, comp_meta = _complete_workout_for_user(client_id)
                 if comp_success:
                     session_logged = True
                     session_meta_payload = comp_meta
@@ -3357,6 +3476,8 @@ def trainer_schedule_modify(event_id):
             cursor.execute(
                 """
                 SELECT ts.id, ts.trainer_id, ts.client_id, ts.start_time, ts.end_time, ts.status, ts.note,
+                       ts.session_id, ts.session_category, ts.session_completed_at,
+                       CASE WHEN ts.session_payload IS NULL THEN FALSE ELSE TRUE END AS has_session_workout,
                        c.name AS client_name, c.last_name AS client_last_name, c.username AS client_username
                   FROM trainer_schedule ts
                   JOIN users c ON c.id = ts.client_id
@@ -3407,8 +3528,19 @@ def trainer_schedule_modify(event_id):
             )
 
     event_payload = _serialize_schedule_row(refreshed) if refreshed else None
-    if event_payload and event_payload.get('session_id'):
+    if event_payload and event_payload.get('session_id') and (event_payload.get('status') == 'completed' or event_payload.get('session_completed_at')):
         event_payload['session_url'] = url_for('workout_session_view', session_id=event_payload['session_id'])
+    if (
+        event_payload
+        and event_payload.get('has_session_workout')
+        and event_payload.get('status') == 'booked'
+        and not event_payload.get('session_completed_at')
+    ):
+        event_payload['session_workout_url'] = url_for(
+            'client_profile',
+            client_id=event_payload.get('client_id'),
+            session_event_id=event_payload.get('id'),
+        )
 
     payload = {
         'success': True,
@@ -5406,7 +5538,7 @@ def client_schedule_data():
             event['trainer_name'] = row.get('trainer_name')
             event['trainer_last_name'] = row.get('trainer_last_name')
             event['trainer_username'] = row.get('trainer_username')
-        if event.get('session_id'):
+        if event.get('session_id') and (event.get('status') == 'completed' or event.get('session_completed_at')):
             event['session_url'] = url_for('workout_session_view', session_id=event['session_id'])
         events.append(event)
 
@@ -5717,7 +5849,7 @@ def trainer_self_agenda_view():
         end_time_display = _format_local_time(end_dt)
         session_url = None
         session_id_val = row.get('session_id')
-        if session_id_val:
+        if session_id_val and (row.get('status') or '').lower() == 'completed':
             url_params = {'session_id': session_id_val}
             if timezone_name:
                 url_params['timezone'] = timezone_name
@@ -5827,7 +5959,7 @@ def trainer_self_schedule_data():
         event['trainer_name'] = None
         event['trainer_last_name'] = None
         event['trainer_username'] = None
-        if event.get('session_id'):
+        if event.get('session_id') and (event.get('status') == 'completed' or event.get('session_completed_at')):
             event['session_url'] = url_for('workout_session_view', session_id=event['session_id'])
         events.append(event)
 
@@ -5848,6 +5980,7 @@ def generate_client_workout(client_id):
     if not selected_category:
         flash("Please choose a category before generating a workout.", "danger")
         return redirect(url_for('client_profile', client_id=client_id))
+    session_event_id = int_or_none(request.form.get('session_event_id'))
     def _flatten_custom_payload(entries):
         flattened = []
         for entry in entries or []:
@@ -5968,10 +6101,41 @@ def generate_client_workout(client_id):
         'duration_minutes': duration_minutes,
         'skipped': skipped_meta,
     }
+    workout_payload['category'] = selected_category
     if is_custom:
         workout_payload['custom_categories'] = custom_selection
     if is_home:
         workout_payload['home_equipment'] = home_equipment
+
+    if session_event_id:
+        display_category, _ = _resolve_workout_display_metadata(workout_payload, selected_category)
+        assigned, error_message, _ = _assign_workout_to_schedule(
+            trainer,
+            trainer_id,
+            client_id,
+            session_event_id,
+            workout_payload,
+            display_category,
+            selected_category,
+        )
+        if not assigned:
+            flash(error_message or "Unable to assign workout to that session.", "danger")
+            return redirect(url_for('client_profile', client_id=client_id))
+        flash_message = "Workout generated and assigned to the selected session."
+        if skipped_meta:
+            skipped_summary = []
+            categories = skipped_meta.get('categories') or []
+            subcategories = skipped_meta.get('subcategories') or []
+            combined = sorted(set(categories) | set(subcategories))
+            if combined:
+                skipped_summary.append(f"Skipped: {', '.join(combined)}")
+            if skipped_meta.get('cardio_restriction'):
+                skipped_summary.append("Cardio restricted")
+            if skipped_summary:
+                flash_message = f"{flash_message} ({'; '.join(skipped_summary)})"
+        flash(flash_message, "success")
+        return redirect(url_for('client_profile', client_id=client_id, session_event_id=session_event_id))
+
     set_active_workout(client_id, selected_category, workout_payload)
 
     flash_message = "Client workout generated and synced."
@@ -5999,6 +6163,7 @@ def trainer_complete_client_workout(client_id):
     if not trainer:
         flash("Trainer access required.", "danger")
         return redirect(url_for('home'))
+    session_event_id = int_or_none(request.form.get('session_event_id'))
 
     with get_connection() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
@@ -6016,22 +6181,33 @@ def trainer_complete_client_workout(client_id):
         flash("You do not have access to that client.", "danger")
         return redirect(url_for('trainer_dashboard'))
 
-    success, error, session_meta = _complete_workout_for_user(client_id)
-    if success:
-        event_to_complete = None
+    event_to_complete = None
+    event_payload = None
+    if session_event_id:
         with get_connection() as conn:
-            with conn.cursor() as cursor:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
                 cursor.execute(
                     """
-                    INSERT INTO trainer_sessions (trainer_id, client_id)
-                    VALUES (%s, %s)
+                    SELECT id, status, session_payload, session_category, session_id
+                      FROM trainer_schedule
+                     WHERE id = %s AND trainer_id = %s AND client_id = %s
                     """,
-                    (trainer_id, client_id),
+                    (session_event_id, trainer_id, client_id),
                 )
-            with conn.cursor() as cursor:
+                event_payload = cursor.fetchone()
+        if not event_payload:
+            flash("That session could not be found.", "danger")
+            return redirect(url_for('client_profile', client_id=client_id))
+        if (event_payload.get('status') or 'booked').lower() != 'booked':
+            flash("Only booked sessions can be marked complete.", "danger")
+            return redirect(url_for('client_profile', client_id=client_id, session_event_id=session_event_id))
+        event_to_complete = event_payload.get('id')
+    else:
+        with get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
                 cursor.execute(
                     """
-                    SELECT id
+                    SELECT id, session_payload, session_category, session_id
                       FROM trainer_schedule
                      WHERE client_id = %s
                        AND trainer_id = %s
@@ -6041,9 +6217,38 @@ def trainer_complete_client_workout(client_id):
                     """,
                     (client_id, trainer_id),
                 )
-                row = cursor.fetchone()
-                if row:
-                    event_to_complete = row[0]
+                event_payload = cursor.fetchone()
+        if event_payload:
+            event_to_complete = event_payload.get('id')
+
+    assigned_payload = _parse_session_payload(event_payload.get('session_payload')) if event_payload else None
+    if assigned_payload and _session_payload_has_plan(assigned_payload):
+        base_category = (
+            assigned_payload.get('category')
+            if isinstance(assigned_payload, dict)
+            else None
+        ) or event_payload.get('session_category')
+        success, error, session_meta = _complete_workout_from_payload(
+            client_id,
+            base_category,
+            assigned_payload,
+            session_id_override=event_payload.get('session_id') if event_payload else None,
+        )
+    else:
+        success, error, session_meta = _complete_workout_for_user(client_id)
+
+    if success:
+        with get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO trainer_sessions (trainer_id, client_id)
+                    VALUES (%s, %s)
+                    """,
+                    (trainer_id, client_id),
+                )
+            if event_to_complete:
+                with conn.cursor() as cursor:
                     cursor.execute(
                         "UPDATE trainer_schedule SET status = 'completed' WHERE id = %s",
                         (event_to_complete,),
@@ -6831,7 +7036,7 @@ def clear_active_workout_route():
     return jsonify({'success': True})
 
 
-def _apply_pr_update(user_id: int, workout_id: int, max_weight, max_reps):
+def _apply_pr_update(user_id: int, workout_id: int, max_weight, max_reps, *, update_active: bool = True):
     with get_connection() as conn:
         with conn.cursor() as cursor:
             cursor.execute(
@@ -6851,67 +7056,68 @@ def _apply_pr_update(user_id: int, workout_id: int, max_weight, max_reps):
 
         _record_exercise_history(user_id, workout_id, max_weight, max_reps)
 
-        active_updated = False
-        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute(
-                "SELECT category, workout_data FROM active_workouts WHERE user_id = %s",
-                (user_id,),
-            )
-            active = cur.fetchone()
+        if update_active:
+            active_updated = False
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute(
+                    "SELECT category, workout_data FROM active_workouts WHERE user_id = %s",
+                    (user_id,),
+                )
+                active = cur.fetchone()
 
-        if active and active.get('workout_data') is not None:
-            payload = active['workout_data']
-            workout_id_str = str(workout_id)
+            if active and active.get('workout_data') is not None:
+                payload = active['workout_data']
+                workout_id_str = str(workout_id)
 
-            def update_exercise_entry(entry):
-                nonlocal active_updated
-                if isinstance(entry, dict):
-                    if str(entry.get('workout_id')) == workout_id_str:
-                        entry = {**entry}
-                        entry['max_weight'] = max_weight
-                        entry['max_reps'] = max_reps
-                        active_updated = True
+                def update_exercise_entry(entry):
+                    nonlocal active_updated
+                    if isinstance(entry, dict):
+                        if str(entry.get('workout_id')) == workout_id_str:
+                            entry = {**entry}
+                            entry['max_weight'] = max_weight
+                            entry['max_reps'] = max_reps
+                            active_updated = True
+                        return entry
+                    if isinstance(entry, (list, tuple)):
+                        if entry and str(entry[0]) == workout_id_str:
+                            entry_list = list(entry)
+                            while len(entry_list) <= 7:
+                                entry_list.append(None)
+                            entry_list[6] = max_weight
+                            entry_list[7] = max_reps
+                            active_updated = True
+                            return entry_list
                     return entry
-                if isinstance(entry, (list, tuple)):
-                    if entry and str(entry[0]) == workout_id_str:
-                        entry_list = list(entry)
-                        while len(entry_list) <= 7:
-                            entry_list.append(None)
-                        entry_list[6] = max_weight
-                        entry_list[7] = max_reps
-                        active_updated = True
-                        return entry_list
-                return entry
 
-            def update_structure(node):
-                if isinstance(node, dict):
-                    if 'workout_id' in node or 'exercise_id' in node:
-                        return update_exercise_entry(node)
-                    return {key: update_structure(value) for key, value in node.items()}
-                if isinstance(node, list):
-                    if node and not isinstance(node[0], (dict, list, tuple)) and str(node[0]) == workout_id_str:
-                        return update_exercise_entry(node)
-                    return [update_structure(item) for item in node]
-                return node
+                def update_structure(node):
+                    if isinstance(node, dict):
+                        if 'workout_id' in node or 'exercise_id' in node:
+                            return update_exercise_entry(node)
+                        return {key: update_structure(value) for key, value in node.items()}
+                    if isinstance(node, list):
+                        if node and not isinstance(node[0], (dict, list, tuple)) and str(node[0]) == workout_id_str:
+                            return update_exercise_entry(node)
+                        return [update_structure(item) for item in node]
+                    return node
 
-            updated_payload = update_structure(payload)
-            if active_updated:
-                with get_connection() as conn:
-                    with conn.cursor() as cursor:
-                        cursor.execute(
-                            """
-                            UPDATE active_workouts
-                               SET workout_data = %s
-                             WHERE user_id = %s
-                            """,
-                            (psycopg2.extras.Json(updated_payload), user_id),
-                        )
-                        conn.commit()
+                updated_payload = update_structure(payload)
+                if active_updated:
+                    with get_connection() as conn:
+                        with conn.cursor() as cursor:
+                            cursor.execute(
+                                """
+                                UPDATE active_workouts
+                                   SET workout_data = %s
+                                 WHERE user_id = %s
+                                """,
+                                (psycopg2.extras.Json(updated_payload), user_id),
+                            )
+                            conn.commit()
 
     return {'success': True, 'max_weight': max_weight, 'max_reps': max_reps}
 
 
-def _apply_notes_update(user_id: int, workout_id: int, notes: str | None):
+def _apply_notes_update(user_id: int, workout_id: int, notes: str | None, *, update_active: bool = True):
     with get_connection() as conn:
         with conn.cursor() as cursor:
             cursor.execute(
@@ -6928,95 +7134,85 @@ def _apply_notes_update(user_id: int, workout_id: int, notes: str | None):
                 (user_id, notes, workout_id),
             )
 
-        active_updated = False
-        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute(
-                "SELECT category, workout_data FROM active_workouts WHERE user_id = %s",
-                (user_id,),
-            )
-            active = cur.fetchone()
+        if update_active:
+            active_updated = False
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute(
+                    "SELECT category, workout_data FROM active_workouts WHERE user_id = %s",
+                    (user_id,),
+                )
+                active = cur.fetchone()
 
-        if active and active.get('workout_data') is not None:
-            payload = active['workout_data']
-            workout_id_str = str(workout_id)
+            if active and active.get('workout_data') is not None:
+                payload = active['workout_data']
+                workout_id_str = str(workout_id)
 
-            def update_exercise_entry(entry):
-                nonlocal active_updated
-                if isinstance(entry, dict):
-                    if str(entry.get('workout_id')) == workout_id_str:
-                        entry = {**entry}
-                        entry['notes'] = notes
-                        active_updated = True
+                def update_exercise_entry(entry):
+                    nonlocal active_updated
+                    if isinstance(entry, dict):
+                        if str(entry.get('workout_id')) == workout_id_str:
+                            entry = {**entry}
+                            entry['notes'] = notes
+                            active_updated = True
+                        return entry
+                    if isinstance(entry, (list, tuple)):
+                        if entry and str(entry[0]) == workout_id_str:
+                            entry_list = list(entry)
+                            while len(entry_list) <= 8:
+                                entry_list.append(None)
+                            entry_list[8] = notes
+                            active_updated = True
+                            return entry_list
                     return entry
-                if isinstance(entry, (list, tuple)):
-                    if entry and str(entry[0]) == workout_id_str:
-                        entry_list = list(entry)
-                        while len(entry_list) <= 8:
-                            entry_list.append(None)
-                        entry_list[8] = notes
-                        active_updated = True
-                        return entry_list
-                return entry
 
-            def update_structure(node):
-                if isinstance(node, dict):
-                    if 'workout_id' in node or 'exercise_id' in node:
-                        return update_exercise_entry(node)
-                    return {key: update_structure(value) for key, value in node.items()}
-                if isinstance(node, list):
-                    if node and not isinstance(node[0], (dict, list, tuple)) and str(node[0]) == workout_id_str:
-                        return update_exercise_entry(node)
-                    return [update_structure(item) for item in node]
-                return node
+                def update_structure(node):
+                    if isinstance(node, dict):
+                        if 'workout_id' in node or 'exercise_id' in node:
+                            return update_exercise_entry(node)
+                        return {key: update_structure(value) for key, value in node.items()}
+                    if isinstance(node, list):
+                        if node and not isinstance(node[0], (dict, list, tuple)) and str(node[0]) == workout_id_str:
+                            return update_exercise_entry(node)
+                        return [update_structure(item) for item in node]
+                    return node
 
-            updated_payload = update_structure(payload)
-            if active_updated:
-                with get_connection() as conn:
-                    with conn.cursor() as cursor:
-                        cursor.execute(
-                            """
-                            UPDATE active_workouts
-                               SET workout_data = %s
-                             WHERE user_id = %s
-                            """,
-                            (psycopg2.extras.Json(updated_payload), user_id),
-                        )
-                        conn.commit()
+                updated_payload = update_structure(payload)
+                if active_updated:
+                    with get_connection() as conn:
+                        with conn.cursor() as cursor:
+                            cursor.execute(
+                                """
+                                UPDATE active_workouts
+                                   SET workout_data = %s
+                                 WHERE user_id = %s
+                                """,
+                                (psycopg2.extras.Json(updated_payload), user_id),
+                            )
+                            conn.commit()
 
     return {'success': True, 'notes': notes or ''}
 
 
-def _complete_workout_for_user(user_id: int) -> tuple[bool, str | None, dict | None]:
-    active = get_active_workout(user_id)
-    if not active:
-        return False, 'No workout generated', None
-
-    workout_data = active.get('workout_data') or {}
-    stored_plan = workout_data.get('plan') if isinstance(workout_data, dict) else None
-    if not stored_plan:
-        return False, 'No workout data available', None
-
-    workout_category = active.get('category')
+def _resolve_workout_display_metadata(workout_payload: dict, workout_category: str | None) -> tuple[str, dict]:
     workout_payload_meta = {}
     custom_tokens_seen = set()
     custom_tokens = []
     custom_pretty = []
-    if isinstance(workout_data, dict):
-        raw_custom = workout_data.get('custom_categories')
-        if isinstance(raw_custom, list):
-            for token in raw_custom:
-                if not token:
-                    continue
-                token_str = str(token).strip()
-                if not token_str:
-                    continue
-                normalized_token = token_str.upper()
-                if normalized_token in custom_tokens_seen:
-                    continue
-                custom_tokens_seen.add(normalized_token)
-                custom_tokens.append(normalized_token)
-                pretty = token_str.lower().replace('_', ' ').title()
-                custom_pretty.append(pretty)
+    raw_custom = workout_payload.get('custom_categories') if isinstance(workout_payload, dict) else None
+    if isinstance(raw_custom, list):
+        for token in raw_custom:
+            if not token:
+                continue
+            token_str = str(token).strip()
+            if not token_str:
+                continue
+            normalized_token = token_str.upper()
+            if normalized_token in custom_tokens_seen:
+                continue
+            custom_tokens_seen.add(normalized_token)
+            custom_tokens.append(normalized_token)
+            pretty = token_str.lower().replace('_', ' ').title()
+            custom_pretty.append(pretty)
     if custom_pretty:
         display_category = ', '.join(custom_pretty)
         workout_payload_meta = {
@@ -7024,8 +7220,26 @@ def _complete_workout_for_user(user_id: int) -> tuple[bool, str | None, dict | N
             'custom_categories_pretty': custom_pretty,
         }
     else:
-        display_category = workout_category
+        display_category = (workout_category or '').strip()
+    if not display_category:
+        display_category = 'Workout Session'
+    return display_category, workout_payload_meta
 
+
+def _complete_workout_from_payload(
+    user_id: int,
+    workout_category: str | None,
+    workout_payload: dict,
+    *,
+    session_id_override: str | None = None,
+) -> tuple[bool, str | None, dict | None]:
+    if not isinstance(workout_payload, dict):
+        return False, 'No workout data available', None
+    stored_plan = workout_payload.get('plan')
+    if not stored_plan:
+        return False, 'No workout data available', None
+
+    display_category, workout_payload_meta = _resolve_workout_display_metadata(workout_payload, workout_category)
     refreshed_workout = OrderedDict()
     session_entries: list[dict] = []
 
@@ -7082,6 +7296,7 @@ def _complete_workout_for_user(user_id: int) -> tuple[bool, str | None, dict | N
                 user_id,
                 display_category or workout_category or '',
                 session_entries,
+                session_id=session_id_override,
             )
 
             meta_payload = dict(workout_payload_meta) if workout_payload_meta else {}
@@ -7106,7 +7321,6 @@ def _complete_workout_for_user(user_id: int) -> tuple[bool, str | None, dict | N
             )
             conn.commit()
 
-    clear_active_workout(user_id)
     session_meta = {
         'session_id': session_id,
         'completed_at': completed_at.isoformat() if completed_at else None,
@@ -7115,6 +7329,23 @@ def _complete_workout_for_user(user_id: int) -> tuple[bool, str | None, dict | N
         'category_key': workout_category,
     }
     return True, None, session_meta
+
+
+def _complete_workout_for_user(user_id: int) -> tuple[bool, str | None, dict | None]:
+    active = get_active_workout(user_id)
+    if not active:
+        return False, 'No workout generated', None
+
+    workout_data = active.get('workout_data') or {}
+    workout_category = active.get('category')
+    success, error, session_meta = _complete_workout_from_payload(
+        user_id,
+        workout_category,
+        workout_data,
+    )
+    if success:
+        clear_active_workout(user_id)
+    return success, error, session_meta
 
 
 def _exercise_entry_workout_id(entry):
@@ -7171,6 +7402,188 @@ def _build_new_exercise_entry(exercises, formatted_exercise):
     if sample_entry is None:
         return formatted_exercise
     return _apply_formatted_exercise(sample_entry, formatted_exercise)
+
+
+_PAYLOAD_UNSET = object()
+
+
+def _parse_session_payload(raw_payload):
+    if raw_payload is None:
+        return None
+    if isinstance(raw_payload, str):
+        try:
+            return json.loads(raw_payload)
+        except (TypeError, json.JSONDecodeError):
+            return None
+    return raw_payload
+
+
+def _session_payload_has_plan(payload) -> bool:
+    if not isinstance(payload, dict):
+        return False
+    plan = payload.get('plan')
+    return bool(_normalize_plan_for_iteration(plan))
+
+
+def _normalize_workout_payload_plan(payload):
+    if not isinstance(payload, dict):
+        return payload
+    plan = payload.get('plan')
+    normalized = []
+    if isinstance(plan, dict):
+        normalized = [
+            {'subcategory': subcat, 'exercises': exercises}
+            for subcat, exercises in plan.items()
+        ]
+    elif isinstance(plan, list):
+        for entry in plan:
+            if isinstance(entry, dict) and 'subcategory' in entry:
+                normalized.append(entry)
+            elif isinstance(entry, (list, tuple)) and len(entry) >= 2:
+                normalized.append({'subcategory': entry[0], 'exercises': entry[1]})
+    if normalized:
+        payload = dict(payload)
+        payload['plan'] = normalized
+    return payload
+
+
+def _update_workout_payload_entry(
+    workout_payload: dict,
+    workout_id: int,
+    *,
+    max_weight=_PAYLOAD_UNSET,
+    max_reps=_PAYLOAD_UNSET,
+    notes=_PAYLOAD_UNSET,
+) -> bool:
+    if not isinstance(workout_payload, dict):
+        return False
+    plan = workout_payload.get('plan')
+    if not isinstance(plan, list):
+        return False
+    updated = False
+    target_key = str(workout_id)
+    for block in plan:
+        exercises = block.get('exercises') or []
+        for idx, entry in enumerate(exercises):
+            entry_id = _exercise_entry_workout_id(entry)
+            if entry_id is None or str(entry_id) != target_key:
+                continue
+            if isinstance(entry, dict):
+                updated_entry = dict(entry)
+                if max_weight is not _PAYLOAD_UNSET:
+                    updated_entry['max_weight'] = max_weight
+                if max_reps is not _PAYLOAD_UNSET:
+                    updated_entry['max_reps'] = max_reps
+                if notes is not _PAYLOAD_UNSET:
+                    updated_entry['notes'] = notes
+                exercises[idx] = updated_entry
+            elif isinstance(entry, list):
+                entry_list = list(entry)
+                while len(entry_list) <= 8:
+                    entry_list.append(None)
+                if max_weight is not _PAYLOAD_UNSET:
+                    entry_list[6] = max_weight
+                if max_reps is not _PAYLOAD_UNSET:
+                    entry_list[7] = max_reps
+                if notes is not _PAYLOAD_UNSET:
+                    entry_list[8] = notes
+                exercises[idx] = entry_list
+            updated = True
+    return updated
+
+
+def _assign_workout_to_schedule(
+    trainer: dict,
+    trainer_id: int,
+    client_id: int,
+    event_id: int,
+    workout_payload: dict,
+    display_category: str,
+    workout_category: str | None,
+) -> tuple[bool, str | None, dict | None]:
+    if not _session_payload_has_plan(workout_payload):
+        return False, 'No workout data available to assign.', None
+    payload = convert_decimals(workout_payload)
+    payload = _normalize_workout_payload_plan(payload)
+    if isinstance(payload, dict) and workout_category:
+        payload.setdefault('category', workout_category)
+
+    is_admin = (trainer.get('role') or '').lower() == 'admin'
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            cursor.execute(
+                """
+                SELECT id, trainer_id, client_id, status, is_self_booked, session_id
+                  FROM trainer_schedule
+                 WHERE id = %s
+                """,
+                (event_id,),
+            )
+            row = cursor.fetchone()
+            if not row:
+                return False, 'Scheduled session not found.', None
+            if not is_admin and row.get('trainer_id') != trainer_id:
+                return False, 'You do not have access to that session.', None
+            if row.get('client_id') != client_id:
+                return False, 'That session does not belong to this client.', None
+            if row.get('is_self_booked'):
+                return False, 'Self-booked sessions cannot be assigned.', None
+            status = (row.get('status') or 'booked').lower()
+            if status != 'booked':
+                return False, 'Only booked sessions can receive an assigned workout.', None
+
+            session_id = row.get('session_id') or str(uuid.uuid4())
+            cursor.execute(
+                """
+                UPDATE trainer_schedule
+                   SET session_payload = %s,
+                       session_category = %s,
+                       session_id = %s
+                 WHERE id = %s
+                """,
+                (
+                    psycopg2.extras.Json(payload),
+                    display_category or workout_category or 'Workout Session',
+                    session_id,
+                    event_id,
+                ),
+            )
+            conn.commit()
+
+    return True, None, {'session_id': session_id}
+
+
+def _load_trainer_session_payload_for_edit(trainer: dict, event_id: int):
+    trainer_id = session['user_id']
+    is_admin = (trainer.get('role') or '').lower() == 'admin'
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            cursor.execute(
+                """
+                SELECT id,
+                       trainer_id,
+                       client_id,
+                       status,
+                       session_payload,
+                       session_category,
+                       session_id
+                  FROM trainer_schedule
+                 WHERE id = %s
+                """,
+                (event_id,),
+            )
+            row = cursor.fetchone()
+    if not row:
+        return None, None, ({'success': False, 'error': 'Session not found.'}, 404)
+    if not is_admin and row.get('trainer_id') != trainer_id:
+        return None, None, ({'success': False, 'error': 'You do not have access to that session.'}, 403)
+    status = (row.get('status') or 'booked').lower()
+    if status != 'booked':
+        return None, None, ({'success': False, 'error': 'Only booked sessions can be edited.'}, 400)
+    payload = _parse_session_payload(row.get('session_payload'))
+    if not _session_payload_has_plan(payload):
+        return None, None, ({'success': False, 'error': 'No workout assigned to this session.'}, 404)
+    return row, payload, None
 
 
 def _resolve_refresh_context(workout_payload, subcategory, workout_id):
@@ -7251,7 +7664,10 @@ def _resolve_block_without_anchor(workout_payload, subcategory):
             break
     if not target_block:
         return None, ({'success': False, 'error': 'Workout category not found.'}, 404)
-    exercises = target_block.get('exercises') or []
+    exercises = target_block.get('exercises')
+    if exercises is None:
+        exercises = []
+        target_block['exercises'] = exercises
     existing_ids = set()
     for entry in exercises:
         entry_id = _exercise_entry_workout_id(entry)
@@ -8417,6 +8833,539 @@ def trainer_remove_client_workout_exercise(client_id, workout_id):
     })
 
 
+@app.post('/trainer/schedule/<int:event_id>/workout/reorder')
+@login_required
+def trainer_reorder_session_workout_exercises(event_id):
+    trainer = _require_trainer(session['user_id'])
+    if not trainer:
+        return jsonify({'success': False, 'error': 'Trainer access required.'}), 403
+
+    payload = request.get_json(silent=True) or {}
+    subcategory = (payload.get('subcategory') or '').strip()
+    order_list = payload.get('order')
+    if not subcategory or not isinstance(order_list, list) or not order_list:
+        return jsonify({'success': False, 'error': 'Invalid reorder payload.'}), 400
+
+    sanitized_order = []
+    for value in order_list:
+        key = str(value).strip()
+        if not key:
+            continue
+        sanitized_order.append(key)
+    if len(sanitized_order) != len(order_list):
+        return jsonify({'success': False, 'error': 'Invalid exercise identifiers provided.'}), 400
+    if len(set(sanitized_order)) != len(sanitized_order):
+        return jsonify({'success': False, 'error': 'Duplicate exercise identifiers provided.'}), 400
+
+    row, workout_payload, error_response = _load_trainer_session_payload_for_edit(trainer, event_id)
+    if error_response:
+        payload, status = error_response
+        return jsonify(payload), status
+
+    plan = workout_payload.get('plan')
+    if not isinstance(plan, list):
+        return jsonify({'success': False, 'error': 'Session workout plan is missing.'}), 400
+
+    target_label = subcategory.lower()
+    target_block = None
+    for block in plan:
+        label = str(block.get('subcategory') or '').strip()
+        if label.lower() == target_label:
+            target_block = block
+            break
+    if not target_block:
+        return jsonify({'success': False, 'error': 'Workout category not found.'}), 404
+
+    exercises = target_block.get('exercises') or []
+    if len(exercises) != len(sanitized_order):
+        return jsonify({'success': False, 'error': 'Exercise count mismatch. Refresh and try again.'}), 400
+
+    lookup = {}
+    for entry in exercises:
+        workout_id = _exercise_entry_workout_id(entry)
+        if workout_id is None:
+            return jsonify({'success': False, 'error': 'An exercise is missing its identifier.'}), 400
+        key = str(workout_id)
+        lookup[key] = entry
+    if set(lookup.keys()) != set(sanitized_order):
+        return jsonify({'success': False, 'error': 'Invalid exercise order submitted.'}), 400
+
+    target_block['exercises'] = [lookup[wid] for wid in sanitized_order]
+
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE trainer_schedule
+                   SET session_payload = %s
+                 WHERE id = %s
+                """,
+                (psycopg2.extras.Json(workout_payload), event_id),
+            )
+            conn.commit()
+
+    return jsonify({'success': True})
+
+
+@app.get('/trainer/schedule/<int:event_id>/workout/exercises/<int:workout_id>/alternatives')
+@login_required
+def trainer_session_list_workout_alternates(event_id, workout_id):
+    trainer = _require_trainer(session['user_id'])
+    if not trainer:
+        return jsonify({'success': False, 'error': 'Trainer access required.'}), 403
+
+    subcategory = (request.args.get('subcategory') or '').strip()
+    if not subcategory:
+        return jsonify({'success': False, 'error': 'Workout category is required.'}), 400
+
+    row, workout_payload, error_response = _load_trainer_session_payload_for_edit(trainer, event_id)
+    if error_response:
+        payload, status = error_response
+        return jsonify(payload), status
+
+    client_id = row.get('client_id')
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            cursor.execute(
+                "SELECT exercise_history FROM users WHERE id = %s",
+                (client_id,),
+            )
+            client_row = cursor.fetchone()
+    user_level = get_user_level(client_row.get('exercise_history') if client_row else None)
+
+    if workout_id > 0:
+        context, error = _resolve_refresh_context(workout_payload, subcategory, workout_id)
+        anchor_index = context['replacement_index'] if not error else 0
+    else:
+        context, error = _resolve_block_without_anchor(workout_payload, subcategory)
+        anchor_index = len(context['exercises']) - 1 if not error else 0
+    if error:
+        payload, status = error
+        return jsonify(payload), status
+
+    query, params = _build_alternate_exercise_query(
+        client_id,
+        subcategory,
+        user_level,
+        context['existing_ids'],
+        context['equipment_clause'],
+        context['equipment_params'],
+        context['use_cardio_override'],
+        context['restrict_barbell'],
+        context['restrict_dumbbell'],
+        random_order=False,
+    )
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            cursor.execute(query, params)
+            rows = cursor.fetchall() or []
+
+    formatted = [_format_exercise(subcategory, row) for row in rows]
+    return jsonify({
+        'success': True,
+        'exercises': formatted,
+        'subcategory': context['target_block'].get('subcategory') or subcategory,
+    })
+
+
+@app.post('/trainer/schedule/<int:event_id>/workout/exercises/<int:workout_id>/refresh')
+@login_required
+def trainer_refresh_session_workout_exercise(event_id, workout_id):
+    trainer = _require_trainer(session['user_id'])
+    if not trainer:
+        return jsonify({'success': False, 'error': 'Trainer access required.'}), 403
+
+    payload = request.get_json(silent=True) or {}
+    subcategory = (payload.get('subcategory') or '').strip()
+    if not subcategory:
+        return jsonify({'success': False, 'error': 'Workout category is required.'}), 400
+    replacement_id_raw = payload.get('replacement_workout_id')
+    replacement_workout_id = None
+    if replacement_id_raw not in (None, ''):
+        try:
+            replacement_workout_id = int(replacement_id_raw)
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'error': 'Invalid alternate exercise selected.'}), 400
+        if replacement_workout_id <= 0:
+            return jsonify({'success': False, 'error': 'Invalid alternate exercise selected.'}), 400
+
+    row, workout_payload, error_response = _load_trainer_session_payload_for_edit(trainer, event_id)
+    if error_response:
+        payload, status = error_response
+        return jsonify(payload), status
+
+    client_id = row.get('client_id')
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            cursor.execute(
+                "SELECT exercise_history FROM users WHERE id = %s",
+                (client_id,),
+            )
+            client_row = cursor.fetchone()
+    user_level = get_user_level(client_row.get('exercise_history') if client_row else None)
+
+    if workout_id > 0:
+        context, error = _resolve_refresh_context(workout_payload, subcategory, workout_id)
+        if error:
+            payload, status = error
+            return jsonify(payload), status
+        anchor_index = context['replacement_index']
+    else:
+        context, error = _resolve_block_without_anchor(workout_payload, subcategory)
+        if error:
+            payload, status = error
+            return jsonify(payload), status
+        anchor_index = max(0, len(context['exercises']) - 1)
+    if replacement_workout_id and replacement_workout_id in context['existing_ids']:
+        return jsonify({'success': False, 'error': 'That exercise is already in this workout.'}), 400
+
+    query, params = _build_alternate_exercise_query(
+        client_id,
+        subcategory,
+        user_level,
+        context['existing_ids'],
+        context['equipment_clause'],
+        context['equipment_params'],
+        context['use_cardio_override'],
+        context['restrict_barbell'],
+        context['restrict_dumbbell'],
+        selected_workout_id=replacement_workout_id,
+        random_order=replacement_workout_id is None,
+    )
+
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            cursor.execute(query, params)
+            replacement_row = cursor.fetchone()
+        if not replacement_row:
+            error_msg = (
+                'Selected exercise is no longer available.'
+                if replacement_workout_id
+                else "No alternates match this client's level or equipment setup right now."
+            )
+            return jsonify({'success': False, 'error': error_msg}), 404
+
+        formatted_exercise = _format_exercise(subcategory, replacement_row)
+        exercises = context['exercises']
+        replacement_index = context['replacement_index']
+        exercises[replacement_index] = _apply_formatted_exercise(
+            exercises[replacement_index],
+            formatted_exercise,
+        )
+
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE trainer_schedule
+                   SET session_payload = %s
+                 WHERE id = %s
+                """,
+                (psycopg2.extras.Json(workout_payload), event_id),
+            )
+        conn.commit()
+
+    refresh_url = url_for('trainer_refresh_session_workout_exercise', event_id=event_id, workout_id=formatted_exercise.get('workout_id'))
+    alternates_url = url_for('trainer_session_list_workout_alternates', event_id=event_id, workout_id=formatted_exercise.get('workout_id'))
+    card_html = render_template(
+        'components/exercise_card.html',
+        exercise=formatted_exercise,
+        subcategory_name=context['target_block'].get('subcategory') or subcategory,
+        exercise_loop_index=replacement_index,
+        notes_placeholder=WORKOUT_NOTES_PLACEHOLDER,
+        client_id=client_id,
+        trainer_can_customize=True,
+        refresh_url=refresh_url,
+        alternate_url=alternates_url,
+    )
+
+    return jsonify({
+        'success': True,
+        'exercise': formatted_exercise,
+        'workout_id': formatted_exercise.get('workout_id'),
+        'card_html': card_html,
+    })
+
+
+@app.post('/trainer/schedule/<int:event_id>/workout/exercises/<int:workout_id>/add')
+@login_required
+def trainer_add_session_workout_exercise(event_id, workout_id):
+    trainer = _require_trainer(session['user_id'])
+    if not trainer:
+        return jsonify({'success': False, 'error': 'Trainer access required.'}), 403
+    if not _trainer_has_pro_access(trainer):
+        return jsonify({'success': False, 'error': 'Trainer Pro access required.'}), 403
+
+    payload = request.get_json(silent=True) or {}
+    subcategory = (payload.get('subcategory') or '').strip()
+    if not subcategory:
+        return jsonify({'success': False, 'error': 'Workout category is required.'}), 400
+    position = (payload.get('position') or 'after').strip().lower()
+    if position not in {'before', 'after'}:
+        position = 'after'
+    replacement_id_raw = payload.get('replacement_workout_id')
+    replacement_workout_id = None
+    if replacement_id_raw not in (None, ''):
+        try:
+            replacement_workout_id = int(replacement_id_raw)
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'error': 'Invalid exercise selected.'}), 400
+        if replacement_workout_id <= 0:
+            return jsonify({'success': False, 'error': 'Invalid exercise selected.'}), 400
+
+    row, workout_payload, error_response = _load_trainer_session_payload_for_edit(trainer, event_id)
+    if error_response:
+        payload, status = error_response
+        return jsonify(payload), status
+
+    client_id = row.get('client_id')
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            cursor.execute(
+                "SELECT exercise_history FROM users WHERE id = %s",
+                (client_id,),
+            )
+            client_row = cursor.fetchone()
+    user_level = get_user_level(client_row.get('exercise_history') if client_row else None)
+
+    if workout_id > 0:
+        context, error = _resolve_refresh_context(workout_payload, subcategory, workout_id)
+        anchor_index = context['replacement_index'] if not error else 0
+    else:
+        context, error = _resolve_block_without_anchor(workout_payload, subcategory)
+        anchor_index = len(context['exercises']) - 1 if not error else 0
+    if error:
+        payload, status = error
+        return jsonify(payload), status
+    if replacement_workout_id and replacement_workout_id in context['existing_ids']:
+        return jsonify({'success': False, 'error': 'That exercise is already in this workout.'}), 400
+
+    query, params = _build_alternate_exercise_query(
+        client_id,
+        subcategory,
+        user_level,
+        context['existing_ids'],
+        context['equipment_clause'],
+        context['equipment_params'],
+        context['use_cardio_override'],
+        context['restrict_barbell'],
+        context['restrict_dumbbell'],
+        selected_workout_id=replacement_workout_id,
+        random_order=replacement_workout_id is None,
+    )
+
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            cursor.execute(query, params)
+            new_row = cursor.fetchone()
+        if not new_row:
+            error_msg = (
+                'Selected exercise is no longer available.'
+                if replacement_workout_id
+                else "No alternates match this client's level or equipment setup right now."
+            )
+            return jsonify({'success': False, 'error': error_msg}), 404
+
+        formatted_exercise = _format_exercise(subcategory, new_row)
+        exercises = context['exercises']
+        new_entry = _build_new_exercise_entry(exercises, formatted_exercise)
+        insert_index = anchor_index if position == 'before' else anchor_index + 1
+        insert_index = max(0, min(insert_index, len(exercises)))
+        exercises.insert(insert_index, new_entry)
+
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE trainer_schedule
+                   SET session_payload = %s
+                 WHERE id = %s
+                """,
+                (psycopg2.extras.Json(workout_payload), event_id),
+            )
+        conn.commit()
+
+    refresh_url = url_for('trainer_refresh_session_workout_exercise', event_id=event_id, workout_id=formatted_exercise.get('workout_id'))
+    alternates_url = url_for('trainer_session_list_workout_alternates', event_id=event_id, workout_id=formatted_exercise.get('workout_id'))
+    card_html = render_template(
+        'components/exercise_card.html',
+        exercise=formatted_exercise,
+        subcategory_name=context['target_block'].get('subcategory') or subcategory,
+        exercise_loop_index=insert_index,
+        notes_placeholder=WORKOUT_NOTES_PLACEHOLDER,
+        client_id=client_id,
+        trainer_can_customize=True,
+        refresh_url=refresh_url,
+        alternate_url=alternates_url,
+    )
+
+    return jsonify({
+        'success': True,
+        'workout_id': formatted_exercise.get('workout_id'),
+        'card_html': card_html,
+        'anchor_workout_id': workout_id,
+        'insert_position': position,
+    })
+
+
+@app.post('/trainer/schedule/<int:event_id>/workout/exercises/<int:workout_id>/remove')
+@login_required
+def trainer_remove_session_workout_exercise(event_id, workout_id):
+    trainer = _require_trainer(session['user_id'])
+    if not trainer:
+        return jsonify({'success': False, 'error': 'Trainer access required.'}), 403
+    if not _trainer_has_pro_access(trainer):
+        return jsonify({'success': False, 'error': 'Trainer Pro access required.'}), 403
+
+    payload = request.get_json(silent=True) or {}
+    subcategory = (payload.get('subcategory') or '').strip()
+    if not subcategory:
+        return jsonify({'success': False, 'error': 'Workout category is required.'}), 400
+
+    row, workout_payload, error_response = _load_trainer_session_payload_for_edit(trainer, event_id)
+    if error_response:
+        payload, status = error_response
+        return jsonify(payload), status
+
+    context, error = _resolve_refresh_context(workout_payload, subcategory, workout_id)
+    if error:
+        payload, status = error
+        return jsonify(payload), status
+
+    exercises = context['exercises']
+    if not exercises:
+        return jsonify({'success': False, 'error': 'No exercises available for this category.'}), 400
+    removal_index = context['replacement_index']
+    if removal_index < 0 or removal_index >= len(exercises):
+        return jsonify({'success': False, 'error': 'Exercise not found in this workout.'}), 404
+    exercises.pop(removal_index)
+
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE trainer_schedule
+                   SET session_payload = %s
+                 WHERE id = %s
+                """,
+                (psycopg2.extras.Json(workout_payload), event_id),
+            )
+            conn.commit()
+
+    return jsonify({
+        'success': True,
+        'removed_workout_id': workout_id,
+        'subcategory': context['target_block'].get('subcategory') or subcategory,
+    })
+
+
+@app.post('/trainer/schedule/<int:event_id>/update_pr')
+@login_required
+def trainer_update_session_pr(event_id):
+    trainer = _require_trainer(session['user_id'])
+    if not trainer:
+        return jsonify({'success': False, 'error': 'Trainer access required.'}), 403
+
+    data = request.get_json() or {}
+    workout_id = data.get('workout_id')
+    if not workout_id:
+        return jsonify({'success': False, 'error': 'Missing workout id'}), 400
+
+    max_weight_raw = data.get('max_weight')
+    max_reps_raw = data.get('max_reps')
+
+    max_weight = None
+    if isinstance(max_weight_raw, (int, float)):
+        max_weight = float(max_weight_raw)
+    elif isinstance(max_weight_raw, str) and max_weight_raw.strip():
+        try:
+            max_weight = float(max_weight_raw)
+        except ValueError:
+            max_weight = None
+
+    max_reps = None
+    if isinstance(max_reps_raw, (int, float)):
+        max_reps = int(max_reps_raw)
+    elif isinstance(max_reps_raw, str) and max_reps_raw.strip():
+        try:
+            max_reps = int(float(max_reps_raw))
+        except ValueError:
+            max_reps = None
+
+    row, workout_payload, error_response = _load_trainer_session_payload_for_edit(trainer, event_id)
+    if error_response:
+        payload, status = error_response
+        return jsonify(payload), status
+
+    client_id = row.get('client_id')
+    result = _apply_pr_update(client_id, int(workout_id), max_weight, max_reps)
+    payload_updated = _update_workout_payload_entry(
+        workout_payload,
+        int(workout_id),
+        max_weight=max_weight,
+        max_reps=max_reps,
+    )
+    if payload_updated:
+        with get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE trainer_schedule
+                       SET session_payload = %s
+                     WHERE id = %s
+                    """,
+                    (psycopg2.extras.Json(workout_payload), event_id),
+                )
+                conn.commit()
+    return jsonify(result)
+
+
+@app.post('/trainer/schedule/<int:event_id>/update_notes')
+@login_required
+def trainer_update_session_notes(event_id):
+    trainer = _require_trainer(session['user_id'])
+    if not trainer:
+        return jsonify({'success': False, 'error': 'Trainer access required.'}), 403
+
+    data = request.get_json(silent=True) or {}
+    workout_id_raw = data.get('workout_id')
+    try:
+        workout_id = int(str(workout_id_raw).strip())
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'error': 'Invalid workout id'}), 400
+
+    notes_raw = data.get('notes')
+    notes = None
+    if notes_raw is not None:
+        cleaned = str(notes_raw).strip()
+        if cleaned:
+            notes = cleaned
+
+    row, workout_payload, error_response = _load_trainer_session_payload_for_edit(trainer, event_id)
+    if error_response:
+        payload, status = error_response
+        return jsonify(payload), status
+
+    client_id = row.get('client_id')
+    result = _apply_notes_update(client_id, workout_id, notes)
+    payload_updated = _update_workout_payload_entry(
+        workout_payload,
+        workout_id,
+        notes=notes,
+    )
+    if payload_updated:
+        with get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE trainer_schedule
+                       SET session_payload = %s
+                     WHERE id = %s
+                    """,
+                    (psycopg2.extras.Json(workout_payload), event_id),
+                )
+                conn.commit()
+    return jsonify(result)
+
+
 @app.get('/exercise_progress/<int:workout_id>')
 @login_required
 def get_exercise_progress_route(workout_id):
@@ -8703,6 +9652,10 @@ def workout_session_view(session_id):
 
     back_url = _resolve_back_link(fallback_back_url)
 
+    if not row.get('session_completed_at'):
+        flash("Workout details are available after the session is completed.", "warning")
+        return redirect(back_url)
+
     raw_payload = row.get('session_payload')
     if raw_payload is None:
         flash("Workout details are unavailable for this session.", "warning")
@@ -8722,24 +9675,50 @@ def workout_session_view(session_id):
 
     workouts = payload
     metadata = None
-    if isinstance(payload, dict):
-        workouts = OrderedDict(payload)
-        metadata = workouts.pop('_meta', None)
+    if isinstance(payload, dict) and payload.get('plan'):
+        plan = payload.get('plan')
+        base_category = payload.get('category') or row.get('session_category') or 'Workout Session'
+        formatted_plan = format_workout_for_response(base_category, plan)
+        workouts = OrderedDict()
+        for block in formatted_plan:
+            subcategory = block.get('subcategory')
+            if subcategory is None:
+                continue
+            workouts[subcategory] = block.get('exercises') or []
+        metadata = {}
+        custom_tokens = payload.get('custom_categories')
+        if isinstance(custom_tokens, list) and custom_tokens:
+            pretty_custom = []
+            normalized_tokens = []
+            for token in custom_tokens:
+                token_str = str(token or '').strip()
+                if not token_str:
+                    continue
+                normalized_tokens.append(token_str.upper())
+                pretty_custom.append(token_str.lower().replace('_', ' ').title())
+            if pretty_custom:
+                metadata['custom_categories'] = normalized_tokens
+                metadata['custom_categories_pretty'] = pretty_custom
+        display_category = row.get('session_category') or (', '.join(metadata.get('custom_categories_pretty') or []) if metadata else base_category)
+    else:
+        workouts = OrderedDict(payload) if isinstance(payload, dict) else payload
+        metadata = workouts.pop('_meta', None) if isinstance(workouts, dict) else None
         if not isinstance(metadata, dict):
             metadata = {}
-        if not metadata.get('subcategory_order'):
+        if isinstance(workouts, dict) and not metadata.get('subcategory_order'):
             inferred_order = _fetch_session_subcategory_order(str(session_uuid))
             if inferred_order:
                 metadata['subcategory_order'] = inferred_order
-        workouts = _apply_subcategory_order(workouts, metadata)
+        if isinstance(workouts, dict):
+            workouts = _apply_subcategory_order(workouts, metadata)
 
-    display_category = row.get('session_category')
-    if isinstance(metadata, dict):
-        pretty_custom = metadata.get('custom_categories_pretty')
+        display_category = row.get('session_category')
+        pretty_custom = metadata.get('custom_categories_pretty') if isinstance(metadata, dict) else None
         if isinstance(pretty_custom, list) and pretty_custom:
             display_category = ', '.join(pretty_custom)
-        elif metadata.get('session_label'):
+        elif isinstance(metadata, dict) and metadata.get('session_label'):
             display_category = metadata.get('session_label')
+
     if not display_category:
         display_category = 'Workout Session'
 

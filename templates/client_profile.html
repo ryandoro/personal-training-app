@@ -470,13 +470,13 @@
         </div>
 
         <div class="col-12 training-container client-workout">
-            <div class="card border-0 shadow-lg mb-4 workout-choice-card">
+            <div id="workout-generator-card" class="card border-0 shadow-lg mb-4 workout-choice-card">
                 <div class="card-header border-0 bg-transparent text-center">
                     <div class="workout-choice-header">
                         <h3 class="workout-choice-title mb-0">Generate Workout for {{ client.name or client.username }}</h3>
                     </div>
                 </div>
-                <div class="card-body p-4">
+                <div class="card-body p-0">
                     {% set wd = client.workout_duration or 60 %}
                     {% set selected_category = active_workout.category if active_workout and active_workout.category else '' %}
                     <div class="mb-4 text-center">
@@ -542,6 +542,37 @@
                             </div>
                         </div>
                     </div>
+                    <div class="mt-3">
+                        {% if scheduled_sessions %}
+                            <label for="session-event-select" class="form-label workout-subheading">Scheduled Session</label>
+                            <select id="session-event-select" class="form-select text-center shadow-sm bitcoin-workout session-select mb-3">
+                                <option value="">Select a session (optional)</option>
+                                {% for session in scheduled_sessions %}
+                                    <option value="{{ session.id }}"
+                                            data-start="{{ session.start_time }}"
+                                            data-end="{{ session.end_time }}"
+                                            data-category="{{ session.session_category or '' }}"
+                                            data-workout-category="{{ session.workout_category or '' }}"
+                                            data-has-workout="{{ 'true' if session.has_workout else 'false' }}"
+                                            {% if selected_session_id == session.id %}selected{% endif %}>
+                                        Session {{ loop.index }}
+                                    </option>
+                                {% endfor %}
+                            </select>
+                            <div id="session-select-inline-message" class="session-select-hint d-none" role="status" aria-live="polite">
+                                Select a scheduled session to view the session workout.
+                            </div>
+                        {% else %}
+                            <div class="alert alert-light text-center">
+                                No booked sessions yet. Book a session to assign a workout.
+                            </div>
+                        {% endif %}
+                        <input type="hidden"
+                               id="session-event-input"
+                               name="session_event_id"
+                               form="generate-client-workout"
+                               value="{{ selected_session_id or '' }}">
+                    </div>
                     <div class="text-center mb-3">
                         <button id="generate-client-workout-btn"
                                 type="submit"
@@ -554,18 +585,62 @@
                 <form id="generate-client-workout" method="POST" action="{{ url_for('generate_client_workout', client_id=client.id) }}" hidden></form>
             </div>
 
+            {% set session_selected = selected_session is not none and selected_session_id %}
+            {% set session_mode = session_selected %}
+            {% set workout_view = session_workout if session_mode else active_workout %}
+            {% set can_complete_session = (session_mode and session_workout and session_workout.plan) or ((not session_mode) and active_workout and active_workout.plan) %}
             <div id="active-workout-card" class="card border-0 shadow-lg" style="border-radius: 20px;" tabindex="-1">
+                {% if scheduled_sessions %}
+                    <div class="workout-view-toggle-wrapper">
+                        <div class="calendar-view-toggle workout-view-toggle btn-group w-100" role="group" aria-label="Workout view mode">
+                    <input type="radio"
+                           class="btn-check"
+                           name="workout-view-mode"
+                           id="workout-view-session"
+                           autocomplete="off"
+                           {% if session_selected %}checked{% endif %}>
+                            <label class="btn btn-outline-primary" for="workout-view-session">Session Workout</label>
+                            <input type="radio"
+                                   class="btn-check"
+                                   name="workout-view-mode"
+                                   id="workout-view-active"
+                                   autocomplete="off"
+                                   {% if not session_selected %}checked{% endif %}>
+                            <label class="btn btn-outline-primary" for="workout-view-active">Active Workout</label>
+                        </div>
+                    </div>
+                {% endif %}
                 <div class="card-header border-0" style="background: linear-gradient(135deg, #20c997 0%, #0ABFBC 100%); border-top-left-radius: 20px; border-top-right-radius: 20px;">
-                    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center text-white">
-                        <div>
-                            <h5 class="mb-1 text-white">Active Workout</h5>
-                            {% if active_workout and active_workout.created_at %}
-                                <small class="text-white-50">Assigned {{ active_workout.created_at }}</small>
+                    <div class="d-flex flex-column gap-2 text-white session-workout-header">
+                        <div class="session-workout-header__info">
+                            <h5 class="mb-1 text-white">{{ 'Session Workout' if session_mode else 'Active Workout' }}</h5>
+                            {% if session_mode and selected_session %}
+                                {% set session_start = selected_session.start_time %}
+                                {% set session_end = selected_session.end_time %}
+                                {% if session_start and session_end %}
+                                    <small class="text-white-50">
+                                        <span id="session-workout-time"
+                                              data-session-start="{{ session_start.isoformat() }}"
+                                              data-session-end="{{ session_end.isoformat() }}">
+                                            Scheduled {{ session_start.strftime('%b %d, %Y') }} - {{ session_start.strftime('%I:%M %p').lstrip('0') }} to {{ session_end.strftime('%I:%M %p').lstrip('0') }}
+                                        </span>
+                                    </small>
+                                {% endif %}
+                            {% elif active_workout and active_workout.created_at %}
+                                <small class="text-white-50">
+                                    <span id="active-workout-created"
+                                          data-created-at="{{ active_workout.created_at_iso or '' }}">
+                                        Assigned {{ active_workout.created_at }}
+                                    </span>
+                                </small>
                             {% endif %}
                         </div>
-                        {% if active_workout and active_workout.plan %}
-                            <form method="POST" action="{{ url_for('trainer_complete_client_workout', client_id=client.id) }}" class="d-inline">
-                                <button type="submit" class="btn btn-light text-success fw-semibold btn-sm">
+                        {% if can_complete_session %}
+                            <form method="POST" action="{{ url_for('trainer_complete_client_workout', client_id=client.id) }}" class="session-workout-header__actions">
+                                {% if session_mode and selected_session_id %}
+                                    <input type="hidden" name="session_event_id" value="{{ selected_session_id }}">
+                                {% endif %}
+                                <button type="submit" class="btn session-complete-btn btn-sm">
                                     <i class="bi bi-check-circle me-1"></i>Mark Session Completed
                                 </button>
                             </form>
@@ -573,7 +648,7 @@
                     </div>
                 </div>
                 <div class="card-body p-4">
-                    {% if active_workout and active_workout.plan %}
+                    {% if workout_view and workout_view.plan %}
                         <div id="client-workout-toggle-container"
                              class="workout-toggle-bar d-flex align-items-center justify-content-end gap-3"
                              style="display: none;"
@@ -588,11 +663,11 @@
                             </div>
                         </div>
                         <div class="d-flex flex-wrap gap-2 mb-3">
-                            {% set is_custom_variant = active_workout.category in [custom_workout_token, home_workout_token] %}
-                            {% if is_custom_variant and active_workout.custom_categories %}
+                            {% set is_custom_variant = workout_view.category in [custom_workout_token, home_workout_token] %}
+                            {% if is_custom_variant and workout_view.custom_categories %}
                                 {# Render the selected custom categories in a single badge #}
                                 {% set pretty_custom = [] %}
-                                {% for token in active_workout.custom_categories %}
+                                {% for token in workout_view.custom_categories %}
                                     {% if token %}
                                         {% set pretty = token|lower|replace('_', ' ')|title %}
                                         {% set _ = pretty_custom.append(pretty) %}
@@ -600,30 +675,47 @@
                                 {% endfor %}
                                 <span class="badge text-bg-primary">{{ pretty_custom|join(', ') }}</span>
                             {% else %}
-                                <span class="badge text-bg-primary">{{ active_workout.category }}</span>
+                                <span class="badge text-bg-primary">{{ workout_view.category }}</span>
                             {% endif %}
-                            {% if active_workout.duration_minutes %}
-                                <span class="badge text-bg-secondary">{{ active_workout.duration_minutes }} mins</span>
+                            {% if workout_view.duration_minutes %}
+                                <span class="badge text-bg-secondary">{{ workout_view.duration_minutes }} mins</span>
                             {% endif %}
                         </div>
-                        {% for block in active_workout.plan %}
+                        {% for block in workout_view.plan %}
                             <div class="card workout-subcategory-card shadow-sm mb-4" style="border-radius: 16px;">
                                 <h6 class="workout-subcategory-title">{{ block.subcategory }}</h6>
                             <div class="mt-3">
                                 <ul class="list-unstyled mb-0 exercise-list" data-subcategory="{{ block.subcategory }}">
                                     {% if block.exercises %}
                                         {% for exercise in block.exercises %}
-                                            {% with
-                                                        exercise=exercise,
-                                                        subcategory_name=block.subcategory,
-                                                        exercise_loop_index=loop.index0,
-                                                        notes_placeholder=NOTES_PLACEHOLDER,
-                                                        client_id=client.id,
-                                                        trainer_can_customize=trainer_add_remove_enabled
-                                                    %}
-                                                        {% include 'components/exercise_card.html' %}
-                                                    {% endwith %}
-                                            {% endfor %}
+                                            {% if session_mode and selected_session_id %}
+                                                {% set session_refresh_url = url_for('trainer_refresh_session_workout_exercise', event_id=selected_session_id, workout_id=exercise.workout_id) %}
+                                                {% set session_alternate_url = url_for('trainer_session_list_workout_alternates', event_id=selected_session_id, workout_id=exercise.workout_id) %}
+                                                {% with
+                                                            exercise=exercise,
+                                                            subcategory_name=block.subcategory,
+                                                            exercise_loop_index=loop.index0,
+                                                            notes_placeholder=NOTES_PLACEHOLDER,
+                                                            client_id=client.id,
+                                                            trainer_can_customize=trainer_add_remove_enabled,
+                                                            refresh_url=session_refresh_url,
+                                                            alternate_url=session_alternate_url
+                                                        %}
+                                                            {% include 'components/exercise_card.html' %}
+                                                        {% endwith %}
+                                            {% else %}
+                                                {% with
+                                                            exercise=exercise,
+                                                            subcategory_name=block.subcategory,
+                                                            exercise_loop_index=loop.index0,
+                                                            notes_placeholder=NOTES_PLACEHOLDER,
+                                                            client_id=client.id,
+                                                            trainer_can_customize=trainer_add_remove_enabled
+                                                        %}
+                                                            {% include 'components/exercise_card.html' %}
+                                                        {% endwith %}
+                                            {% endif %}
+                                        {% endfor %}
                                         {% else %}
                                             <li class="text-muted small fst-italic text-center py-3">
                                                 This category has no equipment-compatible exercises.
@@ -636,7 +728,10 @@
                         {% endfor %}
                         <div class="text-center mt-4">
                             <form method="POST" action="{{ url_for('trainer_complete_client_workout', client_id=client.id) }}">
-                                <button type="submit" class="btn btn-success btn-sm">
+                                {% if session_mode and selected_session_id %}
+                                    <input type="hidden" name="session_event_id" value="{{ selected_session_id }}">
+                                {% endif %}
+                                <button type="submit" class="btn session-complete-btn btn-sm">
                                     <i class="bi bi-check-circle me-1"></i>Mark Session Completed
                                 </button>
                             </form>
@@ -644,7 +739,11 @@
                     {% else %}
                         <div class="text-center text-muted py-5">
                             <i class="bi bi-clipboard2-heart fs-1 d-block mb-3"></i>
-                            No active workout assigned yet. Generate a workout to sync with your client.
+                            {% if session_mode %}
+                                No workout assigned to this session yet. Generate a workout to assign it.
+                            {% else %}
+                                No active workout assigned yet. Generate a workout to sync with your client.
+                            {% endif %}
                         </div>
                     {% endif %}
                 </div>
@@ -1000,16 +1099,36 @@
 
 <script id="client-profile-config" type="application/json">
 {{ {
-    'updatePrUrl': url_for('trainer_update_pr', client_id=client.id),
-    'updateNotesUrl': url_for('trainer_update_notes', client_id=client.id),
+    'updatePrUrl': url_for('trainer_update_session_pr', event_id=selected_session_id) if session_mode and selected_session_id else url_for('trainer_update_pr', client_id=client.id),
+    'updateNotesUrl': url_for('trainer_update_session_notes', event_id=selected_session_id) if session_mode and selected_session_id else url_for('trainer_update_notes', client_id=client.id),
     'historyEndpoint': url_for('exercise_history_data'),
     'historyClientId': client.id,
     'notesPlaceholder': NOTES_PLACEHOLDER,
-    'trainerWorkoutReorderUrl': url_for('trainer_reorder_client_workout_exercises', client_id=client.id) if active_workout and active_workout.plan else '',
-    'trainerExerciseRefreshTemplate': url_for('trainer_refresh_client_workout_exercise', client_id=client.id, workout_id=0) if active_workout and active_workout.plan else '',
-    'trainerExerciseAlternatesTemplate': url_for('trainer_list_client_workout_alternates', client_id=client.id, workout_id=0) if active_workout and active_workout.plan else '',
-    'trainerExerciseAddTemplate': url_for('trainer_add_client_workout_exercise', client_id=client.id, workout_id=0) if trainer_add_remove_enabled and active_workout and active_workout.plan else '',
-    'trainerExerciseRemoveTemplate': url_for('trainer_remove_client_workout_exercise', client_id=client.id, workout_id=0) if trainer_add_remove_enabled and active_workout and active_workout.plan else '',
+    'trainerWorkoutReorderUrl': (
+        url_for('trainer_reorder_session_workout_exercises', event_id=selected_session_id)
+        if session_mode and session_workout and session_workout.plan
+        else (url_for('trainer_reorder_client_workout_exercises', client_id=client.id) if active_workout and active_workout.plan else '')
+    ),
+    'trainerExerciseRefreshTemplate': (
+        url_for('trainer_refresh_session_workout_exercise', event_id=selected_session_id, workout_id=0)
+        if session_mode and session_workout and session_workout.plan
+        else (url_for('trainer_refresh_client_workout_exercise', client_id=client.id, workout_id=0) if active_workout and active_workout.plan else '')
+    ),
+    'trainerExerciseAlternatesTemplate': (
+        url_for('trainer_session_list_workout_alternates', event_id=selected_session_id, workout_id=0)
+        if session_mode and session_workout and session_workout.plan
+        else (url_for('trainer_list_client_workout_alternates', client_id=client.id, workout_id=0) if active_workout and active_workout.plan else '')
+    ),
+    'trainerExerciseAddTemplate': (
+        url_for('trainer_add_session_workout_exercise', event_id=selected_session_id, workout_id=0)
+        if trainer_add_remove_enabled and session_mode and session_workout and session_workout.plan
+        else (url_for('trainer_add_client_workout_exercise', client_id=client.id, workout_id=0) if trainer_add_remove_enabled and active_workout and active_workout.plan else '')
+    ),
+    'trainerExerciseRemoveTemplate': (
+        url_for('trainer_remove_session_workout_exercise', event_id=selected_session_id, workout_id=0)
+        if trainer_add_remove_enabled and session_mode and session_workout and session_workout.plan
+        else (url_for('trainer_remove_client_workout_exercise', client_id=client.id, workout_id=0) if trainer_add_remove_enabled and active_workout and active_workout.plan else '')
+    ),
     'trainerAddRemoveEnabled': trainer_add_remove_enabled
 }|tojson }}
 </script>
@@ -1056,6 +1175,21 @@
     const categorySelect = document.getElementById('category');
     const generateWorkoutBtn = document.getElementById('generate-client-workout-btn');
     const generateWorkoutForm = document.getElementById('generate-client-workout');
+    const sessionSelect = document.getElementById('session-event-select');
+    const sessionInput = document.getElementById('session-event-input');
+    const sessionInlineMessage = document.getElementById('session-select-inline-message');
+    const workoutViewSessionToggle = document.getElementById('workout-view-session');
+    const workoutViewActiveToggle = document.getElementById('workout-view-active');
+    const categoryPlaceholderOption = categorySelect
+        ? categorySelect.querySelector('option[value=""]')
+        : null;
+    const categoryPlaceholderText = categoryPlaceholderOption
+        ? categoryPlaceholderOption.textContent
+        : 'Select a Workout Category';
+    let activeCategoryValue = categorySelect ? categorySelect.value : '';
+    let currentWorkoutView = workoutViewSessionToggle?.checked ? 'session' : 'active';
+    const SESSION_SELECT_MESSAGE = 'Select a scheduled session to view the session workout.';
+    const SESSION_NO_WORKOUT_MESSAGE = 'That session has no workout yet. Generate & Assign to view it.';
     const trainerCustomInput = document.getElementById('trainer-custom-input');
     const trainerCustomControls = document.getElementById('trainer-custom-controls');
     const trainerCustomButton = document.getElementById('trainer-custom-button');
@@ -1144,6 +1278,132 @@
         if (!token || trainerHomeEquipmentLabelMap.has(token)) return;
         trainerHomeEquipmentLabelMap.set(token, option?.label || option?.token || token);
     });
+
+    function formatSessionTimeLabel(startRaw, endRaw) {
+        if (!startRaw || !endRaw) {
+            return '';
+        }
+        const start = new Date(startRaw);
+        const end = new Date(endRaw);
+        if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+            return '';
+        }
+        const dateLabel = start.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+        const startTime = start.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+        const endTime = end.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+        return `${dateLabel} - ${startTime} to ${endTime}`;
+    }
+
+    function formatAssignedTimestamp(rawValue) {
+        if (!rawValue) {
+            return '';
+        }
+        const timestamp = new Date(rawValue);
+        if (Number.isNaN(timestamp.getTime())) {
+            return '';
+        }
+        const dateLabel = timestamp.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+        const timeLabel = timestamp.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+        return `${dateLabel} at ${timeLabel}`;
+    }
+
+    function formatSessionOptionLabel(option) {
+        if (!option) return '';
+        const startRaw = option.dataset.start || '';
+        const endRaw = option.dataset.end || '';
+        const timeLabel = formatSessionTimeLabel(startRaw, endRaw);
+        if (!timeLabel) {
+            return option.textContent || 'Scheduled session';
+        }
+        const workoutLabel = option.dataset.category ? ` | ${option.dataset.category}` : '';
+        return `${timeLabel}${workoutLabel}`;
+    }
+
+    function escapeSelector(value) {
+        if (window.CSS && typeof window.CSS.escape === 'function') {
+            return window.CSS.escape(value);
+        }
+        return String(value).replace(/["\\]/g, '\\$&');
+    }
+
+    function setSessionInlineMessage(message) {
+        if (!sessionInlineMessage) return;
+        sessionInlineMessage.textContent = message || SESSION_SELECT_MESSAGE;
+        sessionInlineMessage.classList.remove('d-none');
+    }
+
+    function syncWorkoutCategoryDropdown(viewMode) {
+        if (!categorySelect) return;
+        if (viewMode === 'session') {
+            const option = sessionSelect?.selectedOptions ? sessionSelect.selectedOptions[0] : null;
+            const sessionWorkoutCategory = option?.dataset?.workoutCategory || '';
+            if (sessionWorkoutCategory) {
+                const match = categorySelect.querySelector(`option[value="${escapeSelector(sessionWorkoutCategory)}"]`);
+                categorySelect.value = match ? sessionWorkoutCategory : '';
+            } else {
+                categorySelect.value = '';
+            }
+            if (categoryPlaceholderOption) {
+                categoryPlaceholderOption.textContent = categoryPlaceholderText;
+            }
+        } else {
+            if (categoryPlaceholderOption) {
+                categoryPlaceholderOption.textContent = categoryPlaceholderText;
+            }
+            if (activeCategoryValue) {
+                categorySelect.value = activeCategoryValue;
+            } else {
+                categorySelect.value = '';
+            }
+        }
+    }
+
+    function syncSessionSelectionUI() {
+        if (!sessionSelect || !sessionInput) return;
+        const selectedValue = sessionSelect.value || '';
+        const selectedOption = sessionSelect.selectedOptions ? sessionSelect.selectedOptions[0] : null;
+        const hasWorkout = selectedOption?.dataset?.hasWorkout === 'true';
+        sessionInput.value = selectedValue;
+        if (sessionInlineMessage && selectedValue && hasWorkout) {
+            sessionInlineMessage.classList.add('d-none');
+        }
+        if (sessionSelect) {
+            sessionSelect.classList.toggle('session-select--highlight', sessionInlineMessage && !sessionInlineMessage.classList.contains('d-none'));
+            sessionSelect.classList.toggle('select-orange', !!selectedValue);
+        }
+        if (workoutViewSessionToggle && !selectedValue) {
+            workoutViewSessionToggle.checked = false;
+        }
+        if (workoutViewActiveToggle && !selectedValue) {
+            workoutViewActiveToggle.checked = true;
+        }
+        currentWorkoutView = workoutViewSessionToggle?.checked ? 'session' : 'active';
+        syncWorkoutCategoryDropdown(currentWorkoutView);
+        if (generateWorkoutBtn) {
+            const baseText = 'Generate Workout';
+            generateWorkoutBtn.textContent = selectedValue ? 'Generate & Assign' : baseText;
+        }
+        const sessionHeader = document.getElementById('session-workout-time');
+        if (sessionHeader) {
+            const startRaw = sessionHeader.dataset.sessionStart || '';
+            const endRaw = sessionHeader.dataset.sessionEnd || '';
+            const option = sessionSelect.selectedOptions ? sessionSelect.selectedOptions[0] : null;
+            const optionStart = option?.dataset?.start || startRaw;
+            const optionEnd = option?.dataset?.end || endRaw;
+            const timeLabel = formatSessionTimeLabel(optionStart, optionEnd);
+            if (timeLabel) {
+                sessionHeader.textContent = `Scheduled ${timeLabel}`;
+            }
+        }
+        const activeHeader = document.getElementById('active-workout-created');
+        if (activeHeader) {
+            const rawValue = activeHeader.dataset.createdAt || '';
+            const assignedLabel = formatAssignedTimestamp(rawValue);
+            if (assignedLabel) {
+                activeHeader.textContent = `Assigned ${assignedLabel}`;
+            }
+        }
+    }
 
     function readCompactPreference() {
         try {
@@ -1246,6 +1506,90 @@
     }
 
     initializeWorkoutToggle();
+
+    if (sessionSelect) {
+        Array.from(sessionSelect.options || []).forEach((option) => {
+            if (!option.value) return;
+            option.textContent = formatSessionOptionLabel(option);
+        });
+        sessionSelect.addEventListener('change', () => {
+            syncSessionSelectionUI();
+            if (workoutViewSessionToggle && sessionSelect.value) {
+                const option = sessionSelect.selectedOptions ? sessionSelect.selectedOptions[0] : null;
+                const hasWorkout = option?.dataset?.hasWorkout === 'true';
+                if (hasWorkout) {
+                    workoutViewSessionToggle.checked = true;
+                    navigateToWorkoutView('session');
+                }
+            }
+        });
+    }
+    syncSessionSelectionUI();
+
+    if (categorySelect) {
+        categorySelect.addEventListener('change', () => {
+            if (currentWorkoutView === 'active') {
+                activeCategoryValue = categorySelect.value;
+            }
+        });
+    }
+
+    function navigateToWorkoutView(viewMode) {
+        if (!sessionSelect) return;
+        const url = new URL(window.location.href);
+        if (viewMode === 'session') {
+            const selectedValue = sessionSelect.value || '';
+            if (!selectedValue) return;
+            url.searchParams.set('session_event_id', selectedValue);
+            url.searchParams.delete('focus');
+        } else {
+            url.searchParams.delete('session_event_id');
+            url.searchParams.set('focus', 'active');
+        }
+        window.location.href = `${url.pathname}${url.search}${url.hash}`;
+    }
+
+    if (workoutViewSessionToggle) {
+        workoutViewSessionToggle.addEventListener('change', () => {
+            if (workoutViewSessionToggle.checked) {
+                const selectedValue = sessionSelect?.value || '';
+                const selectedOption = sessionSelect?.selectedOptions ? sessionSelect.selectedOptions[0] : null;
+                const hasWorkout = selectedOption?.dataset?.hasWorkout === 'true';
+                if (!selectedValue) {
+                    workoutViewSessionToggle.checked = false;
+                    if (workoutViewActiveToggle) {
+                        workoutViewActiveToggle.checked = true;
+                    }
+                    if (sessionSelect) {
+                        sessionSelect.focus();
+                    }
+                    setSessionInlineMessage(SESSION_SELECT_MESSAGE);
+                    return;
+                }
+                if (!hasWorkout) {
+                    workoutViewSessionToggle.checked = false;
+                    if (workoutViewActiveToggle) {
+                        workoutViewActiveToggle.checked = true;
+                    }
+                    setSessionInlineMessage(SESSION_NO_WORKOUT_MESSAGE);
+                    return;
+                }
+                currentWorkoutView = 'session';
+                syncWorkoutCategoryDropdown('session');
+                navigateToWorkoutView('session');
+            }
+        });
+    }
+
+    if (workoutViewActiveToggle) {
+        workoutViewActiveToggle.addEventListener('change', () => {
+            if (workoutViewActiveToggle.checked) {
+                currentWorkoutView = 'active';
+                syncWorkoutCategoryDropdown('active');
+                navigateToWorkoutView('active');
+            }
+        });
+    }
 
     const dragState = {
         sourceItem: null,
@@ -3096,7 +3440,22 @@
         }
 
         const params = new URLSearchParams(window.location.search);
-        if (params.get('focus') === 'active') {
+        const focusParam = params.get('focus');
+        const shouldFocusActive = focusParam === 'active';
+        const shouldFocusGenerator = focusParam === 'generator';
+        const shouldFocusSession = focusParam === 'session' || (params.get('session_event_id') && !focusParam);
+        if (shouldFocusGenerator) {
+            requestAnimationFrame(() => {
+                const generatorCard = document.getElementById('workout-generator-card');
+                if (!generatorCard) return;
+                generatorCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                try {
+                    generatorCard.focus({ preventScroll: true });
+                } catch (err) {
+                    generatorCard.focus();
+                }
+            });
+        } else if (shouldFocusActive || shouldFocusSession) {
             requestAnimationFrame(() => {
                 const activeCard = document.getElementById('active-workout-card');
                 if (!activeCard) return;
@@ -3107,6 +3466,8 @@
                     activeCard.focus();
                 }
             });
+        }
+        if (focusParam) {
             params.delete('focus');
             const query = params.toString();
             const newUrl = query ? `${window.location.pathname}?${query}${window.location.hash}` : `${window.location.pathname}${window.location.hash}`;

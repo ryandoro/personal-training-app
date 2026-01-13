@@ -1680,20 +1680,42 @@ document.addEventListener('DOMContentLoaded', () => {
                 eventViewAgendaBtn.href = buildClientUrl(clientAgendaTemplate, targetId);
             }
         }
-            if (eventWorkoutDetailsSection) {
-                if (eventType === 'time_off' || !modalData.session_url) {
-                    eventWorkoutDetailsSection.hidden = true;
-                    eventViewSessionBtn.hidden = true;
-                    eventViewSessionBtn.removeAttribute('href');
-                    eventViewSessionBtn.textContent = '';
-                } else {
-                    eventWorkoutDetailsSection.hidden = false;
-                    eventViewSessionBtn.hidden = false;
-                    eventViewSessionBtn.href = buildSessionLink(modalData.session_url);
+        if (eventWorkoutDetailsSection) {
+            const completedUrl = modalData.session_url;
+            const pendingUrl = modalData.session_workout_url;
+            const hasWorkout = Boolean(modalData.has_session_workout);
+            const canAssignWorkout = status === 'booked' && !hasWorkout;
+            if (eventType === 'time_off' || (!completedUrl && !pendingUrl && !canAssignWorkout)) {
+                eventWorkoutDetailsSection.hidden = true;
+                eventViewSessionBtn.hidden = true;
+                eventViewSessionBtn.removeAttribute('href');
+                eventViewSessionBtn.textContent = '';
+                eventViewSessionBtn.classList.remove('btn-workout-details', 'btn-session-workout', 'btn-assign-workout');
+            } else {
+                eventWorkoutDetailsSection.hidden = false;
+                eventViewSessionBtn.hidden = false;
+                eventViewSessionBtn.classList.remove('btn-workout-details', 'btn-session-workout', 'btn-assign-workout');
+                if (completedUrl) {
+                    eventViewSessionBtn.href = buildSessionLink(completedUrl);
+                    eventViewSessionBtn.classList.add('btn-workout-details');
                     const label = modalData.session_category || 'Workout Details';
                     eventViewSessionBtn.innerHTML = `<i class="bi bi-activity me-1"></i>${label}`;
+                } else if (pendingUrl) {
+                    eventViewSessionBtn.href = pendingUrl;
+                    eventViewSessionBtn.classList.add('btn-session-workout');
+                    const label = modalData.session_category || 'Session Workout';
+                    eventViewSessionBtn.innerHTML = `<i class="bi bi-activity me-1"></i>${label}`;
+                } else {
+                    const targetId = modalData.client_id;
+                    const assignUrl = new URL(buildClientUrl(clientProfileTemplate, targetId), window.location.origin);
+                    assignUrl.searchParams.set('session_event_id', modalData.id);
+                    assignUrl.searchParams.set('focus', 'generator');
+                    eventViewSessionBtn.href = `${assignUrl.pathname}${assignUrl.search}${assignUrl.hash}`;
+                    eventViewSessionBtn.classList.add('btn-assign-workout');
+                    eventViewSessionBtn.innerHTML = '<i class="bi bi-plus-circle me-1"></i>Assign Workout';
                 }
             }
+        }
         if (eventViewProfileBtn) {
             if (eventType === 'time_off') {
                 eventViewProfileBtn.hidden = true;

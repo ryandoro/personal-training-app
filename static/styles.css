@@ -2378,6 +2378,22 @@ iframe.fullscreen-sim {
   z-index: 1;
 }
 
+#workout-generator-card {
+  background: #c6d2de;
+}
+
+#workout-generator-card::before {
+  content: none;
+}
+
+.training-container .workout-choice-card {
+  background: #c6d2de;
+}
+
+.training-container .workout-choice-card::before {
+  content: none;
+}
+
 .workout-choice-header {
   display: inline-flex;
   align-items: center;
@@ -2423,23 +2439,231 @@ iframe.fullscreen-sim {
   margin-bottom: 0.5rem;
 }
 
+#workout-generator-card .card-body {
+  padding-left: 1.1rem;
+  padding-right: 1.1rem;
+}
+
+@media (max-width: 576px) {
+  #workout-generator-card .card-body {
+    padding-left: 0.75rem !important;
+    padding-right: 0.75rem !important;
+  }
+}
+
 .generate-workout-btn {
-  background: linear-gradient(135deg, #1EA4E6, #6fc3ff);
-  border: 1px solid rgba(30, 164, 230, 0.6);
+  position: relative;
+  overflow: hidden;
+  background: #0138ff;
+  border: 1px solid rgba(74, 134, 245, 0.4);
   color: #ffffff;
-  text-shadow: 0 1px 2px rgba(12, 50, 87, 0.25);
-  box-shadow: 0 16px 38px rgba(12, 50, 87, 0.28);
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  margin-top: 0.5rem;
+  text-shadow: 0 2px 6px rgba(7, 40, 80, 0.35);
+  box-shadow: 0 18px 42px rgba(5, 70, 120, 0.4);
   transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
+.generate-workout-btn::after {
+  content: "";
+  position: absolute;
+  inset: -40% 0 auto 0;
+  height: 140%;
+  background: none;
+  opacity: 0;
+  pointer-events: none;
+}
+
 .generate-workout-btn:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: 0 20px 48px rgba(12, 50, 87, 0.32);
+  transform: translateY(-2px);
+  box-shadow: 0 24px 54px rgba(5, 70, 120, 0.45);
 }
 
 .generate-workout-btn:active:not(:disabled) {
   transform: translateY(0px) scale(0.99);
-  box-shadow: 0 10px 28px rgba(12, 50, 87, 0.24);
+  box-shadow: 0 14px 34px rgba(5, 70, 120, 0.35);
+  background: #1EA4E6;
+}
+
+.generate-workout-btn:disabled {
+  background: #1EA4E6;
+  border-color: rgba(16, 94, 150, 0.25);
+  box-shadow: none;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.session-select {
+  white-space: normal;
+  line-height: 1.25;
+  height: auto;
+  min-height: 3.25rem;
+  padding-top: 0.65rem;
+  padding-bottom: 0.65rem;
+}
+
+.session-select option {
+  white-space: normal;
+}
+
+.session-select-hint {
+  position: relative;
+  margin: 0.75rem auto 0;
+  padding: 0.65rem 0.9rem;
+  max-width: 360px;
+  text-align: center;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #7a4a00;
+  background: linear-gradient(135deg, #fff6dd 0%, #fffdf6 100%);
+  border: 1px solid rgba(247, 147, 26, 0.45);
+  border-radius: 14px;
+  box-shadow: 0 14px 26px rgba(122, 74, 0, 0.18);
+}
+
+.session-select {
+  position: relative;
+  z-index: 1;
+}
+
+.session-select-hint {
+  margin-top: 0.5rem;
+}
+
+.session-select-hint::before {
+  left: 28%;
+}
+
+.session-select-hint::before {
+  content: "";
+  position: absolute;
+  top: -8px;
+  left: 50%;
+  transform: translateX(-50%);
+  border-width: 0 8px 8px 8px;
+  border-style: solid;
+  border-color: transparent transparent #fff6dd transparent;
+}
+
+.session-select-hint::after {
+  content: "";
+  position: absolute;
+  inset: -6px;
+  border-radius: 16px;
+  border: 1px solid rgba(247, 147, 26, 0.2);
+  pointer-events: none;
+}
+
+.session-select--highlight {
+  border-color: rgba(247, 147, 26, 0.6) !important;
+  box-shadow: 0 0 0 3px rgba(247, 147, 26, 0.16),
+    0 12px 26px rgba(122, 74, 0, 0.14) !important;
+}
+
+.workout-view-toggle {
+  max-width: 420px;
+  margin: 0.85rem auto 0;
+}
+
+.workout-view-toggle .btn {
+  font-size: 0.9rem;
+  letter-spacing: 0.02em;
+}
+
+.workout-view-toggle-wrapper {
+  padding: 0rem 1rem 0.5rem;
+  background: transparent;
+  border-top-left-radius: 20px;
+  border-top-right-radius: 20px;
+}
+
+.workout-view-toggle-wrapper .workout-view-toggle {
+  margin-top: 0;
+  margin-bottom: 0.5rem;
+}
+
+.session-workout-header__actions {
+  align-self: center;
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+
+.session-complete-btn {
+  border-radius: 999px;
+  background: #16c172;
+  border: 1px solid rgba(12, 107, 74, 0.4);
+  color: #ffffff;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  box-shadow: 0 10px 20px rgba(14, 144, 104, 0.2);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.session-complete-btn:hover {
+  color: #ffffff;
+  transform: translateY(-1px);
+  box-shadow: 0 14px 28px rgba(14, 144, 104, 0.28);
+}
+
+.session-complete-btn:active {
+  transform: translateY(0px) scale(0.99);
+  box-shadow: 0 10px 20px rgba(14, 144, 104, 0.24);
+}
+
+.session-action-row {
+  gap: 0.85rem;
+  margin-top: 0.75rem;
+  margin-bottom: 0.85rem;
+}
+
+.session-action-row .session-action-btn {
+  border-radius: 999px;
+  padding: 0.45rem 1.35rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  font-size: 0.85rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  border: 1px solid transparent;
+  box-shadow: 0 10px 22px rgba(12, 50, 87, 0.18);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease, color 0.2s ease;
+}
+
+.session-action-btn--session {
+  background: linear-gradient(135deg, #1EA4E6, #6fc3ff);
+  border-color: rgba(30, 164, 230, 0.6);
+  color: #ffffff;
+}
+
+.session-action-btn--session:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 14px 30px rgba(12, 50, 87, 0.22);
+  color: #ffffff;
+}
+
+.session-action-btn--active {
+  background: rgba(255, 255, 255, 0.85);
+  border-color: rgba(30, 164, 230, 0.5);
+  color: #1EA4E6;
+}
+
+.session-action-btn--active:hover {
+  background: #1EA4E6;
+  color: #ffffff;
+  box-shadow: 0 14px 30px rgba(30, 164, 230, 0.25);
+}
+
+.session-action-btn.disabled,
+.session-action-btn:disabled {
+  opacity: 0.55;
+  box-shadow: none;
+  transform: none;
+  cursor: default;
+  pointer-events: none;
 }
 
 .workout-subheading {
@@ -2656,6 +2880,30 @@ iframe.fullscreen-sim {
 .btn-workout-details:hover {
   color: #fff;
   box-shadow: 0 16px 36px rgba(247, 147, 26, 0.45);
+}
+
+.btn-session-workout {
+  background: linear-gradient(135deg, #20c997, #0abfbc);
+  box-shadow: 0 12px 24px rgba(10, 191, 188, 0.35);
+  color: #fff;
+}
+
+.btn-session-workout:hover {
+  color: #fff;
+  box-shadow: 0 16px 36px rgba(10, 191, 188, 0.45);
+}
+
+.btn-assign-workout {
+  background: #e7edf4;
+  color: #4b5563;
+  border: 1px solid rgba(75, 85, 99, 0.2);
+  box-shadow: 0 10px 18px rgba(12, 50, 87, 0.12);
+}
+
+.btn-assign-workout:hover {
+  color: #111827;
+  background: #dfe6ee;
+  box-shadow: 0 12px 22px rgba(12, 50, 87, 0.16);
 }
 
 .btn-brand-outline {

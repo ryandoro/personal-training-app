@@ -8,12 +8,22 @@
 {% if trainer_can_customize is not defined %}
     {% set trainer_can_customize = False %}
 {% endif %}
-{% if client_id and exercise.workout_id %}
-    {% set refresh_url = url_for('trainer_refresh_client_workout_exercise', client_id=client_id, workout_id=exercise.workout_id) %}
-    {% set alternate_url = url_for('trainer_list_client_workout_alternates', client_id=client_id, workout_id=exercise.workout_id) %}
-{% else %}
-    {% set refresh_url = '' %}
-    {% set alternate_url = '' %}
+{% if refresh_url is not defined or alternate_url is not defined %}
+    {% if client_id and exercise.workout_id %}
+        {% if refresh_url is not defined %}
+            {% set refresh_url = url_for('trainer_refresh_client_workout_exercise', client_id=client_id, workout_id=exercise.workout_id) %}
+        {% endif %}
+        {% if alternate_url is not defined %}
+            {% set alternate_url = url_for('trainer_list_client_workout_alternates', client_id=client_id, workout_id=exercise.workout_id) %}
+        {% endif %}
+    {% else %}
+        {% if refresh_url is not defined %}
+            {% set refresh_url = '' %}
+        {% endif %}
+        {% if alternate_url is not defined %}
+            {% set alternate_url = '' %}
+        {% endif %}
+    {% endif %}
 {% endif %}
 {% set exercise_name = exercise.name or '' %}
 {% set normalized_name = exercise_name|lower %}
