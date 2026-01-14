@@ -1504,6 +1504,20 @@ iframe.fullscreen-sim {
   gap: 1rem;
 }
 
+.login-remember {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding-left: 0;
+}
+
+.login-remember .form-check-input {
+  float: none;
+  margin-left: 0;
+  margin-top: 0;
+}
+
 .surface-section {
   border: 1px solid rgba(30, 164, 230, 0.12);
   border-radius: 22px;

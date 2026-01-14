@@ -468,6 +468,143 @@ def issue_single_use_token(conn, user_id: int, purpose: str, ttl_hours: int):
     return raw_token, expires_at, token_id
 
 
+def issue_remember_token(
+    conn,
+    *,
+    user_id: int,
+    session_version: int,
+    ttl_days: int,
+    max_days: int,
+    user_agent: str | None = None,
+    ip_address: str | None = None,
+):
+    raw_token = secrets.token_urlsafe(32)
+    digest = hash_token(raw_token)
+    now = datetime.now(timezone.utc)
+    expires_at = now + timedelta(days=ttl_days)
+    absolute_expires_at = now + timedelta(days=max_days)
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO remember_tokens (
+                user_id,
+                token_digest,
+                session_version,
+                created_at,
+                last_used_at,
+                expires_at,
+                absolute_expires_at,
+                user_agent,
+                ip_address
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING id
+            """,
+            (
+                user_id,
+                digest,
+                session_version,
+                now,
+                now,
+                expires_at,
+                absolute_expires_at,
+                user_agent,
+                ip_address,
+            ),
+        )
+        token_id = cur.fetchone()[0]
+    return raw_token, expires_at, absolute_expires_at, token_id
+
+
+def get_valid_remember_token(conn, raw_token: str):
+    digest = hash_token(raw_token)
+    with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        cur.execute(
+            """
+            SELECT rt.id,
+                   rt.user_id,
+                   rt.session_version AS token_session_version,
+                   rt.expires_at,
+                   rt.absolute_expires_at,
+                   u.role,
+                   u.status,
+                   u.session_version AS user_session_version
+              FROM remember_tokens rt
+              JOIN users u ON u.id = rt.user_id
+             WHERE rt.token_digest = %s
+               AND rt.revoked_at IS NULL
+               AND rt.expires_at > now()
+               AND rt.absolute_expires_at > now()
+             LIMIT 1
+            """,
+            (digest,),
+        )
+        return cur.fetchone()
+
+
+def rotate_remember_token(
+    conn,
+    *,
+    token_id: int,
+    ttl_days: int,
+    absolute_expires_at: datetime,
+    user_agent: str | None = None,
+    ip_address: str | None = None,
+):
+    raw_token = secrets.token_urlsafe(32)
+    digest = hash_token(raw_token)
+    now = datetime.now(timezone.utc)
+    candidate_expires = now + timedelta(days=ttl_days)
+    expires_at = min(candidate_expires, absolute_expires_at)
+    if expires_at <= now:
+        return None, None
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE remember_tokens
+               SET token_digest = %s,
+                   last_used_at = %s,
+                   expires_at = %s,
+                   user_agent = COALESCE(%s, user_agent),
+                   ip_address = COALESCE(%s, ip_address)
+             WHERE id = %s
+               AND revoked_at IS NULL
+            """,
+            (digest, now, expires_at, user_agent, ip_address, token_id),
+        )
+        updated = cur.rowcount
+    if updated != 1:
+        return None, None
+    return raw_token, expires_at
+
+
+def revoke_remember_token(conn, raw_token: str):
+    digest = hash_token(raw_token)
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE remember_tokens
+               SET revoked_at = now()
+             WHERE token_digest = %s
+               AND revoked_at IS NULL
+            """,
+            (digest,),
+        )
+
+
+def revoke_remember_token_by_id(conn, token_id: int):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE remember_tokens
+               SET revoked_at = now()
+             WHERE id = %s
+               AND revoked_at IS NULL
+            """,
+            (token_id,),
+        )
+
+
 
 def upsert_invited_user(conn, *, email, first, last, role, subscription, invited_by, trainer_id=None, sessions_remaining=None) -> int:
     now = datetime.now(timezone.utc)

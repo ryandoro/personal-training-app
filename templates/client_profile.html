@@ -310,6 +310,9 @@
 
                     <section class="exercise-lookup-card mt-4 pt-2">
                         <form class="exercise-lookup-form" method="GET" action="{{ url_for('client_profile', client_id=client.id) }}">
+                            {% if selected_session_id %}
+                                <input type="hidden" name="session_event_id" value="{{ selected_session_id }}">
+                            {% endif %}
                             <label for="exercise-search-input" class="visually-hidden">Search client workouts</label>
                             <div class="lookup-input-group mb-4">
                                 <input id="exercise-search-input"
@@ -322,7 +325,11 @@
                                     Search
                                 </button>
                                 {% if exercise_search_term %}
-                                    <a class="btn btn-outline-secondary lookup-clear-btn" href="{{ url_for('client_profile', client_id=client.id) }}">Clear</a>
+                                    {% if selected_session_id %}
+                                        <a class="btn btn-outline-secondary lookup-clear-btn" href="{{ url_for('client_profile', client_id=client.id, session_event_id=selected_session_id) }}">Clear</a>
+                                    {% else %}
+                                        <a class="btn btn-outline-secondary lookup-clear-btn" href="{{ url_for('client_profile', client_id=client.id) }}">Clear</a>
+                                    {% endif %}
                                 {% endif %}
                             </div>
                         </form>
@@ -3443,7 +3450,8 @@
         const focusParam = params.get('focus');
         const shouldFocusActive = focusParam === 'active';
         const shouldFocusGenerator = focusParam === 'generator';
-        const shouldFocusSession = focusParam === 'session' || (params.get('session_event_id') && !focusParam);
+        const shouldFocusSession = !hasExerciseLookupQuery
+            && (focusParam === 'session' || (params.get('session_event_id') && !focusParam));
         if (shouldFocusGenerator) {
             requestAnimationFrame(() => {
                 const generatorCard = document.getElementById('workout-generator-card');

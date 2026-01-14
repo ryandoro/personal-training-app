@@ -1,5 +1,5 @@
 import os, re, logging, json, math, uuid, psycopg2, psycopg2.extras, psycopg2.errors, stripe, requests
-from flask import Flask, flash, redirect, render_template, request, session, jsonify, url_for, current_app, abort, send_from_directory
+from flask import Flask, flash, redirect, render_template, request, session, jsonify, url_for, current_app, abort, send_from_directory, g
 from markupsafe import Markup
 from werkzeug.security import generate_password_hash, check_password_hash
 from helpers import (
@@ -20,6 +20,11 @@ from helpers import (
     inches_0_11_or_none,
     float_or_none,
     hash_token,
+    issue_remember_token,
+    get_valid_remember_token,
+    rotate_remember_token,
+    revoke_remember_token,
+    revoke_remember_token_by_id,
     get_category_groups,
     get_user_level,
     LEVEL_MAP,
@@ -89,6 +94,13 @@ if ENV == "production":
     webhook_secret = os.getenv("STRIPE_WEBHOOK_SECRET_LIVE")
 else:
     webhook_secret = os.getenv("STRIPE_WEBHOOK_SECRET_TEST")
+
+REMEMBER_ME_TTL_DAYS = int(os.getenv("REMEMBER_ME_TTL_DAYS", "30"))
+REMEMBER_ME_MAX_DAYS = int(os.getenv("REMEMBER_ME_MAX_DAYS", "90"))
+REMEMBER_COOKIE_NAME = "remember_token"
+REMEMBER_COOKIE_SAMESITE = "Lax"
+REMEMBER_COOKIE_SECURE = (ENV == "production")
+app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=REMEMBER_ME_TTL_DAYS)
 
 ALLOWED_ROLES = {"user", "trainer", "admin"}
 ALLOWED_SUBS  = {"free", "premium", "pro"}
@@ -167,6 +179,33 @@ def _normalize_role_value(role_value, *, default=None):
         if normalized in ALLOWED_ROLES:
             return normalized
     return default
+
+
+def _apply_user_session(*, user_id: int, role: str | None, session_version: int | None):
+    session['user_id'] = user_id
+    session['session_version'] = session_version or 1
+    session['session_version_checked_at'] = datetime.now(timezone.utc).isoformat()
+    normalized_role = _normalize_role_value(role, default='user')
+    session['role'] = normalized_role
+    session['is_admin'] = (normalized_role == 'admin')
+
+
+def _queue_remember_cookie(raw_token: str, expires_at: datetime):
+    if not raw_token or not expires_at:
+        return
+    g.remember_cookie_to_set = {"token": raw_token, "expires_at": expires_at}
+
+
+def _queue_remember_cookie_clear():
+    g.remember_cookie_to_clear = True
+
+
+def _remember_cookie_max_age(expires_at: datetime) -> int:
+    now = datetime.now(timezone.utc)
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    delta = (expires_at - now).total_seconds()
+    return max(0, int(delta))
 
 
 def _resolve_user_role(*, user_id=None, conn=None, default='user'):
@@ -1141,24 +1180,115 @@ def login():
             flash("Please verify your email before logging in.", "warning")
             return render_template('login.html')
 
-        # Success → remember session
-        session['user_id'] = user['id']
-        session['session_version'] = user.get('session_version', 1)
-        session['session_version_checked_at'] = datetime.now(timezone.utc).isoformat()
-        normalized_role = _normalize_role_value(user.get('role'), default='user')
-        session['role'] = normalized_role
-        session['is_admin'] = (normalized_role == 'admin')
+        remember_me = bool(request.form.get('remember_me'))
+        session_version = user.get('session_version') or 1
+        _apply_user_session(
+            user_id=user['id'],
+            role=user.get('role'),
+            session_version=session_version,
+        )
+        session.permanent = remember_me
 
-        # Stamp last login
+        forwarded_for = request.headers.get("X-Forwarded-For")
+        ip_address = (forwarded_for.split(",")[0].strip() if forwarded_for else request.remote_addr)
+        user_agent = request.headers.get("User-Agent")
+        existing_remember_cookie = request.cookies.get(REMEMBER_COOKIE_NAME)
+        remember_payload = None
+
+        # Stamp last login and issue/revoke remember token
         with get_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute("UPDATE users SET last_login_at = now() WHERE id = %s", (user['id'],))
-                conn.commit()
+
+            if remember_me:
+                remember_payload = issue_remember_token(
+                    conn,
+                    user_id=user['id'],
+                    session_version=session_version,
+                    ttl_days=REMEMBER_ME_TTL_DAYS,
+                    max_days=REMEMBER_ME_MAX_DAYS,
+                    user_agent=user_agent,
+                    ip_address=ip_address,
+                )
+            elif existing_remember_cookie:
+                revoke_remember_token(conn, existing_remember_cookie)
+
+            conn.commit()
+
+        if remember_payload:
+            _queue_remember_cookie(remember_payload[0], remember_payload[1])
+        elif existing_remember_cookie:
+            _queue_remember_cookie_clear()
 
         flash("Login successful!", "success")
         return redirect(url_for('home'))  
 
     return render_template('login.html')
+
+
+@app.before_request
+def remember_me_session():
+    if 'user_id' in session:
+        return
+
+    if request.endpoint in ['static', 'logout']:
+        return
+
+    raw_token = request.cookies.get(REMEMBER_COOKIE_NAME)
+    if not raw_token:
+        return
+
+    forwarded_for = request.headers.get("X-Forwarded-For")
+    ip_address = (forwarded_for.split(",")[0].strip() if forwarded_for else request.remote_addr)
+    user_agent = request.headers.get("User-Agent")
+
+    with get_connection() as conn:
+        token_row = get_valid_remember_token(conn, raw_token)
+        if not token_row:
+            _queue_remember_cookie_clear()
+            return
+
+        if token_row.get('status') != 'active':
+            revoke_remember_token_by_id(conn, token_row['id'])
+            conn.commit()
+            _queue_remember_cookie_clear()
+            return
+
+        user_session_version = token_row.get('user_session_version') or 1
+        token_session_version = token_row.get('token_session_version') or 1
+        if user_session_version != token_session_version:
+            revoke_remember_token_by_id(conn, token_row['id'])
+            conn.commit()
+            _queue_remember_cookie_clear()
+            return
+
+        absolute_expires_at = token_row['absolute_expires_at']
+        if absolute_expires_at.tzinfo is None:
+            absolute_expires_at = absolute_expires_at.replace(tzinfo=timezone.utc)
+
+        rotated_token, rotated_expires = rotate_remember_token(
+            conn,
+            token_id=token_row['id'],
+            ttl_days=REMEMBER_ME_TTL_DAYS,
+            absolute_expires_at=absolute_expires_at,
+            user_agent=user_agent,
+            ip_address=ip_address,
+        )
+        if not rotated_token:
+            revoke_remember_token_by_id(conn, token_row['id'])
+            conn.commit()
+            _queue_remember_cookie_clear()
+            return
+
+        conn.commit()
+
+    _apply_user_session(
+        user_id=token_row['user_id'],
+        role=token_row.get('role'),
+        session_version=user_session_version,
+    )
+    session.permanent = True
+    _queue_remember_cookie(rotated_token, rotated_expires)
 
 
 @app.before_request
@@ -1190,7 +1320,37 @@ def logout():
     """Log user out"""
     session.clear()
     flash("You have been logged out.", "success")
+    raw_token = request.cookies.get(REMEMBER_COOKIE_NAME)
+    if raw_token:
+        with get_connection() as conn:
+            revoke_remember_token(conn, raw_token)
+            conn.commit()
+    _queue_remember_cookie_clear()
     return redirect('/login')
+
+
+@app.after_request
+def apply_remember_cookie(response):
+    if getattr(g, "remember_cookie_to_clear", False):
+        response.delete_cookie(
+            REMEMBER_COOKIE_NAME,
+            samesite=REMEMBER_COOKIE_SAMESITE,
+            secure=REMEMBER_COOKIE_SECURE,
+        )
+
+    payload = getattr(g, "remember_cookie_to_set", None)
+    if payload:
+        response.set_cookie(
+            REMEMBER_COOKIE_NAME,
+            payload["token"],
+            max_age=_remember_cookie_max_age(payload["expires_at"]),
+            expires=payload["expires_at"],
+            httponly=True,
+            samesite=REMEMBER_COOKIE_SAMESITE,
+            secure=REMEMBER_COOKIE_SECURE,
+        )
+
+    return response
 
 
 @app.route('/favicon.ico')
@@ -2140,22 +2300,42 @@ def client_profile(client_id):
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
                 cursor.execute(
                     """
-                    SELECT id,
-                           start_time,
-                           end_time,
-                           status,
-                           session_payload,
-                           session_category,
-                           session_id
+                    SELECT start_time
                       FROM trainer_schedule
                      WHERE trainer_id = %s
                        AND client_id = %s
                        AND status = 'booked'
                      ORDER BY start_time ASC
+                     LIMIT 1
                     """,
                     (schedule_trainer_id, client_id),
                 )
-                rows = cursor.fetchall() or []
+                earliest_row = cursor.fetchone()
+                if earliest_row:
+                    schedule_window_start = earliest_row.get('start_time')
+                    schedule_window_end = schedule_window_start + timedelta(days=30)
+                    cursor.execute(
+                        """
+                        SELECT id,
+                               start_time,
+                               end_time,
+                               status,
+                               session_payload,
+                               session_category,
+                               session_id
+                          FROM trainer_schedule
+                         WHERE trainer_id = %s
+                           AND client_id = %s
+                           AND status = 'booked'
+                           AND start_time >= %s
+                           AND start_time < %s
+                         ORDER BY start_time ASC
+                        """,
+                        (schedule_trainer_id, client_id, schedule_window_start, schedule_window_end),
+                    )
+                    rows = cursor.fetchall() or []
+                else:
+                    rows = []
         for row in rows:
             payload = _parse_session_payload(row.get('session_payload'))
             workout_category = payload.get('category') if isinstance(payload, dict) else None
