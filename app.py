@@ -1358,8 +1358,8 @@ def favicon():
     """Serve the favicon from the static directory."""
     return send_from_directory(
         os.path.join(app.root_path, 'static'),
-        'favicon.png',
-        mimetype='image/png',
+        'favicon.ico',
+        mimetype='image/vnd.microsoft.icon',
     )
 
 
