@@ -2748,11 +2748,36 @@
             hydrateActiveWorkout();
 
             if (completeWorkoutBtn) {
+                const setCompletePressed = (isPressed) => {
+                    completeWorkoutBtn.classList.toggle('is-pressed', isPressed);
+                };
+                const releaseCompletePressed = () => setCompletePressed(false);
+
+                completeWorkoutBtn.addEventListener('pointerdown', () => setCompletePressed(true));
+                completeWorkoutBtn.addEventListener('pointerup', releaseCompletePressed);
+                completeWorkoutBtn.addEventListener('pointerleave', releaseCompletePressed);
+                completeWorkoutBtn.addEventListener('pointercancel', releaseCompletePressed);
+                completeWorkoutBtn.addEventListener('blur', releaseCompletePressed);
+                completeWorkoutBtn.addEventListener('keydown', (event) => {
+                    if (event.key === ' ' || event.key === 'Enter') {
+                        setCompletePressed(true);
+                    }
+                });
+                completeWorkoutBtn.addEventListener('keyup', (event) => {
+                    if (event.key === ' ' || event.key === 'Enter') {
+                        releaseCompletePressed();
+                    }
+                });
+
                 completeWorkoutBtn.addEventListener('click', async () => {
                     if (completeWorkoutBtn.dataset.submitting === 'true') {
                         return;
                     }
                     completeWorkoutBtn.dataset.submitting = 'true';
+                    completeWorkoutBtn.classList.remove('is-pressed');
+                    completeWorkoutBtn.classList.add('is-submitting');
+                    completeWorkoutBtn.setAttribute('aria-busy', 'true');
+                    completeWorkoutBtn.disabled = true;
                     try {
                         const response = await fetch('/complete_workout', {
                             method: 'POST',
@@ -2772,6 +2797,9 @@
                         alert('An error occurred. Please try again.');
                     } finally {
                         completeWorkoutBtn.dataset.submitting = 'false';
+                        completeWorkoutBtn.classList.remove('is-submitting');
+                        completeWorkoutBtn.removeAttribute('aria-busy');
+                        completeWorkoutBtn.disabled = false;
                     }
                 });
             }

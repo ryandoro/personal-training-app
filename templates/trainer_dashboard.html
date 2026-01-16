@@ -381,16 +381,11 @@
             </div>
         </div>
         <div class="event-session-modal__body">
-            <div class="event-session-modal__section" id="eventWorkoutDetailsSection" hidden>
-                <a href="#" class="btn btn-brand btn-workout-details w-100" id="eventViewSession">
-                    <i class="bi bi-activity me-1"></i>Workout Details
-                </a>
-            </div>
-                <div class="event-session-modal__reschedule" id="eventReschedulePanel" hidden>
-                    <div class="event-session-modal__reschedule-header">
-                        <h6 class="mb-1">Reschedule Session</h6>
-                        <p class="mb-2 text-muted small">Choose the new date or time, then apply changes.</p>
-                    </div>
+            <div class="event-session-modal__reschedule" id="eventReschedulePanel" hidden>
+                <div class="event-session-modal__reschedule-header">
+                    <h6 class="mb-1">Reschedule Session</h6>
+                    <p class="mb-2 text-muted small">Choose the new date or time, then apply changes.</p>
+                </div>
                     <form id="eventRescheduleForm" class="row g-2" novalidate>
                         <div class="col-12 col-sm-6">
                             <label for="eventRescheduleDate" class="form-label mb-1">New Date</label>
@@ -413,6 +408,12 @@
                 <div class="form-text mt-2 text-muted" id="eventStatusInfo" role="status" aria-live="polite">
                     Sessions remaining for client: —
                 </div>
+            </div>
+
+            <div class="event-session-modal__section" id="eventWorkoutDetailsSection" hidden>
+                <a href="#" class="btn btn-brand btn-workout-details w-100" id="eventViewSession">
+                    <i class="bi bi-activity me-1"></i>Workout Details
+                </a>
             </div>
 
             <button type="button" class="btn btn-outline-primary w-100" id="eventViewProfile">
