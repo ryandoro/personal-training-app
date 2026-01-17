@@ -7597,8 +7597,12 @@ body.persona-lightbox-open {
   overflow: hidden;
 }
 
+.persona-lightbox--exercise .persona-lightbox__frame {
+  --persona-lightbox-image-radius: 28px;
+}
+
 .persona-lightbox__image {
-  border-radius: inherit;
+  border-radius: var(--persona-lightbox-image-radius);
   width: 100%;
   height: auto;
   max-height: calc(100vh - 8rem);
@@ -7678,11 +7682,6 @@ body.persona-lightbox-open {
   overflow: hidden;
 }
 
-.persona-lightbox__media .persona-lightbox__frame img {
-  max-height: calc(100vh - 8rem);
-  border-radius: inherit;
-}
-
 .persona-lightbox__arrows-stack {
   display: flex;
   justify-content: center;
@@ -7729,8 +7728,12 @@ body.persona-lightbox-open {
     overflow-y: auto;
   }
 
+  .persona-lightbox--exercise .persona-lightbox__content {
+    max-height: calc(100vh - 8rem);
+  }
+
   .persona-lightbox__close {
-    top: 0.4rem;
+    top: 0.3rem;
     right: 0.55rem;
   }
 
@@ -7743,9 +7746,9 @@ body.persona-lightbox-open {
     font-size: 1.25rem;
   }
 
-  .persona-lightbox__frame img,
-  .persona-lightbox__media .persona-lightbox__frame img {
-    max-height: calc(100vh - 8rem);
+  .persona-lightbox--exercise .persona-lightbox__image img {
+    max-height: calc(100vh - 12rem);
+    border-radius: 28px;
   }
 }
 
@@ -7799,16 +7802,15 @@ body.persona-lightbox-open {
     margin-right: auto;
   }
 
-  .persona-lightbox__frame img {
-    max-height: calc(100vh - 24rem);
-    object-fit: contain;
-  }
-
   .persona-lightbox__media .persona-lightbox__frame {
     height: 100%;
   }
 
-  .persona-lightbox__media .persona-lightbox__frame img {
+  .persona-lightbox__image {
+    max-height: calc(100vh - 24rem);
+  }
+
+  .persona-lightbox__media .persona-lightbox__image {
     height: 100%;
     max-height: 100%;
   }
