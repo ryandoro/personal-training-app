@@ -3707,7 +3707,8 @@ iframe.fullscreen-sim {
 /* Scheduler */
 .calendar-wrapper {
   position: relative;
-  overflow: hidden;
+  overflow: hidden; /* Fallback for browsers without overflow: clip support. */
+  overflow: clip; /* Compositor-safe clipping without creating another scroll context. */
   border: 1px solid rgba(30, 164, 230, 0.25);
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.82);
@@ -3786,6 +3787,7 @@ iframe.fullscreen-sim {
   width: 100%;
   -webkit-overflow-scrolling: touch;
   padding-bottom: 0.5rem;
+  /* Keep overflow behavior stable across view toggles to reduce compositor churn. */
 }
 
 .calendar-header {
@@ -4019,7 +4021,7 @@ iframe.fullscreen-sim {
 
 .calendar-event--dragging {
   z-index: 15;
-  transform: translate3d(0, 0, 0) scale(1.02);
+  transform: scale(1.02); /* Avoid forced GPU promotion; keep drag feel unchanged. */
   box-shadow: 0 20px 36px rgba(15, 63, 117, 0.28);
   transition: transform 0.1s ease, box-shadow 0.1s ease;
 }
@@ -4536,10 +4538,6 @@ iframe.fullscreen-sim {
 .selected-client-pill--empty .selected-client-pill__name {
   color: #ffffff;
   opacity: 0.9;
-}
-
-.calendar-wrapper.calendar-mode-full .calendar-scroll {
-  overflow-x: hidden;
 }
 
 .calendar-wrapper.calendar-mode-full .calendar-header {
