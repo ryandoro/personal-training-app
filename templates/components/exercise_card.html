@@ -133,43 +133,7 @@
                 </div>
         </div>
         <div id="{{ exercise_dom_id }}" class="exercise-card-body">
-            {% if start_src or end_src %}
-                <div class="exercise-media-row d-flex justify-content-center flex-nowrap mb-3 px-2">
-                    {% if start_src %}
-                        <div class="d-flex flex-column align-items-center">
-                            <p class="exercise-media-label mb-2">Start:</p>
-                            <img src="{{ start_src }}"
-                                 alt="{{ exercise_name }} start"
-                                 class="clickable-img exercise-media-image"
-                                 data-group="{{ exercise_name|replace(' ', '-') }}-{{ exercise_loop_index }}"
-                                 data-index="0">
-                        </div>
-                    {% endif %}
-                    {% if end_src %}
-                        <div class="d-flex flex-column align-items-center">
-                            <p class="exercise-media-label mb-2">End:</p>
-                            <img src="{{ end_src }}"
-                                 alt="{{ exercise_name }} end"
-                                 class="clickable-img exercise-media-image"
-                                 data-group="{{ exercise_name|replace(' ', '-') }}-{{ exercise_loop_index }}"
-                                 data-index="1">
-                        </div>
-                    {% endif %}
-                </div>
-            {% endif %}
-            {% if exercise.youtube_id %}
-                <p class="exercise-media-label mb-2">Video Demonstration:</p>
-                <div class="exercise-video-wrapper mb-4">
-                    <div class="exercise-video-shell">
-                        <iframe class="exercise-video-frame"
-                                src="https://www.youtube.com/embed/{{ exercise.youtube_id }}?mute=1&playsinline=1"
-                                title="{{ exercise_name }} tutorial"
-                                allow="autoplay; encrypted-media"
-                                allowfullscreen></iframe>
-                    </div>
-                </div>
-            {% endif %}
-            <div class="d-flex flex-column align-items-center gap-3 max-actions">
+            <div class="d-flex flex-column align-items-center gap-3 max-actions compact-visible">
                 <div class="personal-best max-summary"
                      data-id="{{ exercise.workout_id }}"
                      data-category="{{ subcategory_label }}"
@@ -177,34 +141,74 @@
                      data-plank="{{ 'true' if is_plank else 'false' }}">
                     <span class="max-label text-uppercase fw-semibold">Client Max</span>
                     <div class="max-pill-row">
-                        <span class="max-pill max-pill-weight">{{ weight_display }}</span>
-                        <span class="max-times">×</span>
-                        <span class="max-pill max-pill-reps">{{ reps_display }}</span>
-                    </div>
+                    <span class="max-pill max-pill-weight update-pr-trigger"
+                          role="button"
+                          tabindex="0"
+                          aria-label="Update max weight">{{ weight_display }}</span>
+                    <span class="max-times">×</span>
+                    <span class="max-pill max-pill-reps update-pr-trigger"
+                          role="button"
+                          tabindex="0"
+                          aria-label="Update max {{ 'time' if is_plank or is_cardio else 'reps' }}">{{ reps_display }}</span>
+                </div>
                     <span class="personal-max-text d-none">Client Max: {{ weight_display }} × {{ reps_display }}</span>
                 </div>
-                <div class="d-flex flex-wrap justify-content-center gap-2 max-action-buttons">
-                    <button class="btn btn-outline-secondary btn-sm max-action-btn update-pr-link"
-                            data-id="{{ exercise.workout_id }}"
-                            data-category="{{ subcategory_label }}"
-                            data-plank="{{ 'true' if is_plank else 'false' }}">
-                        Update Max
-                    </button>
-                    <button class="btn btn-outline-primary btn-sm max-action-btn toggle-description"
-                            type="button"
-                            data-id="{{ desc_dom_id }}"
-                            data-label-show="View Description"
-                            data-label-hide="Hide Description">
-                        View Description
-                    </button>
+            </div>
+            <div class="exercise-details">
+                <div class="exercise-media-strip">
+                    {% if start_src or end_src %}
+                        <div class="exercise-media-row d-flex justify-content-center flex-nowrap mb-3 px-2">
+                            {% if start_src %}
+                                <div class="d-flex flex-column align-items-center">
+                                    <p class="exercise-media-label mb-2">Start:</p>
+                                    <img src="{{ start_src }}"
+                                         alt="{{ exercise_name }} start"
+                                         class="clickable-img exercise-media-image"
+                                         data-group="{{ exercise_name|replace(' ', '-') }}-{{ exercise_loop_index }}"
+                                         data-index="0">
+                                </div>
+                            {% endif %}
+                            {% if end_src %}
+                                <div class="d-flex flex-column align-items-center">
+                                    <p class="exercise-media-label mb-2">End:</p>
+                                    <img src="{{ end_src }}"
+                                         alt="{{ exercise_name }} end"
+                                         class="clickable-img exercise-media-image"
+                                         data-group="{{ exercise_name|replace(' ', '-') }}-{{ exercise_loop_index }}"
+                                         data-index="1">
+                                </div>
+                            {% endif %}
+                        </div>
+                    {% endif %}
+                    {% if exercise.youtube_id %}
+                        <p class="exercise-media-label mb-2">Video Demonstration:</p>
+                        <div class="exercise-video-wrapper mb-4">
+                            <div class="exercise-video-shell">
+                                <iframe class="exercise-video-frame"
+                                        src="https://www.youtube.com/embed/{{ exercise.youtube_id }}?mute=1&playsinline=1"
+                                        title="{{ exercise_name }} tutorial"
+                                        allow="autoplay; encrypted-media"
+                                        allowfullscreen></iframe>
+                            </div>
+                        </div>
+                    {% endif %}
+                    <div class="d-flex flex-wrap justify-content-center gap-2 max-action-buttons">
+                        <button class="btn btn-outline-primary btn-sm max-action-btn toggle-description"
+                                type="button"
+                                data-id="{{ desc_dom_id }}"
+                                data-label-show="View Description"
+                                data-label-hide="Hide Description">
+                            View Description
+                        </button>
+                    </div>
+                </div>
+                <div id="{{ desc_dom_id }}"
+                     class="exercise-description mt-3 text-center"
+                     style="display: none;">
+                    <p class="small text-muted mb-0">{{ exercise.description or 'No description available.' }}</p>
                 </div>
             </div>
-            <div id="{{ desc_dom_id }}"
-                 class="exercise-description mt-3 text-center"
-                 style="display: none;">
-                <p class="small text-muted mb-0">{{ exercise.description or 'No description available.' }}</p>
-            </div>
-            <div class="exercise-notes mt-3 text-start">
+            <div class="exercise-notes mt-3 text-start compact-visible">
                 <div class="d-flex justify-content-between align-items-center mb-2">
                     <i class="bi bi-journal-text text-primary"></i>
                     <button class="btn btn-outline-info btn-sm edit-notes-btn"

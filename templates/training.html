@@ -2258,28 +2258,21 @@
                                 </div>
                 ` : '';
                 const progressSection = IS_FREE_USER ? '' : `
-                                <div class="d-flex flex-column align-items-center gap-3 max-actions">
+                                <div class="d-flex flex-column align-items-center gap-3 max-actions compact-visible">
                                     <div class="personal-best max-summary" data-id="${workoutIdAttr}" data-category="${categoryAttr}" data-bodyweight="${isBodyweight && !isCardio}" data-plank="${isPlank}">
                                         <span class="max-label text-uppercase fw-semibold">Your Max</span>
                                         <div class="max-pill-row">
-                                            <span class="max-pill max-pill-weight">${weightDisplay}</span>
+                                            <span class="max-pill max-pill-weight update-pr-trigger"
+                                                  role="button"
+                                                  tabindex="0"
+                                                  aria-label="Update max weight">${weightDisplay}</span>
                                             <span class="max-times">×</span>
-                                            <span class="max-pill max-pill-reps">${repsDisplay}</span>
+                                            <span class="max-pill max-pill-reps update-pr-trigger"
+                                                  role="button"
+                                                  tabindex="0"
+                                                  aria-label="Update max ${isCardio || isPlank ? 'time' : 'reps'}">${repsDisplay}</span>
                                         </div>
                                         <span class="personal-max-text d-none">Your Max: ${summaryValue}</span>
-                                    </div>
-                                    <div class="d-flex flex-wrap justify-content-center gap-2 max-action-buttons">
-                                        <button class="btn btn-outline-secondary btn-sm max-action-btn update-pr-link"
-                                            data-id="${workoutIdAttr}"
-                                            data-category="${categoryAttr}"
-                                            data-plank="${isPlank}">
-                                            Update Max
-                                        </button>
-                                        <button class="btn btn-outline-primary btn-sm max-action-btn toggle-description"
-                                            type="button"
-                                            data-id="${descId}">
-                                            View Description
-                                        </button>
                                     </div>
                                 </div>
                 `;
@@ -2295,7 +2288,7 @@
                                 </div>
                     `;
                 const notesSection = IS_FREE_USER ? '' : `
-                                <div class="exercise-notes mt-3 text-start">
+                                <div class="exercise-notes mt-3 text-start compact-visible">
                                     <div class="d-flex justify-content-between align-items-center mb-2">
                                         <i class="bi bi-journal-text text-primary"></i>
                                         <button class="btn btn-outline-info btn-sm edit-notes-btn"
@@ -2310,6 +2303,25 @@
                 `;
 
                 const cardCustomClass = showCardControls ? ' exercise-card--customizable' : '';
+
+                const detailsSection = `
+                                <div class="exercise-details">
+                                    <div class="exercise-media-strip">
+                                        ${mediaRow}
+                                        ${videoSection}
+                                        ${IS_FREE_USER ? '' : `
+                                            <div class="d-flex flex-wrap justify-content-center gap-2 max-action-buttons">
+                                                <button class="btn btn-outline-primary btn-sm max-action-btn toggle-description"
+                                                    type="button"
+                                                    data-id="${descId}">
+                                                    View Description
+                                                </button>
+                                            </div>
+                                        `}
+                                    </div>
+                                    ${descriptionSection}
+                                </div>
+                `;
 
                 return `
                     <li class="mb-4 exercise-list-item"
@@ -2327,10 +2339,8 @@
                                 ${cardControlsHtml}
                             </div>
                             <div id="${bodyId}" class="exercise-card-body">
-                                ${mediaRow}
-                                ${videoSection}
                                 ${progressSection}
-                                ${descriptionSection}
+                                ${detailsSection}
                                 ${notesSection}
                             </div>
                         </div>
@@ -2865,16 +2875,16 @@
             <div class="modal-card">
                 <button id="prModalClose" class="btn-close"></button>
                 <h5 class="mb-3">Update Max</h5>
-                <input type="number" id="maxWeightInput" class="form-control mb-2" placeholder="Max Weight (lbs)" title="Bodyweight exercises do not require a weight entry">
+                <input type="number" id="maxWeightInput" class="form-control mb-2" placeholder="Max Weight (lbs)" title="Bodyweight exercises do not require a weight entry" inputmode="decimal">
                 <div id="maxRepsInputGroup" class="mb-3">
-                    <input type="number" id="maxRepsInput" class="form-control" placeholder="Max Reps">
+                    <input type="number" id="maxRepsInput" class="form-control" placeholder="Max Reps" inputmode="numeric">
                 </div>
                 <div id="maxTimeInputGroup" class="row g-2 mb-3" style="display: none;">
                     <div class="col">
-                        <input type="number" id="maxMinutesInput" class="form-control" placeholder="Min" min="0" step="1">
+                        <input type="number" id="maxMinutesInput" class="form-control" placeholder="Min" min="0" step="1" inputmode="numeric">
                     </div>
                     <div class="col">
-                        <input type="number" id="maxSecondsInput" class="form-control" placeholder="Sec" min="0" max="59" step="1">
+                        <input type="number" id="maxSecondsInput" class="form-control" placeholder="Sec" min="0" max="59" step="1" inputmode="numeric">
                     </div>
                 </div>
                 <button id="submitPrBtn" class="btn btn-brand w-100 mb-2">Save</button>
@@ -3113,52 +3123,85 @@
                 delete prModal.dataset.plank;
             };
 
+            const focusAndSelect = (input) => {
+                if (!input || input.disabled) return;
+                const tryFocus = () => {
+                    input.focus();
+                    if (typeof input.select === 'function') {
+                        input.select();
+                    } else if (typeof input.setSelectionRange === 'function') {
+                        try {
+                            const length = input.value ? input.value.length : 0;
+                            input.setSelectionRange(0, length);
+                        } catch (err) {
+                            /* no-op */
+                        }
+                    }
+                    input.click();
+                };
+                // First focus sync within the user gesture to trigger the mobile keyboard.
+                tryFocus();
+                // Retry shortly after render in case the modal needed a paint.
+                setTimeout(tryFocus, 100);
+            };
+
+            const openPrModalFromTrigger = (trigger) => {
+                const bestWrapper = trigger.closest('.personal-best')
+                    || document.querySelector(`.personal-best[data-id="${trigger.dataset.id || ''}"]`);
+                const resolvedId = trigger.dataset.id || bestWrapper?.dataset.id;
+                if (!resolvedId) return;
+                currentWorkoutId = resolvedId;
+                const categoryLabel = (trigger.dataset.category || bestWrapper?.dataset.category || '').toLowerCase();
+                const isCardio = categoryLabel === 'cardio';
+                const isPlank = trigger.dataset.plank === 'true' || bestWrapper?.dataset.plank === 'true';
+                prModal.dataset.cardio = isCardio ? '1' : '0';
+                prModal.dataset.plank = isPlank ? '1' : '0';
+
+                const weightSpan = bestWrapper?.querySelector('.max-pill-weight');
+                const repsSpan = bestWrapper?.querySelector('.max-pill-reps');
+                const weightText = weightSpan ? weightSpan.textContent.trim() : '';
+                const repsText = repsSpan ? repsSpan.textContent.trim() : '';
+                const isBodyweight = weightText.toLowerCase().includes('bodyweight');
+                const treatAsBodyweight = isBodyweight || isCardio;
+
+                const numericWeight = parseFloat(weightText.replace(/[^0-9.]+/g, ''));
+                maxWeightInput.value = (!treatAsBodyweight && Number.isFinite(numericWeight)) ? numericWeight : '';
+                maxWeightInput.disabled = treatAsBodyweight;
+                if (treatAsBodyweight) {
+                    maxWeightInput.placeholder = 'Bodyweight';
+                } else {
+                    maxWeightInput.placeholder = 'Max Weight (lbs)';
+                }
+                maxWeightInput.title = maxWeightInput.placeholder;
+
+                if (isPlank) {
+                    toggleTimeInputs(true);
+                    if (maxMinutesInput && maxSecondsInput) {
+                        const parsed = parseDurationDisplay(repsText);
+                        maxMinutesInput.value = parsed.minutes !== '' ? parsed.minutes : '';
+                        maxSecondsInput.value = parsed.seconds !== '' ? parsed.seconds : '';
+                    }
+                } else {
+                    toggleTimeInputs(false);
+                    const numericReps = parseInt(repsText.replace(/[^0-9]+/g, ''), 10);
+                    maxRepsInput.value = Number.isFinite(numericReps) ? numericReps : '';
+                    maxRepsInput.placeholder = isCardio ? 'Minutes' : 'Reps';
+                    maxRepsInput.title = maxRepsInput.placeholder;
+                }
+
+                prModal.classList.add('show');
+                prModal.style.display = 'flex';
+                const focusTarget = isPlank
+                    ? (maxMinutesInput || maxSecondsInput)
+                    : (!maxWeightInput.disabled ? maxWeightInput : maxRepsInput);
+                focusAndSelect(focusTarget);
+            };
+
             document.addEventListener('click', function (e) {
-                const trigger = e.target.closest('.update-pr-link');
+                const trigger = e.target.closest('.update-pr-trigger');
                 if (trigger) {
                     e.preventDefault();
-                    currentWorkoutId = trigger.dataset.id;
-                    const bestWrapper = document.querySelector(`.personal-best[data-id="${currentWorkoutId}"]`);
-                    const categoryLabel = (trigger.dataset.category || '').toLowerCase();
-                    const isCardio = categoryLabel === 'cardio';
-                    const isPlank = trigger.dataset.plank === 'true' || bestWrapper?.dataset.plank === 'true';
-                    prModal.dataset.cardio = isCardio ? '1' : '0';
-                    prModal.dataset.plank = isPlank ? '1' : '0';
-
-                    const weightSpan = bestWrapper?.querySelector('.max-pill-weight');
-                    const repsSpan = bestWrapper?.querySelector('.max-pill-reps');
-                    const weightText = weightSpan ? weightSpan.textContent.trim() : '';
-                    const repsText = repsSpan ? repsSpan.textContent.trim() : '';
-                    const isBodyweight = weightText.toLowerCase().includes('bodyweight');
-                    const treatAsBodyweight = isBodyweight || isCardio;
-
-                    const numericWeight = parseFloat(weightText.replace(/[^0-9.]+/g, ''));
-                    maxWeightInput.value = (!treatAsBodyweight && Number.isFinite(numericWeight)) ? numericWeight : '';
-                    maxWeightInput.disabled = treatAsBodyweight;
-                    if (treatAsBodyweight) {
-                        maxWeightInput.placeholder = 'Bodyweight';
-                    } else {
-                        maxWeightInput.placeholder = 'Max Weight (lbs)';
-                    }
-                    maxWeightInput.title = maxWeightInput.placeholder;
-
-                    if (isPlank) {
-                        toggleTimeInputs(true);
-                        if (maxMinutesInput && maxSecondsInput) {
-                            const parsed = parseDurationDisplay(repsText);
-                            maxMinutesInput.value = parsed.minutes !== '' ? parsed.minutes : '';
-                            maxSecondsInput.value = parsed.seconds !== '' ? parsed.seconds : '';
-                        }
-                    } else {
-                        toggleTimeInputs(false);
-                        const numericReps = parseInt(repsText.replace(/[^0-9]+/g, ''), 10);
-                        maxRepsInput.value = Number.isFinite(numericReps) ? numericReps : '';
-                        maxRepsInput.placeholder = isCardio ? 'Minutes' : 'Reps';
-                        maxRepsInput.title = maxRepsInput.placeholder;
-                    }
-
-                    prModal.classList.add('show');
-                    prModal.style.display = 'flex';
+                    openPrModalFromTrigger(trigger);
                     return;
                 }
 
@@ -3166,6 +3209,13 @@
                     prModal.classList.remove('show');
                     prModal.style.display = 'none';
                     resetModalFields();
+                }
+            });
+
+            document.addEventListener('keydown', function (e) {
+                if ((e.key === 'Enter' || e.key === ' ') && e.target.classList?.contains('update-pr-trigger')) {
+                    e.preventDefault();
+                    openPrModalFromTrigger(e.target);
                 }
             });
 
@@ -3302,6 +3352,25 @@
 
             let currentNotesWorkoutId = null;
 
+            const focusNotesTextarea = () => {
+                const tryFocus = () => {
+                    notesTextarea.focus();
+                    if (typeof notesTextarea.select === 'function') {
+                        notesTextarea.select();
+                    } else if (typeof notesTextarea.setSelectionRange === 'function') {
+                        try {
+                            const length = notesTextarea.value ? notesTextarea.value.length : 0;
+                            notesTextarea.setSelectionRange(0, length);
+                        } catch (err) {
+                            /* no-op */
+                        }
+                    }
+                    notesTextarea.click();
+                };
+                tryFocus();
+                setTimeout(tryFocus, 100);
+            };
+
             document.addEventListener('click', function (e) {
                 const trigger = e.target.closest('.edit-notes-btn');
                 if (trigger) {
@@ -3311,6 +3380,7 @@
                     notesTextarea.value = stored;
                     notesModal.classList.add('show');
                     notesModal.style.display = 'flex';
+                    focusNotesTextarea();
                     return;
                 }
 

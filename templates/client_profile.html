@@ -389,9 +389,15 @@
                                                         </div>
                                                             <div class="personal-best max-summary mt-3 text-center" data-id="{{ workout.workout_id }}" data-category="{{ workout_category }}" data-plank="{{ 'true' if is_plank else 'false' }}" data-bodyweight="{{ 'true' if is_bodyweight and not is_cardio else 'false' }}">
                                                                 <span class="max-label text-uppercase fw-semibold d-block small text-muted">Client Max</span>
-                                                                <div class="max-pill-group d-inline-flex gap-2">
-                                                                    <span class="max-pill max-pill-weight">{{ weight_display }}</span>
-                                                                <span class="max-pill max-pill-reps">{{ reps_display }}</span>
+                                                            <div class="max-pill-group d-inline-flex gap-2">
+                                                                <span class="max-pill max-pill-weight update-pr-trigger"
+                                                                      role="button"
+                                                                      tabindex="0"
+                                                                      aria-label="Update max weight">{{ weight_display }}</span>
+                                                                <span class="max-pill max-pill-reps update-pr-trigger"
+                                                                      role="button"
+                                                                      tabindex="0"
+                                                                      aria-label="Update max {{ 'time' if is_plank or is_cardio else 'reps' }}">{{ reps_display }}</span>
                                                             </div>
                                                             <span class="personal-max-text d-none">Client Max: {{ weight_display }} × {{ reps_display }}</span>
                                                         </div>
@@ -428,11 +434,10 @@
                                                             <button type="button" class="btn btn-outline-secondary chart-window-btn active" data-window="all">All</button>
                                                         </div>
                                                         <div class="d-flex flex-column flex-sm-column gap-2 mt-3">
-                                                            <button class="btn btn-outline-secondary btn-sm max-action-btn update-pr-link" data-id="{{ workout.workout_id }}" data-category="{{ workout_category }}" data-plank="{{ 'true' if is_plank else 'false' }}">Update Max</button>
                                                             <button class="btn btn-outline-primary btn-sm max-action-btn toggle-description"
                                                                     type="button"
-                                                                        data-id="lookup-desc-{{ workout.workout_id }}-{{ loop.index0 }}"
-                                                                        data-label-show="View Description"
+                                                                    data-id="lookup-desc-{{ workout.workout_id }}-{{ loop.index0 }}"
+                                                                    data-label-show="View Description"
                                                                         data-label-hide="Hide Description">
                                                                     View Description
                                                                 </button>
@@ -654,7 +659,7 @@
                         {% endif %}
                     </div>
                 </div>
-                <div class="card-body p-4">
+                <div class="card-body p-0">
                     {% if workout_view and workout_view.plan %}
                         <div id="client-workout-toggle-container"
                              class="workout-toggle-bar d-flex align-items-center justify-content-end gap-3"
@@ -1041,19 +1046,19 @@
                     <div class="row g-3">
                         <div class="col-md-6">
                             <label class="form-label">Max Weight (lbs)</label>
-                            <input type="number" class="form-control" id="maxWeightInput" step="0.5" min="0" placeholder="Max Weight (lbs)">
+                            <input type="number" class="form-control" id="maxWeightInput" step="0.5" min="0" placeholder="Max Weight (lbs)" inputmode="decimal">
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">Max Reps / Time</label>
                             <div id="trainerRepsInputGroup">
-                                <input type="number" class="form-control" id="maxRepsInput" step="1" min="0" placeholder="Reps">
+                                <input type="number" class="form-control" id="maxRepsInput" step="1" min="0" placeholder="Reps" inputmode="numeric">
                             </div>
                             <div id="trainerTimeInputGroup" class="row g-2 mt-1" style="display: none;">
                                 <div class="col">
-                                    <input type="number" class="form-control" id="maxMinutesInput" min="0" step="1" placeholder="Min">
+                                    <input type="number" class="form-control" id="maxMinutesInput" min="0" step="1" placeholder="Min" inputmode="numeric">
                                 </div>
                                 <div class="col">
-                                    <input type="number" class="form-control" id="maxSecondsInput" min="0" max="59" step="1" placeholder="Sec">
+                                    <input type="number" class="form-control" id="maxSecondsInput" min="0" max="59" step="1" placeholder="Sec" inputmode="numeric">
                                 </div>
                             </div>
                         </div>
@@ -2542,6 +2547,27 @@
         }
     }
 
+    function focusAndSelectInput(input) {
+        if (!input || input.disabled) return;
+        const tryFocus = () => {
+            input.focus();
+            if (typeof input.select === 'function') {
+                input.select();
+            } else if (typeof input.setSelectionRange === 'function') {
+                try {
+                    const length = input.value ? input.value.length : 0;
+                    input.setSelectionRange(0, length);
+                } catch (err) {
+                    /* no-op */
+                }
+            }
+            input.click();
+        };
+        // Sync focus to keep it within the original tap/click.
+        tryFocus();
+        setTimeout(tryFocus, 100);
+    }
+
     function showToast(message, variant = 'success') {
         if (!toast) return;
         toast.textContent = message;
@@ -2946,18 +2972,25 @@
     }
 
     function handleUpdatePrClick(event) {
-        const target = event.target.closest('.update-pr-link');
+        const target = event.target.closest('.update-pr-trigger');
         if (!target) return;
         event.preventDefault();
-        currentWorkoutId = target.dataset.id;
         const container = target.closest('[data-workout-card]');
+        const personalBest = target.closest('.personal-best')
+            || container?.querySelector('.personal-best')
+            || document.querySelector('.personal-best');
+        const resolvedId = target.dataset.id || personalBest?.dataset.id;
+        if (!resolvedId) return;
+        currentWorkoutId = resolvedId;
         const personalBestSelector = `.personal-best[data-id="${currentWorkoutId}"]`;
-        const personalBest = container?.querySelector(personalBestSelector) || document.querySelector(personalBestSelector);
-        const categoryLabel = (target.dataset.category || '').toLowerCase();
+        const personalBestScoped = personalBest?.dataset.id === currentWorkoutId
+            ? personalBest
+            : container?.querySelector(personalBestSelector) || document.querySelector(personalBestSelector);
+        const categoryLabel = (target.dataset.category || personalBestScoped?.dataset.category || '').toLowerCase();
         const isCardio = categoryLabel === 'cardio';
-        const isPlank = target.dataset.plank === 'true' || personalBest?.dataset.plank === 'true';
-        const weightSpan = personalBest?.querySelector('.max-pill-weight');
-        const repsSpan = personalBest?.querySelector('.max-pill-reps');
+        const isPlank = target.dataset.plank === 'true' || personalBestScoped?.dataset.plank === 'true';
+        const weightSpan = personalBestScoped?.querySelector('.max-pill-weight');
+        const repsSpan = personalBestScoped?.querySelector('.max-pill-reps');
         const weightText = weightSpan ? weightSpan.textContent.trim() : '';
         const repsText = repsSpan ? repsSpan.textContent.trim() : '';
         const isBodyweight = weightText.toLowerCase().includes('bodyweight');
@@ -2992,6 +3025,10 @@
         }
 
         openModal(prModal);
+        const focusTarget = isPlank
+            ? (maxMinutesInput || maxSecondsInput)
+            : (!maxWeightInput?.disabled ? maxWeightInput : maxRepsInput);
+        focusAndSelectInput(focusTarget);
     }
 
     function handleSavePr() {
@@ -3117,6 +3154,7 @@
             notesTextarea.value = existing;
         }
         openModal(notesModal);
+        focusAndSelectInput(notesTextarea);
     }
 
     function handleSaveNotes() {
@@ -3155,6 +3193,11 @@
         initTrainerSettingsCollapsible();
 
         document.body.addEventListener('click', handleUpdatePrClick);
+        document.addEventListener('keydown', (event) => {
+            if ((event.key === 'Enter' || event.key === ' ') && event.target.classList?.contains('update-pr-trigger')) {
+                handleUpdatePrClick(event);
+            }
+        });
         document.body.addEventListener('click', handleNotesClick);
         document.body.addEventListener('click', handleExerciseRefresh);
         document.body.addEventListener('click', handleTrainerAddControl);

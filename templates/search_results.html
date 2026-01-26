@@ -148,9 +148,15 @@
                                              data-plank="{{ 'true' if is_plank else 'false' }}">
                                             <span class="max-label text-uppercase fw-semibold d-block small text-muted">Your Max</span>
                                             <div class="max-pill-row">
-                                                <span class="max-pill max-pill-weight">{{ weight_display }}</span>
+                                                <span class="max-pill max-pill-weight update-pr-trigger"
+                                                      role="button"
+                                                      tabindex="0"
+                                                      aria-label="Update max weight">{{ weight_display }}</span>
                                                 <span class="max-times">×</span>
-                                                <span class="max-pill max-pill-reps">{{ reps_display }}</span>
+                                                <span class="max-pill max-pill-reps update-pr-trigger"
+                                                      role="button"
+                                                      tabindex="0"
+                                                      aria-label="Update max {{ 'time' if is_plank or is_cardio else 'reps' }}">{{ reps_display }}</span>
                                             </div>
                                             <span class="personal-max-text d-none">Your Max: {{ weight_display }} × {{ reps_display }}</span>
                                         </div>
@@ -195,13 +201,6 @@
                                             <button type="button" class="btn btn-outline-secondary chart-window-btn active" data-window="all">All</button>
                                         </div>
                                         <div class="d-flex flex-column flex-sm-column gap-2 mt-3">
-                                            <button class="btn btn-outline-secondary btn-sm max-action-btn update-pr-link update-max-btn"
-                                                    data-id="{{ workout_id }}"
-                                                    data-category="{{ workout_category }}"
-                                                    data-bodyweight="{{ 'true' if is_btn_bodyweight else 'false' }}"
-                                                    data-plank="{{ 'true' if is_plank else 'false' }}">
-                                                Update Max
-                                            </button>
                                             <button class="btn btn-outline-primary btn-sm max-action-btn toggle-description"
                                                     type="button"
                                                     data-id="{{ desc_id }}"
@@ -265,16 +264,16 @@
         <button type="button" class="btn-close" id="closeModal"></button>
         <h5 class="mb-3">Update Max</h5>
         <input type="hidden" id="modalWorkoutId">
-        <input type="number" id="newWeight" class="form-control mb-2" placeholder="Max Weight (lbs)" title="Bodyweight exercises do not require a weight entry">
+        <input type="number" id="newWeight" class="form-control mb-2" placeholder="Max Weight (lbs)" title="Bodyweight exercises do not require a weight entry" inputmode="decimal">
         <div id="repsInputGroup" class="mb-3">
-            <input type="number" id="newReps" class="form-control" placeholder="Max Reps">
+            <input type="number" id="newReps" class="form-control" placeholder="Max Reps" inputmode="numeric">
         </div>
         <div id="timeInputGroup" class="row g-2 mb-3" style="display: none;">
             <div class="col">
-                <input type="number" id="newMinutes" class="form-control" placeholder="Min" min="0" step="1">
+                <input type="number" id="newMinutes" class="form-control" placeholder="Min" min="0" step="1" inputmode="numeric">
             </div>
             <div class="col">
-                <input type="number" id="newSeconds" class="form-control" placeholder="Sec" min="0" max="59" step="1">
+                <input type="number" id="newSeconds" class="form-control" placeholder="Sec" min="0" max="59" step="1" inputmode="numeric">
             </div>
         </div>
         <button class="btn btn-brand w-100" id="saveMaxBtn">Save</button>
@@ -505,6 +504,26 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    function focusAndSelectInput(input) {
+        if (!input || input.disabled) return;
+        const tryFocus = () => {
+            input.focus();
+            if (typeof input.select === 'function') {
+                input.select();
+            } else if (typeof input.setSelectionRange === 'function') {
+                try {
+                    const length = input.value ? input.value.length : 0;
+                    input.setSelectionRange(0, length);
+                } catch (err) {
+                    /* no-op */
+                }
+            }
+            input.click();
+        };
+        tryFocus();
+        setTimeout(tryFocus, 100);
+    }
+
     function showToast(message) {
         if (!toast) return;
         if (toastTimeout) {
@@ -538,19 +557,20 @@ document.addEventListener('DOMContentLoaded', () => {
         toggleTimeInputs(false);
     }
 
-    function openPrModal(button) {
-        if (!modal || !button || !workoutIdInput) return;
-        const workoutId = button.dataset.id;
-        const category = (button.dataset.category || '').toLowerCase();
+    function openPrModal(trigger) {
+        if (!modal || !trigger || !workoutIdInput) return;
+        const personalBest = trigger.closest('.personal-best')
+            || document.querySelector(`.personal-best[data-id="${trigger.dataset.id || ''}"]`);
+        const workoutId = trigger.dataset.id || personalBest?.dataset.id || '';
+        const category = (trigger.dataset.category || personalBest?.dataset.category || '').toLowerCase();
         const isCardio = category === 'cardio';
-        const isBodyweight = button.dataset.bodyweight === 'true';
-        const isPlank = button.dataset.plank === 'true';
-        workoutIdInput.value = workoutId || '';
+        const isBodyweight = trigger.dataset.bodyweight === 'true' || personalBest?.dataset.bodyweight === 'true';
+        const isPlank = trigger.dataset.plank === 'true' || personalBest?.dataset.plank === 'true';
+        workoutIdInput.value = workoutId;
         modal.dataset.cardio = isCardio ? '1' : '0';
         modal.dataset.bodyweight = isBodyweight ? '1' : '0';
         modal.dataset.plank = isPlank ? '1' : '0';
 
-        const personalBest = document.querySelector(`.personal-best[data-id="${workoutId}"]`);
         const weightSpan = personalBest?.querySelector('.max-pill-weight');
         const repsSpan = personalBest?.querySelector('.max-pill-reps');
         const disableWeight = isCardio || isBodyweight;
@@ -584,10 +604,28 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         modal.style.display = 'flex';
+        const focusTarget = isPlank
+            ? (minutesInput || secondsInput)
+            : (!weightInput?.disabled ? weightInput : repsInput);
+        focusAndSelectInput(focusTarget);
     }
 
     document.querySelectorAll('.update-max-btn').forEach((button) => {
         button.addEventListener('click', () => openPrModal(button));
+    });
+
+    document.addEventListener('click', (event) => {
+        const trigger = event.target.closest('.update-pr-trigger');
+        if (!trigger) return;
+        event.preventDefault();
+        openPrModal(trigger);
+    });
+
+    document.addEventListener('keydown', (event) => {
+        if ((event.key === 'Enter' || event.key === ' ') && event.target.classList?.contains('update-pr-trigger')) {
+            event.preventDefault();
+            openPrModal(event.target);
+        }
     });
 
     closeModalBtn?.addEventListener('click', closePrModal);
@@ -764,6 +802,23 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             if (notesModal) {
                 notesModal.style.display = 'flex';
+                const tryFocus = () => {
+                    if (!notesTextarea) return;
+                    notesTextarea.focus();
+                    if (typeof notesTextarea.select === 'function') {
+                        notesTextarea.select();
+                    } else if (typeof notesTextarea.setSelectionRange === 'function') {
+                        try {
+                            const length = notesTextarea.value ? notesTextarea.value.length : 0;
+                            notesTextarea.setSelectionRange(0, length);
+                        } catch (err) {
+                            /* no-op */
+                        }
+                    }
+                    notesTextarea.click();
+                };
+                tryFocus();
+                setTimeout(tryFocus, 100);
             }
         }
     });
