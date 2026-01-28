@@ -10,7 +10,7 @@
   --fitbase-hero-gradient: linear-gradient(135deg, rgba(8, 147, 227, 0.95) 0%, rgba(6, 120, 196, 0.9) 100%);
   --fitbase-card-radius: 28px;
   --fitbase-card-bg: rgba(255, 255, 255, 0.78);
-  --fitbase-card-shadow: 0 30px 80px rgba(12, 50, 87, 0.2);
+  --fitbase-card-shadow: none;
 }
 
 /* Make the HTML and body take up the full height */
@@ -21,11 +21,7 @@ html, body {
     display: flex;
     flex-direction: column;
     overflow-x: hidden;
-    background-image: url('/static/images/background12.png');
-    background-size: cover;         /* Scales to cover entire screen */
-    background-repeat: no-repeat;   /* Prevents tiling */
-    background-position: center;    /* Centers the image */
-    background-attachment: fixed;   /* Optional: makes background stay in place on scroll */
+    background-color: #29456D;
 }
 
 .orb-container {
@@ -507,9 +503,6 @@ footer {
     background: rgba(255, 255, 255, 0.68);
     border: 1px solid rgba(30, 164, 230, 0.16);
     border-radius: 20px;
-    box-shadow: 0 18px 40px rgba(30, 164, 230, 0.12);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
     padding: 1.75rem;
     margin-bottom: 1.75rem;
     color: #223043;
@@ -603,16 +596,12 @@ footer {
   border-color: rgba(30, 164, 230, 0.4) !important;
   color: #f8f5ef;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2), 0 10px 24px rgba(6, 26, 52, 0.35);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
 }
 
 .client-pill--plan {
   border: none;
   color: #f8f5ef;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2), 0 10px 24px rgba(6, 26, 52, 0.35);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
   border-color: rgba(30, 164, 230, 0.35);
 }
 
@@ -687,8 +676,6 @@ footer {
   font-weight: 600;
   border: 1px solid rgba(255, 255, 255, 0.25);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2), 0 10px 24px rgba(6, 26, 52, 0.25);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
 }
 
 .client-hero-badges a.client-pill {
@@ -1062,8 +1049,6 @@ button.client-metric {
     border: 1px solid rgba(30, 164, 230, 0.16);
     border-radius: 20px;
     box-shadow: 0 18px 40px rgba(30, 164, 230, 0.12);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
     padding: 1.75rem;
     margin-bottom: 1.75rem;
     color: #223043;
@@ -1183,8 +1168,6 @@ iframe.fullscreen-sim {
   border-radius: 24px;
   border: 1px solid rgba(30, 164, 230, 0.2);
   box-shadow: 0 30px 80px rgba(0, 0, 0, 0.1);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
   padding: 3.2rem 3rem;
   display: flex;
   flex-direction: column;
@@ -1344,10 +1327,8 @@ iframe.fullscreen-sim {
   border-radius: var(--fitbase-card-radius);
   background: var(--fitbase-card-bg);
   border: 1px solid rgba(30, 164, 230, 0.18);
-  box-shadow: var(--fitbase-card-shadow);
+  box-shadow: none;
   overflow: hidden;
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
   width: 100%;
 }
 
@@ -1374,8 +1355,6 @@ iframe.fullscreen-sim {
   gap: 0.8rem;
   border: 1px solid rgba(255, 255, 255, 0.35);
   box-shadow: 0 28px 70px rgba(12, 50, 87, 0.25);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
 }
 
 .surface-hero--split {
@@ -2372,7 +2351,7 @@ iframe.fullscreen-sim {
   border-radius: 22px;
   border: 1px solid rgba(30, 164, 230, 0.28);
   background: linear-gradient(150deg, rgba(255, 255, 255, 0.95), rgba(176, 214, 240, 0.38));
-  box-shadow: 0 28px 70px rgba(12, 50, 87, 0.2);
+  box-shadow: none;
   overflow: hidden;
   position: relative;
 }
@@ -2955,7 +2934,7 @@ iframe.fullscreen-sim {
   max-width: 420px;
   padding: 2rem;
   position: relative;
-  box-shadow: 0 20px 45px rgba(30, 164, 230, 0.2);
+  box-shadow: none;
 }
 
 .selection-modal .selection-grid {
@@ -3066,9 +3045,7 @@ iframe.fullscreen-sim {
   background: rgba(255, 255, 255, 0.84);
   border-radius: 20px;
   border: 1px solid rgba(30, 164, 230, 0.18);
-  box-shadow: 0 24px 60px rgba(30, 164, 230, 0.15);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  box-shadow: none;
 }
 
 .modal-header,
@@ -3130,7 +3107,6 @@ iframe.fullscreen-sim {
   padding: 1rem 1.25rem;
   font-weight: 600;
   box-shadow: 0 4px 14px rgba(220, 53, 69, 0.25);
-  backdrop-filter: saturate(120%);
 }
 
 /* Bitcoin Orange Styles */
@@ -3728,7 +3704,7 @@ iframe.fullscreen-sim {
   border: 1px solid rgba(30, 164, 230, 0.25);
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.82);
-  box-shadow: inset 0 0 12px rgba(30, 164, 230, 0.12);
+  box-shadow: none;
   --calendar-time-width: 80px;
   --calendar-day-width: 180px;
 }
@@ -4007,7 +3983,7 @@ iframe.fullscreen-sim {
   display: flex;
   flex-direction: column;
   min-height: 58px;
-  box-shadow: 0 12px 26px rgba(30, 164, 230, 0.28);
+  box-shadow: none;
   border: 1px solid rgba(18, 110, 179, 0.32);
   overflow: hidden;
   background: #ffffff;
@@ -4017,28 +3993,23 @@ iframe.fullscreen-sim {
 
 .calendar-event--flash {
   animation: calendar-event-flash 1.1s ease-in-out;
-  box-shadow: 0 18px 34px rgba(30, 164, 230, 0.35), 0 0 0 3px rgba(30, 164, 230, 0.35);
 }
 
 @keyframes calendar-event-flash {
   0% {
     transform: scale(1);
-    box-shadow: 0 10px 24px rgba(30, 164, 230, 0.25), 0 0 0 0 rgba(30, 164, 230, 0.2);
   }
   50% {
     transform: scale(1.015);
-    box-shadow: 0 24px 40px rgba(30, 164, 230, 0.45), 0 0 0 6px rgba(30, 164, 230, 0.25);
   }
   100% {
     transform: scale(1);
-    box-shadow: 0 18px 34px rgba(30, 164, 230, 0.35), 0 0 0 3px rgba(30, 164, 230, 0.35);
   }
 }
 
 .calendar-event--dragging {
   z-index: 15;
   transform: scale(1.02); /* Avoid forced GPU promotion; keep drag feel unchanged. */
-  box-shadow: 0 20px 36px rgba(15, 63, 117, 0.28);
   transition: transform 0.1s ease, box-shadow 0.1s ease;
 }
 
@@ -4923,8 +4894,6 @@ iframe.fullscreen-sim {
   max-width: 640px;
   margin: 0 auto;
   text-align: center;
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
   border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
@@ -6739,7 +6708,7 @@ iframe.fullscreen-sim {
   border-radius: 18px;
   padding: 1.75rem 1.25rem;
   background: #ffffff;
-  box-shadow: 0 16px 32px rgba(247, 147, 26, 0.12);
+  box-shadow: none;
 }
 
 .training-container .exercise-card-header {
@@ -7366,7 +7335,6 @@ iframe.fullscreen-sim {
     left: 50%;
     transform: translateX(-50%);
     background: rgba(255, 255, 255, 0.9);
-    backdrop-filter: blur(2px);
     border: 1px solid rgba(30, 164, 230, 0.25);
     pointer-events: none;
   }
@@ -7378,6 +7346,7 @@ iframe.fullscreen-sim {
 
   .client-profile-container .training-container .exercise-card-collapsed .exercise-details {
     display: block;
+    overflow: hidden;
     max-height: 0;
     opacity: 0;
     margin-top: 0;
@@ -7697,7 +7666,6 @@ iframe.fullscreen-sim {
     left: 50%;
     transform: translateX(-50%);
     background: rgba(255, 255, 255, 0.9);
-    backdrop-filter: blur(2px);
     border: 1px solid rgba(30, 164, 230, 0.25);
     pointer-events: none;
   }
@@ -7709,6 +7677,7 @@ iframe.fullscreen-sim {
 
   .training-container:not(.client-workout) .exercise-card-collapsed .exercise-details {
     display: block;
+    overflow: hidden;
     max-height: 0;
     opacity: 0;
     margin-top: 0;
@@ -8004,8 +7973,6 @@ iframe.fullscreen-sim {
   border-radius: 36px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   box-shadow: 0 18px 48px rgba(5, 11, 25, 0.2);
-  backdrop-filter: blur(11px);
-  -webkit-backdrop-filter: blur(11px);
   background: rgba(255, 255, 255, 0.2);
 }
 
@@ -8112,8 +8079,6 @@ iframe.fullscreen-sim {
   background: #ffffff;
   border: 1px solid rgba(255, 255, 255, 0.45);
   box-shadow: 0 18px 42px rgba(14, 22, 40, 0.18);
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
 }
 
 .landing-stats-grid {
@@ -8178,8 +8143,6 @@ iframe.fullscreen-sim {
   display: flex;
   flex-direction: column;
   gap: 1rem;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
 }
 
 .trainer-card {
@@ -8720,8 +8683,6 @@ body.persona-lightbox-open {
   border: 1px solid rgba(255, 255, 255, 0.35);
   box-shadow: 0 22px 28px rgba(16, 29, 51, 0.12);
   height: 100%;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
 }
 
 .tile-icon {
