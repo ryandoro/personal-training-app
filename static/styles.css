@@ -141,7 +141,6 @@ html, body {
     border-radius: 16px;
     padding: 1rem;
     overflow: hidden;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
 }
 
 .injury-fields-wrapper {
@@ -180,7 +179,6 @@ body.exercise-picker-open {
   border-radius: 28px;
   padding: 1.5rem 1.5rem 1.25rem;
   color: #f8f9fa;
-  box-shadow: 0 30px 60px rgba(0, 0, 0, 0.55);
   position: relative;
   animation: pickerPop 0.25s ease;
 }
@@ -331,10 +329,6 @@ body.exercise-picker-open {
   border-radius: 16px;
   border: 1px solid rgba(24, 212, 255, 0.75);
   background: linear-gradient(135deg, rgba(37, 158, 255, 0.28), rgba(16, 229, 255, 0.16));
-  box-shadow:
-    0 0 18px rgba(24, 212, 255, 0.45),
-    0 0 35px rgba(9, 86, 255, 0.25),
-    inset 0 0 12px rgba(13, 189, 255, 0.25);
   pointer-events: none;
   transform: translateY(-50%);
   z-index: 2;
@@ -346,7 +340,6 @@ body.exercise-picker-open {
   inset: 3px;
   border-radius: 13px;
   border: 1px solid rgba(122, 255, 255, 0.25);
-  box-shadow: inset 0 0 10px rgba(12, 194, 255, 0.3);
 }
 
 .exercise-picker-highlight::after {
@@ -391,13 +384,11 @@ body.exercise-picker-open {
   background: linear-gradient(90deg, #F7931A, #FFA733);
   border: none;
   color: #fff;
-  box-shadow: 0 5px 20px rgba(247, 147, 26, 0.35);
 }
 
 .exercise-picker-overlay .btn-brand:hover {
   color: #fff;
   opacity: 0.9;
-  box-shadow: 0 4px 14px rgba(247, 147, 26, 0.3);
 }
 
 .injury-fields-wrapper.expanded {
@@ -433,7 +424,6 @@ body.exercise-picker-open {
   background-color: #FF9500 !important;
   border-color: #FF9500 !important;
   color: #1b1f23 !important;
-  box-shadow: 0 0 12px rgba(255, 149, 0, 0.35);
 }
 
 .injury-chip-cloud.error {
@@ -566,7 +556,6 @@ footer {
   height: 0.35rem;
   border-radius: 999px;
   background: linear-gradient(90deg, rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0.4));
-  box-shadow: 0 12px 28px rgba(5, 30, 69, 0.45);
 }
 
 .client-pill {
@@ -578,8 +567,6 @@ footer {
   gap: 0.4rem;
   line-height: 1.1;
   border: 1px solid transparent;
-  box-shadow: 0 12px 32px rgba(8, 35, 66, 0.2);
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
   background: transparent;
   color: inherit;
 }
@@ -587,7 +574,6 @@ footer {
 .client-pill:hover,
 .client-pill:focus-visible {
   transform: translateY(-1px);
-  box-shadow: 0 16px 36px rgba(7, 27, 54, 0.32);
 }
 
 .client-pill--contact,
@@ -595,13 +581,11 @@ footer {
   background: rgba(17, 33, 56, 0.65) !important;
   border-color: rgba(30, 164, 230, 0.4) !important;
   color: #f8f5ef;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2), 0 10px 24px rgba(6, 26, 52, 0.35);
 }
 
 .client-pill--plan {
   border: none;
   color: #f8f5ef;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2), 0 10px 24px rgba(6, 26, 52, 0.35);
   border-color: rgba(30, 164, 230, 0.35);
 }
 
@@ -632,7 +616,6 @@ footer {
   letter-spacing: 0.01em;
   background: rgba(255, 255, 255, 0.95) !important;
   border-color: rgba(30, 164, 230, 0.2) !important;
-  box-shadow: 0 8px 18px rgba(12, 44, 84, 0.16);
 }
 
 .trainer-week-pill__label {
@@ -675,7 +658,6 @@ footer {
   gap: 0.35rem;
   font-weight: 600;
   border: 1px solid rgba(255, 255, 255, 0.25);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2), 0 10px 24px rgba(6, 26, 52, 0.25);
 }
 
 .client-hero-badges a.client-pill {
@@ -699,7 +681,6 @@ footer {
   border-radius: 22px;
   border: 1px solid rgba(255, 255, 255, 0.45);
   background: rgba(255, 255, 255, 0.92);
-  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.12);
   padding: 1.1rem;
   text-align: center;
   display: flex;
@@ -707,7 +688,6 @@ footer {
   justify-content: center;
   align-items: center;
   min-height: 120px;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .client-metric__label {
@@ -744,7 +724,6 @@ button.client-metric {
 .client-metric--cta {
   background: linear-gradient(135deg, rgba(247, 250, 255, 0.95), rgba(205, 228, 255, 0.9));
   border: 1px solid rgba(30, 164, 230, 0.28);
-  box-shadow: 0 18px 36px rgba(30, 164, 230, 0.18);
 }
 
 .client-metric--cta .client-metric__value {
@@ -753,12 +732,10 @@ button.client-metric {
 
 .client-metric--cta:focus-visible {
   outline: 0;
-  box-shadow: 0 0 0 0.18rem rgba(30, 164, 230, 0.35);
 }
 
 .client-metric--cta:hover {
   transform: translateY(-2px);
-  box-shadow: 0 22px 40px rgba(30, 164, 230, 0.25);
 }
 
 @media (max-width: 575.98px) {
@@ -819,7 +796,6 @@ button.client-metric {
 .modern-collapsible {
   border: 1px solid rgba(30, 164, 230, 0.12);
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(245, 250, 255, 0.94));
-  box-shadow: 0 18px 36px rgba(12, 50, 87, 0.12);
   border-radius: 18px;
 }
 
@@ -871,7 +847,6 @@ button.client-metric {
   border-radius: 14px;
   background: #ffffff;
   border: 1px solid rgba(30, 164, 230, 0.12);
-  box-shadow: 0 12px 30px rgba(12, 50, 87, 0.1);
   text-align: left;
 }
 
@@ -900,7 +875,6 @@ button.client-metric {
   border-radius: 12px;
   background: #f7fbff;
   padding: 0.9rem 1rem;
-  box-shadow: 0 8px 20px rgba(12, 50, 87, 0.06);
 }
 
 .modern-details summary {
@@ -939,7 +913,6 @@ button.client-metric {
   border-radius: 12px;
   background: #ffffff;
   border: 1px solid rgba(34, 48, 67, 0.08);
-  box-shadow: 0 10px 22px rgba(12, 50, 87, 0.08);
 }
 
 .bullet-icon {
@@ -950,7 +923,6 @@ button.client-metric {
   color: #ffffff;
   display: grid;
   place-items: center;
-  box-shadow: 0 10px 22px rgba(30, 164, 230, 0.3);
   flex-shrink: 0;
   font-size: 1.1rem;
 }
@@ -970,7 +942,6 @@ button.client-metric {
   border-radius: 14px;
   background: #ffffff;
   border: 1px solid rgba(30, 164, 230, 0.12);
-  box-shadow: 0 14px 30px rgba(12, 50, 87, 0.1);
 }
 
 .metric-chip--accent {
@@ -986,7 +957,6 @@ button.client-metric {
   place-items: center;
   background: linear-gradient(135deg, #1ea4e6, #0a70c2);
   color: #ffffff;
-  box-shadow: 0 10px 22px rgba(30, 164, 230, 0.3);
   flex-shrink: 0;
   font-size: 1.1rem;
 }
@@ -994,7 +964,6 @@ button.client-metric {
 .metric-chip__icon--muted {
   background: #edf3f9;
   color: #0d63b7;
-  box-shadow: none;
   border: 1px solid rgba(30, 164, 230, 0.12);
 }
 
@@ -1023,7 +992,6 @@ button.client-metric {
   border-radius: 14px;
   border: 1px solid rgba(30, 164, 230, 0.12);
   padding: 1rem 1.1rem;
-  box-shadow: 0 12px 28px rgba(12, 50, 87, 0.08);
 }
 
 .rule-card h6 {
@@ -1048,7 +1016,6 @@ button.client-metric {
     background-color: rgba(255, 255, 255, 0.82);
     border: 1px solid rgba(30, 164, 230, 0.16);
     border-radius: 20px;
-    box-shadow: 0 18px 40px rgba(30, 164, 230, 0.12);
     padding: 1.75rem;
     margin-bottom: 1.75rem;
     color: #223043;
@@ -1167,7 +1134,6 @@ iframe.fullscreen-sim {
   background: rgba(255, 255, 255, 0.78);
   border-radius: 24px;
   border: 1px solid rgba(30, 164, 230, 0.2);
-  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.1);
   padding: 3.2rem 3rem;
   display: flex;
   flex-direction: column;
@@ -1192,7 +1158,6 @@ iframe.fullscreen-sim {
   position: relative;
   overflow: hidden;
   border: 1px solid rgba(30, 164, 230, 0.26);
-  box-shadow: 0 30px 110px rgba(12, 50, 87, 0.22);
   background: radial-gradient(circle at 18% 20%, rgba(255, 255, 255, 0.9), rgba(30, 164, 230, 0.12)), linear-gradient(145deg, rgba(246, 251, 255, 0.96), rgba(176, 214, 240, 0.65));
 }
 
@@ -1229,7 +1194,6 @@ iframe.fullscreen-sim {
   border-radius: 20px;
   background: linear-gradient(120deg, rgba(255, 255, 255, 0.96), rgba(30, 164, 230, 0.16));
   border: 1px solid rgba(30, 164, 230, 0.18);
-  box-shadow: 0 24px 70px rgba(12, 50, 87, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.58);
 }
 
 .index-hero-icon {
@@ -1240,7 +1204,6 @@ iframe.fullscreen-sim {
   place-items: center;
   background: linear-gradient(145deg, rgba(176, 214, 240, 0.92), rgba(30, 164, 230, 0.32));
   color: #1a2333;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55), 0 14px 32px rgba(12, 50, 87, 0.22);
   border: 1px solid rgba(30, 164, 230, 0.28);
   font-size: 1.6rem;
 }
@@ -1327,7 +1290,6 @@ iframe.fullscreen-sim {
   border-radius: var(--fitbase-card-radius);
   background: var(--fitbase-card-bg);
   border: 1px solid rgba(30, 164, 230, 0.18);
-  box-shadow: none;
   overflow: hidden;
   width: 100%;
 }
@@ -1340,7 +1302,6 @@ iframe.fullscreen-sim {
 .surface-card--glass {
   background: rgba(255, 255, 255, 0.68);
   border: 1px solid rgba(255, 255, 255, 0.35);
-  box-shadow: 0 35px 80px rgba(12, 50, 87, 0.18);
 }
 
 
@@ -1354,7 +1315,6 @@ iframe.fullscreen-sim {
   align-items: center;
   gap: 0.8rem;
   border: 1px solid rgba(255, 255, 255, 0.35);
-  box-shadow: 0 28px 70px rgba(12, 50, 87, 0.25);
 }
 
 .surface-hero--split {
@@ -1391,7 +1351,6 @@ iframe.fullscreen-sim {
   align-items: center;
   justify-content: center;
   font-size: 1.75rem;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
 }
 
 .surface-hero__title {
@@ -1468,7 +1427,6 @@ iframe.fullscreen-sim {
 
   .surface-hero__actions .btn-brand.hero-action {
     border-radius: 14px;
-    box-shadow: 0 8px 18px rgba(30, 164, 230, 0.25);
   }
 }
 
@@ -1502,12 +1460,10 @@ iframe.fullscreen-sim {
   border-radius: 22px;
   background: rgba(30, 164, 230, 0.04);
   padding: 1.5rem;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
 }
 
 .surface-section--flat {
   background: #ffffff;
-  box-shadow: none;
 }
 
 .plan-header {
@@ -1515,7 +1471,6 @@ iframe.fullscreen-sim {
   border-radius: 28px;
   border-bottom-left-radius: 22px;
   border-bottom-right-radius: 22px;
-  box-shadow: 0 24px 45px rgba(12, 37, 63, 0.16);
   background: linear-gradient(
     180deg,
     var(--plan-accent-start, #ffffff) 0%,
@@ -1606,7 +1561,6 @@ iframe.fullscreen-sim {
   overflow: visible;
   border-radius: 26px;
   border: 1px solid rgba(15, 23, 42, 0.05);
-  box-shadow: 0 35px 90px rgba(15, 23, 42, 0.12);
 }
 
 .plan-card--premium {
@@ -1654,8 +1608,6 @@ iframe.fullscreen-sim {
   );
   border-radius: 18px;
   border: 1px solid var(--plan-accent-panel-border, rgba(15, 23, 42, 0.08));
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.85),
-    0 14px 30px rgba(15, 23, 42, 0.12);
   padding: 1rem 1.25rem;
   min-width: 210px;
   display: flex;
@@ -1761,7 +1713,6 @@ iframe.fullscreen-sim {
   background: linear-gradient(135deg, rgba(255, 255, 255, 0.94) 0%, rgba(30, 164, 230, 0.16) 100%);
   border-radius: 26px;
   border: 1px solid rgba(30, 164, 230, 0.28);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6), 0 22px 40px rgba(15, 23, 42, 0.1);
   padding: 1.5rem;
   display: flex;
   flex-direction: column;
@@ -1809,7 +1760,6 @@ iframe.fullscreen-sim {
     background: transparent;
     padding: 0;
     border-radius: 0;
-    box-shadow: none;
     gap: 0.35rem;
   }
 
@@ -1984,7 +1934,6 @@ iframe.fullscreen-sim {
   padding: 0.35rem 0.9rem;
   background: rgba(255, 255, 255, 0.95);
   border-radius: 999px;
-  box-shadow: 0 10px 24px rgba(58, 72, 86, 0.08);
   border: 1px solid rgba(58, 72, 86, 0.08);
 }
 
@@ -2084,7 +2033,6 @@ iframe.fullscreen-sim {
   background: linear-gradient(145deg, rgba(255, 255, 255, 0.96), rgba(176, 214, 240, 0.35));
   border-radius: 18px;
   border: 1px solid rgba(30, 164, 230, 0.2);
-  box-shadow: 0 22px 60px rgba(12, 50, 87, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.55);
   padding: 1.5rem 1.6rem;
   display: flex;
   flex-direction: column;
@@ -2104,7 +2052,6 @@ iframe.fullscreen-sim {
   background: linear-gradient(135deg, rgba(30, 164, 230, 0.2), rgba(247, 147, 26, 0.24));
   color: #1b2738;
   border: 1px solid rgba(30, 164, 230, 0.24);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55), 0 10px 24px rgba(12, 50, 87, 0.18);
 }
 
 .badge {
@@ -2197,7 +2144,6 @@ iframe.fullscreen-sim {
 .goal-manage-btn:hover {
   background: #1EA4E6;
   color: white;
-  box-shadow: 0 0 0 0.2rem rgba(30, 164, 230, 0.18);
 }
 
 .index-next-session {
@@ -2226,24 +2172,18 @@ iframe.fullscreen-sim {
   border-radius: 18px;
   border: 1px solid rgba(30, 164, 230, 0.2);
   background: linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(176, 214, 240, 0.35));
-  box-shadow: 0 18px 50px rgba(12, 50, 87, 0.18);
   text-decoration: none;
   color: #1a212d;
-  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
 }
 
 .session-card:hover,
 .session-card:focus-visible {
   transform: translateY(-2px);
-  box-shadow: 0 22px 54px rgba(12, 50, 87, 0.22);
   border-color: rgba(30, 164, 230, 0.45);
 }
 
 .session-card:active,
 .session-card.session-card--pressed {
-  box-shadow:
-    0 0 0 0.2rem rgba(30, 164, 230, 0.35),
-    0 24px 58px rgba(12, 50, 87, 0.3);
   border-color: rgba(30, 164, 230, 0.7);
   transform: translateY(0);
 }
@@ -2351,7 +2291,6 @@ iframe.fullscreen-sim {
   border-radius: 22px;
   border: 1px solid rgba(30, 164, 230, 0.28);
   background: linear-gradient(150deg, rgba(255, 255, 255, 0.95), rgba(176, 214, 240, 0.38));
-  box-shadow: none;
   overflow: hidden;
   position: relative;
 }
@@ -2397,10 +2336,6 @@ iframe.fullscreen-sim {
   border-radius: 14px;
   background: linear-gradient(135deg, #2fb8ff 0%, #1b8fd1 85%);
   border: 1px solid rgba(30, 164, 230, 0.65);
-  box-shadow:
-    0 16px 36px rgba(12, 50, 87, 0.22),
-    inset 0 1px 0 rgba(255, 255, 255, 0.8),
-    inset 0 -2px 0 rgba(247, 147, 26, 0.9);
 }
 
 .workout-choice-title {
@@ -2420,7 +2355,6 @@ iframe.fullscreen-sim {
   background: linear-gradient(145deg, rgba(176, 214, 240, 0.92), rgba(30, 164, 230, 0.2));
   color: #1b2738;
   border: 1px solid rgba(30, 164, 230, 0.24);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55), 0 10px 24px rgba(12, 50, 87, 0.16);
   font-size: 1.25rem;
 }
 
@@ -2454,8 +2388,6 @@ iframe.fullscreen-sim {
   letter-spacing: 0.03em;
   margin-top: 0.5rem;
   text-shadow: 0 2px 6px rgba(7, 40, 80, 0.35);
-  box-shadow: 0 18px 42px rgba(5, 70, 120, 0.4);
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .generate-workout-btn::after {
@@ -2470,19 +2402,16 @@ iframe.fullscreen-sim {
 
 .generate-workout-btn:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 24px 54px rgba(5, 70, 120, 0.45);
 }
 
 .generate-workout-btn:active:not(:disabled) {
   transform: translateY(0px) scale(0.99);
-  box-shadow: 0 14px 34px rgba(5, 70, 120, 0.35);
   background: #1EA4E6;
 }
 
 .generate-workout-btn:disabled {
   background: #1EA4E6;
   border-color: rgba(16, 94, 150, 0.25);
-  box-shadow: none;
   cursor: not-allowed;
   opacity: 0.7;
 }
@@ -2512,7 +2441,6 @@ iframe.fullscreen-sim {
   background: linear-gradient(135deg, #fff6dd 0%, #fffdf6 100%);
   border: 1px solid rgba(247, 147, 26, 0.45);
   border-radius: 14px;
-  box-shadow: 0 14px 26px rgba(122, 74, 0, 0.18);
 }
 
 .session-select {
@@ -2550,8 +2478,6 @@ iframe.fullscreen-sim {
 
 .session-select--highlight {
   border-color: rgba(247, 147, 26, 0.6) !important;
-  box-shadow: 0 0 0 3px rgba(247, 147, 26, 0.16),
-    0 12px 26px rgba(122, 74, 0, 0.14) !important;
 }
 
 .workout-view-toggle {
@@ -2590,19 +2516,15 @@ iframe.fullscreen-sim {
   color: #ffffff;
   font-weight: 600;
   letter-spacing: 0.02em;
-  box-shadow: 0 10px 20px rgba(14, 144, 104, 0.2);
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .session-complete-btn:hover {
   color: #ffffff;
   transform: translateY(-1px);
-  box-shadow: 0 14px 28px rgba(14, 144, 104, 0.28);
 }
 
 .session-complete-btn:active {
   transform: translateY(0px) scale(0.99);
-  box-shadow: 0 10px 20px rgba(14, 144, 104, 0.24);
 }
 
 .session-action-row {
@@ -2622,8 +2544,6 @@ iframe.fullscreen-sim {
   justify-content: center;
   gap: 0.35rem;
   border: 1px solid transparent;
-  box-shadow: 0 10px 22px rgba(12, 50, 87, 0.18);
-  transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease, color 0.2s ease;
 }
 
 .session-action-btn--session {
@@ -2634,7 +2554,6 @@ iframe.fullscreen-sim {
 
 .session-action-btn--session:hover {
   transform: translateY(-1px);
-  box-shadow: 0 14px 30px rgba(12, 50, 87, 0.22);
   color: #ffffff;
 }
 
@@ -2647,13 +2566,11 @@ iframe.fullscreen-sim {
 .session-action-btn--active:hover {
   background: #1EA4E6;
   color: #ffffff;
-  box-shadow: 0 14px 30px rgba(30, 164, 230, 0.25);
 }
 
 .session-action-btn.disabled,
 .session-action-btn:disabled {
   opacity: 0.55;
-  box-shadow: none;
   transform: none;
   cursor: default;
   pointer-events: none;
@@ -2695,9 +2612,6 @@ iframe.fullscreen-sim {
   border-radius: 18px;
   border: 1px solid rgba(30, 164, 230, 0.3);
   background: radial-gradient(circle at 50% 0%, rgba(255, 255, 255, 0.95), rgba(176, 214, 240, 0.4));
-  box-shadow:
-    0 24px 46px rgba(12, 50, 87, 0.18),
-    inset 0 1px 0 rgba(255, 255, 255, 0.6);
 }
 
 .custom-selector-btn {
@@ -2711,20 +2625,16 @@ iframe.fullscreen-sim {
   font-size: 0.95rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  box-shadow: 0 18px 34px rgba(12, 50, 87, 0.25);
-  transition: transform 0.2s ease, box-shadow 0.2s ease, filter 0.2s ease;
 }
 
 .custom-selector-btn:hover,
 .custom-selector-btn:focus-visible {
   transform: translateY(-1px);
-  box-shadow: 0 22px 42px rgba(12, 50, 87, 0.28);
   color: #ffffff;
 }
 
 .custom-selector-btn:active {
   transform: translateY(0) scale(0.99);
-  box-shadow: 0 14px 26px rgba(12, 50, 87, 0.2);
 }
 
 .custom-selector-summary {
@@ -2736,13 +2646,11 @@ iframe.fullscreen-sim {
   color: #0f1d2e;
   font-weight: 700;
   letter-spacing: 0.02em;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
 }
 
 .custom-selector-summary--empty {
   border: 1px solid rgba(247, 147, 26, 0.35);
   background: rgba(247, 147, 26, 0.12);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 
 @media (max-width: 576px) {
@@ -2769,7 +2677,6 @@ iframe.fullscreen-sim {
   border: 1px solid rgba(30, 164, 230, 0.2);
   border-radius: 12px;
   display: inline-block;
-  box-shadow: 0 8px 18px rgba(12, 50, 87, 0.12);
 }
 
 .index-cta {
@@ -2793,8 +2700,6 @@ iframe.fullscreen-sim {
   color: #0f1d2e; /* deep text for contrast */
   font-weight: 800;
   letter-spacing: 0.05em;
-  box-shadow: 0 16px 40px rgba(15, 64, 110, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.55);
-  transition: transform 0.18s ease, box-shadow 0.18s ease, background-position 0.18s ease;
   cursor: pointer;
   text-decoration: none;
   display: inline-block;
@@ -2814,7 +2719,6 @@ iframe.fullscreen-sim {
 
 .btn-ignite:hover {
   transform: translateY(-2px) scale(1.04);
-  box-shadow: 0 22px 55px rgba(15, 64, 110, 0.4);
   background-position: right center;
 }
 
@@ -2826,7 +2730,6 @@ iframe.fullscreen-sim {
   background: linear-gradient(120deg, #f7a63a 0%, #f7a63a 60%, #ffb347 100%);
   background-position: right center;
   transform: translateY(1px) scale(0.98);
-  box-shadow: 0 0 18px 3px rgba(247, 147, 26, 0.48), inset 0 1px 0 rgba(255, 255, 255, 0.6);
   outline: 3px solid rgba(247, 147, 26, 0.55) !important;
   outline-offset: 3px;
   transition: none; /* instant feedback on touch/click */
@@ -2854,49 +2757,40 @@ iframe.fullscreen-sim {
   color: #ffffff;
   font-weight: 600;
   letter-spacing: 0.03em;
-  box-shadow: 0 10px 24px rgba(30, 164, 230, 0.25);
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .btn-brand:hover {
   transform: translateY(-1px);
-  box-shadow: 0 14px 30px rgba(30, 164, 230, 0.3);
   color: #fff;
 }
 
 .btn-workout-details {
   background: #f7931a;
-  box-shadow: 0 12px 24px rgba(247, 147, 26, 0.35);
   color: #fff;
 }
 
 .btn-workout-details:hover {
   color: #fff;
-  box-shadow: 0 16px 36px rgba(247, 147, 26, 0.45);
 }
 
 .btn-session-workout {
   background: linear-gradient(135deg, #20c997, #0abfbc);
-  box-shadow: 0 12px 24px rgba(10, 191, 188, 0.35);
   color: #fff;
 }
 
 .btn-session-workout:hover {
   color: #fff;
-  box-shadow: 0 16px 36px rgba(10, 191, 188, 0.45);
 }
 
 .btn-assign-workout {
   background: #e7edf4;
   color: #4b5563;
   border: 1px solid rgba(75, 85, 99, 0.2);
-  box-shadow: 0 10px 18px rgba(12, 50, 87, 0.12);
 }
 
 .btn-assign-workout:hover {
   color: #111827;
   background: #dfe6ee;
-  box-shadow: 0 12px 22px rgba(12, 50, 87, 0.16);
 }
 
 .btn-brand-outline {
@@ -2907,13 +2801,11 @@ iframe.fullscreen-sim {
   color: #1EA4E6;
   font-weight: 600;
   letter-spacing: 0.03em;
-  transition: background 0.2s ease, box-shadow 0.2s ease, color 0.2s ease;
 }
 
 .btn-brand-outline:hover {
   background: #1EA4E6;
   color: #ffffff;
-  box-shadow: 0 12px 28px rgba(30, 164, 230, 0.28);
 }
 
 .modal-overlay {
@@ -2934,7 +2826,6 @@ iframe.fullscreen-sim {
   max-width: 420px;
   padding: 2rem;
   position: relative;
-  box-shadow: none;
 }
 
 .selection-modal .selection-grid {
@@ -2968,14 +2859,10 @@ iframe.fullscreen-sim {
   width: 100%;
   padding: 0;
   margin: 0;
-  box-shadow: 0 6px 18px rgba(15, 38, 61, 0.08);
-  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
 }
 
 .selection-modal .form-check:hover {
   border-color: rgba(30, 164, 230, 0.45);
-  box-shadow: 0 12px 24px rgba(30, 164, 230, 0.15);
-  transform: translateY(-1px);
 }
 
 .selection-modal .form-check-input {
@@ -2986,10 +2873,6 @@ iframe.fullscreen-sim {
   margin: 0;
   opacity: 0;
   cursor: pointer;
-}
-
-.selection-modal .form-check-input:focus {
-  box-shadow: none;
 }
 
 .selection-modal .form-check-label {
@@ -3009,13 +2892,11 @@ iframe.fullscreen-sim {
   line-height: 1.25;
   white-space: nowrap;
   overflow: hidden;
-  transition: background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .selection-modal .form-check-input:checked ~ .form-check-label {
   background: #f7931a;
   color: #ffffff;
-  box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.25), 0 8px 18px rgba(247, 147, 26, 0.45);
   border-color: rgba(247, 147, 26, 0.8);
 }
 
@@ -3045,7 +2926,6 @@ iframe.fullscreen-sim {
   background: rgba(255, 255, 255, 0.84);
   border-radius: 20px;
   border: 1px solid rgba(30, 164, 230, 0.18);
-  box-shadow: none;
 }
 
 .modal-header,
@@ -3073,7 +2953,6 @@ iframe.fullscreen-sim {
   border-radius: 12px;
   padding: 1rem 1.25rem;
   font-weight: 600;
-  box-shadow: 0 4px 14px rgba(255, 149, 0, 0.25);
 }
 
 /* ⚠️ Warning — amber/yellow tone */
@@ -3084,7 +2963,6 @@ iframe.fullscreen-sim {
   border-radius: 12px;
   padding: 1rem 1.25rem;
   font-weight: 600;
-  box-shadow: 0 4px 14px rgba(247, 166, 0, 0.25);
 }
 
 /* ✅ Success — mint green */
@@ -3095,7 +2973,6 @@ iframe.fullscreen-sim {
   border-radius: 12px;
   padding: 1rem 1.25rem;
   font-weight: 600;
-  box-shadow: 0 4px 14px rgba(48, 198, 129, 0.25);
 }
 
 /* ❌ Danger — red */
@@ -3106,7 +2983,6 @@ iframe.fullscreen-sim {
   border-radius: 12px;
   padding: 1rem 1.25rem;
   font-weight: 600;
-  box-shadow: 0 4px 14px rgba(220, 53, 69, 0.25);
 }
 
 /* Bitcoin Orange Styles */
@@ -3204,7 +3080,6 @@ iframe.fullscreen-sim {
   background-repeat: no-repeat, no-repeat;
   background-position: center center, calc(100% - 0.85rem) center;
   background-size: 100% 100%, 18px;
-  box-shadow: 0 10px 22px rgba(12, 50, 87, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.65);
   transition: all 0.25s ease;
   -webkit-appearance: none;
   appearance: none;
@@ -3216,7 +3091,6 @@ iframe.fullscreen-sim {
 .bitcoin-workout:hover {
   border-color: rgba(30, 164, 230, 0.6);
   color: #0f1d2e;
-  box-shadow: 0 12px 26px rgba(12, 50, 87, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.65);
 }
 
 .select-orange {
@@ -3229,7 +3103,6 @@ iframe.fullscreen-sim {
   background-position: center center, calc(100% - 0.85rem) center;
   background-size: 100% 100%, 18px;
   color: #ffffff !important;
-  box-shadow: 0 0 0 0.18rem rgba(247, 147, 26, 0.22) !important;
 }
 
 /* Complete Workout card */
@@ -3239,7 +3112,6 @@ iframe.fullscreen-sim {
   background: radial-gradient(circle at 20% 20%, rgba(46, 204, 113, 0.15), transparent 38%),
               radial-gradient(circle at 80% 18%, rgba(30, 164, 230, 0.16), transparent 38%),
               linear-gradient(145deg, rgba(255, 255, 255, 0.96), rgba(214, 243, 232, 0.9));
-  box-shadow: 0 20px 48px rgba(12, 50, 87, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.55);
   position: relative;
   overflow: hidden;
 }
@@ -3271,8 +3143,6 @@ iframe.fullscreen-sim {
   position: relative;
   overflow: hidden;
   isolation: isolate;
-  box-shadow: 0 14px 28px rgba(14, 201, 127, 0.32), 0 0 0 1px rgba(14, 201, 127, 0.45);
-  transition: transform 0.18s ease, box-shadow 0.18s ease, filter 0.18s ease, background 0.2s ease;
 }
 
 #complete-workout-btn::after {
@@ -3292,7 +3162,6 @@ iframe.fullscreen-sim {
 
 #complete-workout-btn:hover {
   transform: translateY(-1px);
-  box-shadow: 0 16px 32px rgba(14, 201, 127, 0.42), 0 0 0 1px rgba(14, 201, 127, 0.55);
   filter: brightness(1.03);
 }
 
@@ -3300,7 +3169,6 @@ iframe.fullscreen-sim {
 #complete-workout-btn.is-pressed {
   transform: translateY(2px) scale(0.99);
   background: linear-gradient(135deg, #0aa364, #0ec97f);
-  box-shadow: 0 8px 18px rgba(14, 201, 127, 0.28), 0 0 0 1px rgba(14, 201, 127, 0.45);
   filter: brightness(0.98);
 }
 
@@ -3311,7 +3179,6 @@ iframe.fullscreen-sim {
 
 #complete-workout-btn.is-submitting {
   filter: brightness(1.06);
-  box-shadow: 0 18px 36px rgba(14, 201, 127, 0.45), 0 0 0 2px rgba(255, 255, 255, 0.25);
 }
 
 #complete-workout-btn.is-submitting::after {
@@ -3420,7 +3287,6 @@ iframe.fullscreen-sim {
   transform: translate(-50%, -50%);
   border-radius: 50%;
   border: 1px solid rgba(14, 201, 127, 0.28);
-  box-shadow: 0 0 0 6px rgba(14, 201, 127, 0.12);
   background: radial-gradient(circle, rgba(255, 255, 255, 0.32), rgba(255, 255, 255, 0));
 }
 
@@ -3463,7 +3329,6 @@ iframe.fullscreen-sim {
   align-items: center;
   text-align: center;
   gap: 0.5rem;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25);
 }
 
 .max-label {
@@ -3504,18 +3369,15 @@ iframe.fullscreen-sim {
   border: 1px solid rgba(30, 164, 230, 0.45);
   color: #176a97;
   min-width: 88px;
-  box-shadow: 0 2px 4px rgba(30, 164, 230, 0.08);
   flex-shrink: 0;
 }
 
 .max-pill.update-pr-trigger {
   cursor: pointer;
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 
 .max-pill.update-pr-trigger:hover,
 .max-pill.update-pr-trigger:focus-visible {
-  box-shadow: 0 4px 10px rgba(30, 164, 230, 0.2);
   transform: translateY(-1px);
 }
 
@@ -3566,7 +3428,6 @@ iframe.fullscreen-sim {
 .max-action-btn.btn-outline-secondary:focus {
   background-color: #3c4252;
   color: #ffffff;
-  box-shadow: 0 0 0 0.2rem rgba(60, 66, 82, 0.2);
 }
 
 .max-action-btn.btn-outline-primary {
@@ -3579,7 +3440,6 @@ iframe.fullscreen-sim {
 .max-action-btn.btn-outline-primary:focus {
   background-color: #1EA4E6;
   color: #ffffff;
-  box-shadow: 0 0 0 0.2rem rgba(30, 164, 230, 0.25);
 }
 
 .flash-copy {
@@ -3611,7 +3471,6 @@ iframe.fullscreen-sim {
   color: #1f2a3d;
   padding: 0.75rem 2.75rem;
   border-radius: 999px;
-  box-shadow: 0 12px 28px rgba(15, 81, 50, 0.2);
   font-weight: 600;
   text-align: center;
   max-width: min(640px, calc(100vw - 32px));
@@ -3655,7 +3514,6 @@ iframe.fullscreen-sim {
 .toast-floating.toast-success {
   background: #d1e7dd;
   color: #0f5132;
-  box-shadow: 0 12px 28px rgba(15, 81, 50, 0.18);
   border: 1px solid #0f5132;
   top: 95px;
 }
@@ -3663,7 +3521,6 @@ iframe.fullscreen-sim {
 .toast-floating.toast-info {
   background: #e9f7ff;
   color: #1b5678;
-  box-shadow: 0 12px 28px rgba(30, 164, 230, 0.18);
   border: 1px solid #1ea4e6;
   top: 40px;
 }
@@ -3671,14 +3528,12 @@ iframe.fullscreen-sim {
 .toast-floating.toast-warning {
   background: #ffe8cc;
   color: #7c4502;
-  box-shadow: 0 12px 28px rgba(247, 147, 26, 0.2);
   border: 1px solid #f7931a;
 }
 
 .toast-floating.toast-danger {
   background: #f8d7da;
   color: #842029;
-  box-shadow: 0 12px 28px rgba(220, 53, 69, 0.22);
   border: 1px solid #842029;
 }
 
@@ -3693,7 +3548,6 @@ iframe.fullscreen-sim {
   background: linear-gradient(135deg, #1ea4e6, #1384cd);
   border-radius: 16px 16px 0 0;
   padding: 1rem 1.25rem;
-  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.25);
 }
 
 /* Scheduler */
@@ -3704,7 +3558,6 @@ iframe.fullscreen-sim {
   border: 1px solid rgba(30, 164, 230, 0.25);
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.82);
-  box-shadow: none;
   --calendar-time-width: 80px;
   --calendar-day-width: 180px;
 }
@@ -3742,7 +3595,6 @@ iframe.fullscreen-sim {
   border-radius: 999px;
   font-size: 0.75rem;
   font-weight: 600;
-  box-shadow: 0 10px 25px rgba(15, 81, 50, 0.25);
   transition: opacity 0.3s ease, visibility 0.3s ease;
   pointer-events: none;
 }
@@ -3763,7 +3615,6 @@ iframe.fullscreen-sim {
   border-radius: 999px;
   font-size: 0.75rem;
   font-weight: 600;
-  box-shadow: 0 10px 25px rgba(15, 81, 50, 0.25);
   transition: opacity 0.3s ease, visibility 0.3s ease;
   pointer-events: none;
 }
@@ -3809,7 +3660,6 @@ iframe.fullscreen-sim {
   background: linear-gradient(135deg, rgba(247, 147, 26, 0.25), rgba(247, 147, 26, 0.45));
   border-radius: 16px;
   color: #7a3f00;
-  box-shadow: 0 6px 18px rgba(247, 147, 26, 0.25);
 }
 
 .calendar-day-header--today .calendar-month-label,
@@ -3877,7 +3727,6 @@ iframe.fullscreen-sim {
   position: sticky;
   left: 0;
   z-index: 3;
-  box-shadow: 1px 0 0 rgba(30, 164, 230, 0.12);
 }
 
 .calendar-time-label {
@@ -3906,7 +3755,6 @@ iframe.fullscreen-sim {
 .calendar-day-column {
   position: relative;
   border-right: 1px solid rgba(30, 164, 230, 0.35);
-  box-shadow: inset -1px 0 0 rgba(30, 164, 230, 0.15);
   background: rgba(255, 255, 255, 0.6);
   overflow: hidden;
   min-width: var(--calendar-day-width);
@@ -3922,14 +3770,10 @@ iframe.fullscreen-sim {
 
 .calendar-day-column:last-child {
   border-right: none;
-  box-shadow: none;
 }
 
 .calendar-day-column--today {
   background: linear-gradient(180deg, rgba(255, 246, 236, 0.95), rgba(255, 233, 205, 0.85));
-  box-shadow:
-    inset 0 0 0 2px rgba(247, 147, 26, 0.35),
-    0 12px 28px rgba(247, 147, 26, 0.15);
 }
 
 .calendar-day-column--today .calendar-slot {
@@ -3979,16 +3823,100 @@ iframe.fullscreen-sim {
   position: absolute;
   left: 0;
   right: 0;
-  border-radius: 16px;
+  border-radius: 0px;
   display: flex;
   flex-direction: column;
   min-height: 58px;
-  box-shadow: none;
   border: 1px solid rgba(18, 110, 179, 0.32);
   overflow: hidden;
   background: #ffffff;
   color: #0f4c75;
   margin: 0;
+}
+
+.calendar-event--ghost {
+  transition: none !important;
+  pointer-events: none;
+}
+
+.calendar-event--ghost-hidden {
+  visibility: hidden;
+}
+
+.calendar-event--ghost.calendar-event--ghost-full .calendar-event-content {
+  padding: 0.55rem 0.45rem;
+  line-height: 1.2;
+  gap: 0.25rem;
+}
+
+.calendar-event--ghost.calendar-event--ghost-full .calendar-event-title {
+  font-size: 0.78rem;
+  word-break: keep-all;
+  hyphens: auto;
+  white-space: normal;
+}
+
+.calendar-event--ghost.calendar-event--ghost-full .calendar-event-time {
+  font-size: 0.68rem;
+  word-break: keep-all;
+  white-space: normal;
+}
+
+.calendar-event--ghost.calendar-event--ghost-full .calendar-event-dragzone {
+  font-size: 0.64rem;
+  font-weight: 600;
+  padding: 0 0.5rem;
+  gap: 0.25rem;
+  letter-spacing: 0.02em;
+  position: relative;
+  justify-content: center;
+}
+
+.calendar-event--ghost.calendar-event--ghost-full .calendar-event-dragicon {
+  display: none;
+}
+
+.calendar-event--ghost.calendar-event--ghost-full .calendar-event-dragtext {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.calendar-event--ghost.calendar-event--ghost-full .calendar-event-dragzone::before {
+  content: '📋';
+  font-size: 1.05rem;
+  line-height: 1;
+}
+
+.calendar-event--ghost.calendar-event--ghost-full.calendar-event-timeoff .calendar-event-dragzone::before,
+.calendar-event--ghost.calendar-event--ghost-full[data-status="time_off"] .calendar-event-dragzone::before {
+  content: none;
+}
+
+.calendar-event--ghost.calendar-event--ghost-full[data-status="completed"] .calendar-event-dragzone::before {
+  content: '✓';
+  font-size: 1.1rem;
+}
+
+.calendar-event--ghost.calendar-event--ghost-full[data-status="cancelled"] .calendar-event-dragzone::before {
+  content: '✕';
+  font-size: 1.05rem;
+}
+
+.calendar-event--ghost.calendar-event--ghost-full .calendar-event-note-indicator {
+  top: 50%;
+  left: 50%;
+  right: auto;
+  transform: translate(-50%, -50%) scale(1);
+  width: 28px;
+  height: 28px;
+  font-size: 1rem;
 }
 
 .calendar-event--flash {
@@ -4010,7 +3938,6 @@ iframe.fullscreen-sim {
 .calendar-event--dragging {
   z-index: 15;
   transform: scale(1.02); /* Avoid forced GPU promotion; keep drag feel unchanged. */
-  transition: transform 0.1s ease, box-shadow 0.1s ease;
 }
 
 .calendar-event::before {
@@ -4073,7 +4000,7 @@ iframe.fullscreen-sim {
   text-align: center;
   gap: 0.35rem;
   padding: 0.85rem 1.05rem;
-  background: linear-gradient(135deg, rgba(30, 164, 230, 1), rgba(51, 195, 240, 0.96));
+  background: rgba(30, 164, 230, 1);
   color: #ffffff;
   cursor: pointer;
   transition: background 0.2s ease, transform 0.15s ease;
@@ -4109,10 +4036,6 @@ iframe.fullscreen-sim {
   .calendar-wrapper[data-mode="client"] .calendar-event-title {
     margin-top: 0.15rem;
   }
-}
-
-.calendar-event-content:hover {
-  background: linear-gradient(135deg, rgba(30, 164, 230, 0.95), rgba(51, 195, 240, 0.87));
 }
 
 .calendar-wrapper[data-mode="client"] .calendar-event-content {
@@ -4158,10 +4081,7 @@ iframe.fullscreen-sim {
   align-items: center;
   justify-content: center;
   font-size: 0.85rem;
-  box-shadow: 0 6px 16px rgba(12, 45, 75, 0.2);
   opacity: 0;
-  transform: scale(0.85);
-  transition: opacity 0.2s ease, transform 0.2s ease, border-color 0.2s ease;
   pointer-events: none;
 }
 
@@ -4178,19 +4098,16 @@ iframe.fullscreen-sim {
   width: 28px;
   height: 28px;
   font-size: 1rem;
-  box-shadow: 0 10px 24px rgba(12, 45, 75, 0.25);
 }
 
 .calendar-event--has-note {
   outline: 2px solid rgba(255, 158, 25, 0.4);
   outline-offset: -3px;
-  box-shadow: 0 12px 28px rgba(255, 158, 25, 0.25);
 }
 
 .calendar-event.calendar-event-completed,
 .calendar-event[data-status="completed"] {
   border-color: rgba(34, 197, 94, 0.45);
-  box-shadow: 0 12px 24px rgba(34, 197, 94, 0.25);
 }
 
 .calendar-event[data-status="completed"] .calendar-event-dragzone {
@@ -4199,7 +4116,7 @@ iframe.fullscreen-sim {
 }
 
 .calendar-event[data-status="completed"] .calendar-event-content {
-  background: linear-gradient(135deg, rgba(34, 197, 94, 0.98), rgba(16, 185, 129, 0.9));
+  background: rgba(34, 197, 94, 0.98);
   color: #0f5132;
 }
 
@@ -4214,7 +4131,6 @@ iframe.fullscreen-sim {
 .calendar-event.calendar-event-cancelled,
 .calendar-event[data-status="cancelled"] {
   border-color: rgba(220, 53, 69, 0.35);
-  box-shadow: 0 12px 24px rgba(220, 53, 69, 0.18);
 }
 
 .calendar-event[data-status="cancelled"] .calendar-event-dragzone {
@@ -4223,7 +4139,7 @@ iframe.fullscreen-sim {
 }
 
 .calendar-event[data-status="cancelled"] .calendar-event-content {
-  background: linear-gradient(135deg, rgba(248, 215, 218, 0.98), rgba(241, 174, 181, 0.92));
+  background: rgba(248, 215, 218, 0.98);
   color: #58151c;
 }
 
@@ -4247,18 +4163,17 @@ iframe.fullscreen-sim {
 .calendar-event-timeoff,
 .calendar-event[data-status="time_off"] {
   border-color: rgba(255, 174, 84, 0.6);
-  box-shadow: 0 12px 24px rgba(255, 164, 60, 0.28);
 }
 
 .calendar-event-timeoff .calendar-event-dragzone,
 .calendar-event[data-status="time_off"] .calendar-event-dragzone {
-  background: linear-gradient(135deg, rgba(255, 193, 7, 0.9), rgba(255, 145, 0, 0.9));
+  background: rgba(255, 193, 7, 0.9);
   color: #5f3b00;
 }
 
 .calendar-event-timeoff .calendar-event-content,
 .calendar-event[data-status="time_off"] .calendar-event-content {
-  background: linear-gradient(135deg, rgba(255, 238, 205, 0.98), rgba(255, 221, 170, 0.94));
+  background: rgba(255, 238, 205, 0.98);
   color: #5f3b00;
 }
 
@@ -4296,10 +4211,6 @@ iframe.fullscreen-sim {
 
 .calendar-event-handle-top {
   top: 26px;
-}
-
-.calendar-event-handle-bottom {
-  bottom: 4px;
 }
 
 .calendar-empty-state {
@@ -4341,7 +4252,6 @@ iframe.fullscreen-sim {
   background: rgba(30, 164, 230, 0.08);
   border: 1px solid rgba(30, 164, 230, 0.25);
   color: #0f4c75;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
 }
 
 .calendar-controls__group .calendar-controls__window:hover,
@@ -4360,7 +4270,6 @@ iframe.fullscreen-sim {
   border-bottom-right-radius: 0;
   overflow: hidden;
   background: #ffffff;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
 }
 
 .calendar-controls__nav .btn {
@@ -4396,7 +4305,6 @@ iframe.fullscreen-sim {
   border-radius: 16px;
   overflow: hidden;
   background: #ffffff;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
   margin-top: 0.35rem;
 }
 
@@ -4405,7 +4313,6 @@ iframe.fullscreen-sim {
   border-radius: 16px;
   overflow: hidden;
   background: #ffffff;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
   margin-top: 0.35rem;
   padding: 0.25rem;
 }
@@ -4437,7 +4344,6 @@ iframe.fullscreen-sim {
 .calendar-view-toggle .btn-check:checked + .btn {
   background: linear-gradient(135deg, #1EA4E6 0%, #33C3F0 100%);
   color: #ffffff;
-  box-shadow: none;
 }
 
 .calendar-week-label {
@@ -4448,7 +4354,6 @@ iframe.fullscreen-sim {
   text-align: center;
   color: #0f4c75;
   font-size: 0.92rem;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
   width: 100%;
   min-height: 44px;
   display: inline-flex;
@@ -4457,7 +4362,6 @@ iframe.fullscreen-sim {
   gap: 0.65rem;
   font-weight: 600;
   cursor: pointer;
-  transition: box-shadow 0.2s ease, transform 0.2s ease;
   appearance: none;
   border-width: 1px;
   text-transform: none;
@@ -4465,9 +4369,8 @@ iframe.fullscreen-sim {
 
 .calendar-week-label:hover,
 .calendar-week-label:focus-visible {
-  box-shadow: 0 0 0 3px rgba(30, 164, 230, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.75);
   outline: none;
-  transform: translateY(-1px);
+  background-color: #e6f4fb;
 }
 
 .calendar-week-label__icon {
@@ -4480,7 +4383,6 @@ iframe.fullscreen-sim {
   background: #ffffff;
   color: #0f4c75;
   font-size: 1rem;
-  box-shadow: 0 4px 12px rgba(15, 33, 45, 0.08);
 }
 
 .calendar-week-label__icon i {
@@ -4497,7 +4399,6 @@ iframe.fullscreen-sim {
   border-radius: 999px;
   background: #ffffff;
   border: 2px solid rgba(255, 255, 255, 0.85);
-  box-shadow: 0 12px 24px rgba(13, 72, 107, 0.18);
 }
 
 .selected-client-pill__label {
@@ -4518,7 +4419,6 @@ iframe.fullscreen-sim {
 .selected-client-pill--empty {
   background: rgba(255, 255, 255, 0.16);
   border-color: rgba(255, 255, 255, 0.55);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25);
 }
 
 .selected-client-pill--empty .selected-client-pill__label,
@@ -4766,10 +4666,6 @@ iframe.fullscreen-sim {
   color: #ffffff;
 }
 
-.calendar-controls__nav .btn:focus {
-  box-shadow: none;
-}
-
 .calendar-controls__nav .btn.active,
 .book-client-btn.active {
   background: #1EA4E6;
@@ -4795,7 +4691,6 @@ iframe.fullscreen-sim {
   align-items: center;
   text-align: center;
   justify-content: center;
-  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.35);
 }
 
 .trainer-dashboard-hero__content,
@@ -4849,7 +4744,6 @@ iframe.fullscreen-sim {
   border-radius: 999px;
   line-height: 1.1;
   white-space: nowrap;
-  box-shadow: none;
   transition: all 0.2s ease;
   touch-action: manipulation;
 }
@@ -4861,7 +4755,6 @@ iframe.fullscreen-sim {
   background: #ffffff;
   color: #0f2941;
   border-color: #ffffff;
-  box-shadow: none;
 }
 
 @media (max-width: 576px) {
@@ -4888,7 +4781,6 @@ iframe.fullscreen-sim {
   padding: 1rem 1.4rem;
   border-radius: 24px;
   background: rgba(255, 255, 255, 0.18);
-  box-shadow: 0 18px 36px rgba(13, 62, 102, 0.18);
   color: #ffffff;
   width: 100%;
   max-width: 640px;
@@ -4899,13 +4791,11 @@ iframe.fullscreen-sim {
 
 .dashboard-snapshot--inline {
   background: rgba(255, 255, 255, 0.22);
-  box-shadow: 0 16px 32px rgba(8, 40, 78, 0.18);
 }
 
 .dashboard-snapshot--card {
   background: linear-gradient(135deg, #4CC8FF 0%, #7AE1FF 100%);
   margin-top: -1.2rem;
-  box-shadow: 0 24px 48px rgba(13, 62, 102, 0.25);
 }
 
 .dashboard-snapshot__icon {
@@ -4988,7 +4878,6 @@ iframe.fullscreen-sim {
 .dashboard-quicklink:focus-visible {
   background: #1EA4E6;
   color: #ffffff;
-  box-shadow: 0 10px 20px rgba(30, 164, 230, 0.2);
 }
 
 .trainer-dashboard-backtotop {
@@ -5004,7 +4893,6 @@ iframe.fullscreen-sim {
   background: rgba(30, 164, 230);
   color: #ffffff;
   border-color: rgba(30, 164, 230, 0.95);
-  box-shadow: none;
 }
 
 .trainer-backtotop-link:hover,
@@ -5080,7 +4968,6 @@ iframe.fullscreen-sim {
   .training-container:not(.client-workout) .exercise-card-body .personal-best {
     background: transparent;
     border: 0;
-    box-shadow: none;
     padding: 0;
     margin: 0;
   }
@@ -5092,10 +4979,6 @@ iframe.fullscreen-sim {
   .training-container:not(.client-workout) .exercise-card-body .max-pill-row {
     padding: 0.15rem 0.3rem;
     gap: 0.35rem;
-  }
-
-  .training-container:not(.client-workout) .exercise-card-body .max-pill {
-    box-shadow: none;
   }
 
   .training-container:not(.client-workout) .exercise-card:not(.exercise-card-collapsed) .exercise-card-body {
@@ -5159,7 +5042,6 @@ iframe.fullscreen-sim {
   .client-profile-container .training-container .exercise-card-body .personal-best {
     background: transparent;
     border: 0;
-    box-shadow: none;
     padding: 0;
     margin: 0;
   }
@@ -5185,10 +5067,6 @@ iframe.fullscreen-sim {
   .client-profile-container .training-container .exercise-card-body .max-pill-row {
     padding: 0.15rem 0.3rem;
     gap: 0.35rem;
-  }
-
-  .client-profile-container .training-container .exercise-card-body .max-pill {
-    box-shadow: none;
   }
 
   .client-profile-container .training-container .exercise-card:not(.exercise-card-collapsed) .exercise-card-body {
@@ -5229,7 +5107,6 @@ iframe.fullscreen-sim {
   border: 1px solid rgba(30, 164, 230, 0.18);
   background: rgba(255, 255, 255, 0.92);
   padding: 1.25rem;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 
 .trainer-search-form,
@@ -5242,7 +5119,6 @@ iframe.fullscreen-sim {
   border-radius: 999px;
   overflow: hidden;
   border: 1px solid rgba(30, 164, 230, 0.28);
-  box-shadow: 0 18px 36px rgba(14, 25, 45, 0.12);
   background: rgba(255, 255, 255, 0.85);
 }
 
@@ -5267,7 +5143,6 @@ iframe.fullscreen-sim {
 
 .trainer-search-input:focus,
 .admin-search-input:focus {
-  box-shadow: none;
   background: rgba(255, 255, 255, 0.95);
 }
 
@@ -5313,7 +5188,6 @@ iframe.fullscreen-sim {
   border-radius: 26px;
   border: 1px solid rgba(30, 164, 230, 0.18);
   background: rgba(255, 255, 255, 0.96);
-  box-shadow: 0 24px 45px rgba(12, 28, 48, 0.16);
   padding: 1.25rem;
 }
 
@@ -5373,7 +5247,6 @@ iframe.fullscreen-sim {
 .trainer-client-table tbody tr:hover,
 .admin-users-table tbody tr:hover {
   background: rgba(30, 164, 230, 0.05);
-  transform: translateY(-1px);
 }
 
 .admin-users-table {
@@ -5392,7 +5265,6 @@ iframe.fullscreen-sim {
   font-weight: 600;
   line-height: 1.1;
   text-decoration: none !important;
-  transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .table-link-pill span {
@@ -5406,7 +5278,6 @@ iframe.fullscreen-sim {
   color: #ffffff !important;
   border-color: transparent;
   transform: translateY(-1px);
-  box-shadow: 0 12px 26px rgba(30, 164, 230, 0.3);
   outline: none;
 }
 
@@ -5440,8 +5311,6 @@ iframe.fullscreen-sim {
   white-space: normal;
   line-height: 1.1;
   text-align: center;
-  box-shadow: 0 2px 6px rgba(30, 164, 230, 0.12);
-  transition: background 0.2s ease, color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .book-client-action-text {
@@ -5461,7 +5330,6 @@ iframe.fullscreen-sim {
   background: #FFF2E4;
   color: #F7931A;
   transform: translateY(-1px);
-  box-shadow: 0 4px 10px rgba(30, 164, 230, 0.18);
 }
 
 @media (max-width: 768px) {
@@ -5595,6 +5463,165 @@ iframe.fullscreen-sim {
   padding: 0.75rem 1rem 1.25rem;
 }
 
+#trainer-schedule .calendar-shell {
+  display: grid;
+  grid-template-columns: var(--calendar-time-width) 1fr;
+  align-items: stretch;
+}
+
+#trainer-schedule .calendar-times-pane {
+  display: grid;
+  grid-template-rows: var(--calendar-header-height, 64px) 1fr;
+  border-right: 1px solid rgba(30, 164, 230, 0.12);
+  background: rgba(248, 249, 250, 0.72);
+}
+
+#trainer-schedule .calendar-time-spacer {
+  position: relative;
+  left: auto;
+  height: var(--calendar-header-height, 64px);
+  background: linear-gradient(135deg, rgba(30, 164, 230, 0.12), rgba(51, 195, 240, 0.12));
+  border-bottom: 1px solid rgba(30, 164, 230, 0.18);
+}
+
+#trainer-schedule .calendar-times {
+  position: relative;
+  left: auto;
+  height: 100%;
+  background: transparent;
+  border-right: none;
+}
+
+#trainer-schedule .calendar-time-spacer,
+#trainer-schedule .calendar-times {
+  position: static;
+  left: auto;
+}
+
+#trainer-schedule .calendar-wrapper,
+#trainer-schedule .calendar-scroll,
+#trainer-schedule .calendar-header,
+#trainer-schedule .calendar-empty-state {
+  border-radius: 0;
+}
+
+#trainer-schedule .calendar-event--dragging {
+  opacity: 0.5;
+}
+
+#trainer-schedule .calendar-event--ghost {
+  opacity: 0.45;
+}
+
+#trainer-schedule .calendar-header {
+  grid-template-columns: repeat(7, var(--calendar-day-width));
+  min-width: calc(7 * var(--calendar-day-width));
+}
+
+#trainer-schedule .calendar-grid {
+  grid-template-columns: repeat(7, var(--calendar-day-width));
+  min-width: calc(7 * var(--calendar-day-width));
+}
+
+#trainer-schedule .calendar-wrapper.calendar-mode-full .calendar-header {
+  grid-template-columns: repeat(7, 1fr);
+  min-width: 100%;
+}
+
+#trainer-schedule .calendar-wrapper.calendar-mode-full .calendar-grid {
+  grid-template-columns: 1fr;
+  min-width: 100%;
+}
+
+#trainer-schedule .calendar-wrapper.calendar-mode-full .calendar-columns {
+  grid-template-columns: repeat(7, 1fr);
+  grid-column: 1 / -1;
+  width: 100%;
+}
+
+#calendar-card .calendar-shell,
+#trainer-self-calendar-card .calendar-shell {
+  display: grid;
+  grid-template-columns: var(--calendar-time-width) 1fr;
+  align-items: stretch;
+}
+
+#calendar-card .calendar-times-pane,
+#trainer-self-calendar-card .calendar-times-pane {
+  display: grid;
+  grid-template-rows: var(--calendar-header-height, 64px) 1fr;
+  border-right: 1px solid rgba(30, 164, 230, 0.12);
+  background: rgba(248, 249, 250, 0.72);
+}
+
+#calendar-card .calendar-time-spacer,
+#trainer-self-calendar-card .calendar-time-spacer {
+  position: relative;
+  left: auto;
+  height: var(--calendar-header-height, 64px);
+  background: linear-gradient(135deg, rgba(30, 164, 230, 0.12), rgba(51, 195, 240, 0.12));
+  border-bottom: 1px solid rgba(30, 164, 230, 0.18);
+}
+
+#calendar-card .calendar-times,
+#trainer-self-calendar-card .calendar-times {
+  position: relative;
+  left: auto;
+  height: 100%;
+  background: transparent;
+  border-right: none;
+}
+
+#calendar-card .calendar-time-spacer,
+#trainer-self-calendar-card .calendar-time-spacer,
+#calendar-card .calendar-times,
+#trainer-self-calendar-card .calendar-times {
+  position: static;
+  left: auto;
+}
+
+#calendar-card .calendar-wrapper,
+#calendar-card .calendar-scroll,
+#calendar-card .calendar-header,
+#calendar-card .calendar-empty-state,
+#trainer-self-calendar-card .calendar-wrapper,
+#trainer-self-calendar-card .calendar-scroll,
+#trainer-self-calendar-card .calendar-header,
+#trainer-self-calendar-card .calendar-empty-state {
+  border-radius: 0;
+}
+
+#calendar-card .calendar-header,
+#trainer-self-calendar-card .calendar-header {
+  grid-template-columns: repeat(7, var(--calendar-day-width));
+  min-width: calc(7 * var(--calendar-day-width));
+}
+
+#calendar-card .calendar-grid,
+#trainer-self-calendar-card .calendar-grid {
+  grid-template-columns: repeat(7, var(--calendar-day-width));
+  min-width: calc(7 * var(--calendar-day-width));
+}
+
+#calendar-card .calendar-wrapper.calendar-mode-full .calendar-header,
+#trainer-self-calendar-card .calendar-wrapper.calendar-mode-full .calendar-header {
+  grid-template-columns: repeat(7, 1fr);
+  min-width: 100%;
+}
+
+#calendar-card .calendar-wrapper.calendar-mode-full .calendar-grid,
+#trainer-self-calendar-card .calendar-wrapper.calendar-mode-full .calendar-grid {
+  grid-template-columns: 1fr;
+  min-width: 100%;
+}
+
+#calendar-card .calendar-wrapper.calendar-mode-full .calendar-columns,
+#trainer-self-calendar-card .calendar-wrapper.calendar-mode-full .calendar-columns {
+  grid-template-columns: repeat(7, 1fr);
+  grid-column: 1 / -1;
+  width: 100%;
+}
+
 @media (min-width: 992px) {
   .trainer-schedule-card .card-body {
     padding: 1.25rem 1.4rem 1.6rem;
@@ -5621,7 +5648,6 @@ iframe.fullscreen-sim {
   border-radius: 16px;
   padding: 1.5rem;
   width: min(420px, 90vw);
-  box-shadow: 0 18px 48px rgba(15, 33, 45, 0.22);
   max-height: calc(var(--app-vh, 1vh) * 100 - 3rem);
   overflow-y: auto;
 }
@@ -5761,18 +5787,18 @@ iframe.fullscreen-sim {
 .event-session-modal__time--interactive {
   cursor: pointer;
   background: transparent;
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.32);
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  border-radius: 10px;
+  padding: 0.35rem 0.55rem;
 }
 
 .event-session-modal__time--interactive:hover {
   background: rgba(255, 255, 255, 0.12);
   opacity: 1;
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.45);
 }
 
 .event-session-modal__time--interactive:active {
   background: rgba(255, 255, 255, 0.2);
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.65);
 }
 
 .event-session-modal__time-display {
@@ -5789,7 +5815,6 @@ iframe.fullscreen-sim {
   background: #ffffff;
   border-radius: 18px;
   padding: 1rem 1.15rem;
-  box-shadow: 0 12px 30px rgba(9, 30, 66, 0.1);
   border: 1px solid rgba(15, 33, 45, 0.06);
 }
 
@@ -5852,8 +5877,6 @@ iframe.fullscreen-sim {
   padding: 1rem;
   background: linear-gradient(135deg, rgba(255, 196, 112, 0.12), rgba(255, 240, 218, 0.95));
   border: 1px solid rgba(255, 158, 25, 0.25);
-  box-shadow: 0 14px 32px rgba(255, 158, 25, 0.2);
-  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
 }
 
 .event-session-modal__noteform-wrapper::before {
@@ -5886,7 +5909,6 @@ iframe.fullscreen-sim {
 
 .event-session-modal__noteform-wrapper.has-note {
   border-color: rgba(255, 158, 25, 0.6);
-  box-shadow: 0 24px 48px rgba(255, 158, 25, 0.28);
   transform: translateY(-1px);
 }
 
@@ -5910,7 +5932,6 @@ iframe.fullscreen-sim {
   align-items: center;
   border: 2px solid transparent;
   border-radius: 14px;
-  transition: border-color 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease;
   background-color: rgba(255, 255, 255, 0.95);
   color: #0f4c75;
   width: 100%;
@@ -5943,10 +5964,6 @@ iframe.fullscreen-sim {
 
 .status-select:focus {
   outline: none;
-}
-
-.status-select-wrapper:focus-within {
-  box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.12);
 }
 
 .status-select-wrapper.status-select--booked {
@@ -5997,15 +6014,12 @@ iframe.fullscreen-sim {
   background: linear-gradient(135deg, #1ea4e6 0%, #0d6efd 100%);
   color: #ffffff;
   font-weight: 600;
-  box-shadow: 0 10px 24px rgba(13, 110, 253, 0.25);
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 
 .btn-note-save:hover,
 .btn-note-save:focus {
   color: #ffffff;
   transform: translateY(-1px);
-  box-shadow: 0 14px 28px rgba(13, 110, 253, 0.35);
 }
 
 .event-session-modal__footer {
@@ -6328,8 +6342,6 @@ iframe.fullscreen-sim {
   border-radius: 0.4rem;
   background-color: #ffffff;
   cursor: pointer;
-  box-shadow: none;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .agenda-card .pagination {
@@ -6395,7 +6407,6 @@ iframe.fullscreen-sim {
 
 .agenda-table .form-check-input:focus {
   border-color: rgba(30, 164, 230, 0.9);
-  box-shadow: 0 0 0 0.15rem rgba(30, 164, 230, 0.25);
 }
 
 .agenda-table .form-check-input:checked {
@@ -6708,7 +6719,6 @@ iframe.fullscreen-sim {
   border-radius: 18px;
   padding: 1.75rem 1.25rem;
   background: #ffffff;
-  box-shadow: none;
 }
 
 .training-container .exercise-card-header {
@@ -6750,7 +6760,6 @@ iframe.fullscreen-sim {
   cursor: pointer;
   border-color: rgba(30, 164, 230, 0.45);
   background-color: rgba(255, 255, 255, 0.6);
-  box-shadow: none;
 }
 
 .training-container .workout-cards-switch .form-check-input:checked {
@@ -6774,7 +6783,6 @@ iframe.fullscreen-sim {
 
 .training-container .exercise-card-toggle:focus-visible {
   outline: 0;
-  box-shadow: 0 0 0 0.15rem rgba(30, 164, 230, 0.4);
   border-radius: 12px;
 }
 
@@ -6876,7 +6884,6 @@ iframe.fullscreen-sim {
   color: #20c997;
   border-radius: 999px;
   border: 0;
-  box-shadow: none;
   width: 2.35rem;
   height: 2.35rem;
   align-self: center;
@@ -7034,7 +7041,6 @@ iframe.fullscreen-sim {
   height: 40px;
   border-radius: 250px;
   background-color: transparent;
-  box-shadow: none;
   transition: transform 0.2s ease;
 }
 
@@ -7059,10 +7065,6 @@ iframe.fullscreen-sim {
 
 .training-container .exercise-list-item.is-dragging {
   opacity: 0.7;
-}
-
-.training-container .exercise-list-item.is-dragging .exercise-card {
-  box-shadow: 0 20px 25px rgba(15, 81, 50, 0.15);
 }
 
 .exercise-card-drag-preview {
@@ -7196,7 +7198,6 @@ iframe.fullscreen-sim {
     transform: translateY(2px);
     background: transparent;
     border: 0;
-    box-shadow: none;
   }
 
   .client-profile-container .training-container .exercise-card:not(.exercise-card-collapsed) .exercise-card-body {
@@ -7290,7 +7291,6 @@ iframe.fullscreen-sim {
     object-fit: cover;
     padding: 0.2rem;
     border-radius: 12px;
-    box-shadow: 0 8px 16px rgba(247, 147, 26, 0.12);
   }
 
   .client-profile-container .training-container .exercise-card:not(.exercise-card-collapsed) .exercise-media-label {
@@ -7312,7 +7312,6 @@ iframe.fullscreen-sim {
     max-width: none;
     padding: 0.2rem;
     border-radius: 12px;
-    box-shadow: 0 8px 16px rgba(247, 147, 26, 0.12);
   }
 
   .client-profile-container .training-container .exercise-card:not(.exercise-card-collapsed) .exercise-video-frame {
@@ -7411,7 +7410,6 @@ iframe.fullscreen-sim {
     transform: translateY(2px);
     background: transparent;
     border: 0;
-    box-shadow: none;
   }
 
   .client-profile-container .training-container .exercise-card-collapsed .exercise-card-toggle .exercise-name {
@@ -7527,7 +7525,6 @@ iframe.fullscreen-sim {
     transform: translateY(2px);
     background: transparent;
     border: 0;
-    box-shadow: none;
   }
 
   .training-container:not(.client-workout) .exercise-card:not(.exercise-card-collapsed) .exercise-card-body {
@@ -7621,7 +7618,6 @@ iframe.fullscreen-sim {
     object-fit: cover;
     padding: 0.2rem;
     border-radius: 12px;
-    box-shadow: 0 8px 16px rgba(247, 147, 26, 0.12);
   }
 
   .training-container:not(.client-workout) .exercise-card:not(.exercise-card-collapsed) .exercise-media-label {
@@ -7643,7 +7639,6 @@ iframe.fullscreen-sim {
     max-width: none;
     padding: 0.2rem;
     border-radius: 12px;
-    box-shadow: 0 8px 16px rgba(247, 147, 26, 0.12);
   }
 
   .training-container:not(.client-workout) .exercise-card:not(.exercise-card-collapsed) .exercise-video-frame {
@@ -7742,7 +7737,6 @@ iframe.fullscreen-sim {
     transform: translateY(2px);
     background: transparent;
     border: 0;
-    box-shadow: none;
   }
 
   .training-container:not(.client-workout) .exercise-card-collapsed .exercise-card-toggle .exercise-name {
@@ -7861,13 +7855,10 @@ iframe.fullscreen-sim {
   border-radius: 16px;
   padding: 0.4rem;
   background: linear-gradient(180deg, #ffffff 0%, #fff7ed 100%);
-  box-shadow: 0 12px 24px rgba(247, 147, 26, 0.16);
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .training-container .exercise-media-image:hover {
   transform: translateY(-2px);
-  box-shadow: 0 16px 28px rgba(247, 147, 26, 0.2);
 }
 
 .training-container .exercise-video-wrapper {
@@ -7883,7 +7874,6 @@ iframe.fullscreen-sim {
   border: 1.5px solid rgba(247, 147, 26, 0.6);
   border-radius: 18px;
   padding: 0.5rem;
-  box-shadow: 0 14px 26px rgba(247, 147, 26, 0.16);
 }
 
 .training-container .exercise-video-frame {
@@ -7917,7 +7907,6 @@ iframe.fullscreen-sim {
   border-radius: 999px;
   font-weight: 600;
   padding-inline: 1.25rem;
-  box-shadow: none;
   transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
 
@@ -7930,7 +7919,6 @@ iframe.fullscreen-sim {
 
 .btn-agenda:focus-visible {
   outline: 0;
-  box-shadow: 0 0 0 0.2rem rgba(31, 61, 89, 0.25);
 }
 
 .trainer-calendar-container {
@@ -7972,7 +7960,6 @@ iframe.fullscreen-sim {
 .glass-panel {
   border-radius: 36px;
   border: 1px solid rgba(255, 255, 255, 0.12);
-  box-shadow: 0 18px 48px rgba(5, 11, 25, 0.2);
   background: rgba(255, 255, 255, 0.2);
 }
 
@@ -7987,7 +7974,6 @@ iframe.fullscreen-sim {
 .landing-paths.glass-panel {
   background: rgba(255, 255, 255, 0.9);
   border-color: rgba(255, 255, 255, 0.55);
-  box-shadow: 0 24px 50px rgba(10, 20, 40, 0.18);
   color: #101d35;
 }
 
@@ -8013,7 +7999,6 @@ iframe.fullscreen-sim {
 .landing-cta-final.glass-panel {
   background: rgba(8, 14, 32, 0.4);
   border-color: rgba(30, 164, 230, 0.2);
-  box-shadow: 0 26px 60px rgba(5, 10, 24, 0.28);
 }
 
 .landing-eyebrow {
@@ -8078,7 +8063,6 @@ iframe.fullscreen-sim {
   border-radius: 32px;
   background: #ffffff;
   border: 1px solid rgba(255, 255, 255, 0.45);
-  box-shadow: 0 18px 42px rgba(14, 22, 40, 0.18);
 }
 
 .landing-stats-grid {
@@ -8094,7 +8078,6 @@ iframe.fullscreen-sim {
   border: 1px solid rgba(15, 25, 42, 0.08);
   padding: 1.25rem;
   text-align: center;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4);
 }
 
 .landing-stat-icon {
@@ -8107,7 +8090,6 @@ iframe.fullscreen-sim {
   justify-content: center;
   margin-bottom: 0.65rem;
   background: rgba(255, 255, 255, 0.7);
-  box-shadow: 0 6px 15px rgba(15, 25, 42, 0.12);
 }
 
 .landing-stat-value {
@@ -8139,7 +8121,6 @@ iframe.fullscreen-sim {
   padding: 2.25rem;
   background: #ffffff;
   border: 1px solid rgba(255, 255, 255, 0.4);
-  box-shadow: 0 18px 34px rgba(20, 28, 45, 0.14);
   display: flex;
   flex-direction: column;
   gap: 1rem;
@@ -8230,7 +8211,6 @@ iframe.fullscreen-sim {
   position: relative;
   overflow: hidden;
   min-height: 380px;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
 }
 
 .persona-slide {
@@ -8261,7 +8241,6 @@ iframe.fullscreen-sim {
   width: 100%;
   border-radius: 20px;
   overflow: visible;
-  box-shadow: 0 18px 36px rgba(6, 18, 42, 0.22);
   margin: 0;
   background: #0f172a;
 }
@@ -8275,7 +8254,6 @@ iframe.fullscreen-sim {
   border-radius: 16px;
   padding: 0.4rem;
   background: linear-gradient(180deg, #ffffff 0%, #fff7ed 100%);
-  box-shadow: 0 12px 24px rgba(247, 147, 26, 0.16);
   box-sizing: border-box;
   cursor: zoom-in;
 }
@@ -8419,7 +8397,6 @@ body.persona-lightbox-open {
   padding: clamp(0.6rem, 1.2vw, 1rem) clamp(0.6rem, 2.5vw, 1.6rem) clamp(0.75rem, 1.2vw, 1.1rem);
   padding-top: calc(clamp(0.6rem, 1.2vw, 1rem) + 2.5rem);
   position: relative;
-  box-shadow: 0 24px 60px rgba(3, 7, 18, 0.65);
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
@@ -8681,7 +8658,6 @@ body.persona-lightbox-open {
   padding: 1.75rem;
   background: #ffffff;
   border: 1px solid rgba(255, 255, 255, 0.35);
-  box-shadow: 0 22px 28px rgba(16, 29, 51, 0.12);
   height: 100%;
 }
 
@@ -8813,7 +8789,6 @@ body.persona-lightbox-open {
   width: auto;
   min-width: 200px;
   border-radius: 999px;
-  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.08);
 }
 
 .exercise-lookup-form .lookup-input::placeholder {
@@ -8821,14 +8796,12 @@ body.persona-lightbox-open {
 }
 
 .exercise-lookup-form .lookup-input:focus {
-  box-shadow: 0 0 0 3px rgba(30, 164, 230, 0.2);
   border-color: #1ea4e6;
   outline: none;
 }
 
 .exercise-lookup-results:focus {
   outline: none;
-  box-shadow: none;
 }
 
 .exercise-lookup-form .lookup-search-btn,
@@ -8857,16 +8830,11 @@ body.persona-lightbox-open {
 .lookup-result-card {
   border-radius: 16px;
   border: 1px solid rgba(59, 91, 253, 0.18);
-  box-shadow:
-    0 12px 28px rgba(15, 23, 42, 0.08),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.4);
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
   background: #ffffff;
 }
 
 .lookup-result-card:hover {
   transform: translateY(-3px);
-  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.16);
 }
 
 .lookup-results-grid {
@@ -8945,7 +8913,6 @@ body.persona-lightbox-open {
   border-radius: 14px;
   padding: 0.4rem;
   background: linear-gradient(180deg, #ffffff 0%, #fff7ed 100%);
-  box-shadow: 0 10px 18px rgba(247, 147, 26, 0.18);
 }
 
 .lookup-result-card .max-action-btn {
@@ -9027,7 +8994,6 @@ body.persona-lightbox-open {
   width: 64px;
   height: 64px;
   border-radius: 20px;
-  box-shadow: 0 18px 40px rgba(11, 44, 73, 0.3);
   background: rgba(255, 255, 255, 0.25);
 }
 .profile-avatar {
@@ -9050,7 +9016,6 @@ body.persona-lightbox-open {
   width: 72px;
   height: 72px;
   font-size: 1.35rem;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4);
 }
 
 .exercise-progress-chart {
@@ -9140,7 +9105,6 @@ body.persona-lightbox-open {
   white-space: normal;
   width: max-content;
   max-width: 220px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.15s ease;
@@ -9168,4 +9132,143 @@ body.persona-lightbox-open {
 .info-tooltip-trigger:focus-visible::after,
 .info-tooltip-trigger:focus-visible::before {
   opacity: 1;
+}
+
+/* Chrome-safe calendar overrides (macOS Chrome only) */
+html.chrome-macos #trainer-schedule .calendar-wrapper {
+  overflow: hidden;
+  isolation: isolate;
+  background: #ffffff;
+  border-radius: 0;
+}
+
+html.chrome-macos #trainer-schedule .calendar-wrapper.calendar-dragging {
+  overflow: visible;
+  isolation: auto;
+}
+
+html.chrome-macos #trainer-schedule .calendar-scroll,
+html.chrome-macos #trainer-schedule .calendar-grid,
+html.chrome-macos #trainer-schedule .calendar-columns {
+  filter: none;
+  contain: paint;
+}
+
+html.chrome-macos #trainer-schedule .calendar-wrapper.calendar-dragging .calendar-scroll,
+html.chrome-macos #trainer-schedule .calendar-wrapper.calendar-dragging .calendar-grid,
+html.chrome-macos #trainer-schedule .calendar-wrapper.calendar-dragging .calendar-columns {
+  contain: none;
+  overflow: visible;
+}
+
+html.chrome-macos #trainer-schedule .calendar-scroll {
+  -webkit-overflow-scrolling: auto;
+}
+
+html.chrome-macos #trainer-schedule .calendar-times,
+html.chrome-macos #trainer-schedule .calendar-time-spacer {
+  position: relative;
+  left: auto;
+  background: rgba(248, 249, 250, 0.92);
+  box-shadow: none;
+}
+
+html.chrome-macos #trainer-schedule .calendar-day-column,
+html.chrome-macos #trainer-schedule .calendar-slot,
+html.chrome-macos #trainer-schedule .calendar-event,
+html.chrome-macos #trainer-schedule .calendar-event-content {
+  will-change: auto;
+}
+
+html.chrome-macos #trainer-schedule .calendar-event.calendar-event--dragging {
+  will-change: transform;
+  transform: none;
+}
+
+html.chrome-macos #trainer-schedule .calendar-slot {
+  transition: none;
+}
+
+html.chrome-macos #trainer-schedule .calendar-slot::after {
+  background: rgba(30, 164, 230, 0.18);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+html.chrome-macos #trainer-schedule .calendar-slot:hover::after {
+  opacity: 1;
+}
+
+html.chrome-macos #trainer-schedule .calendar-slot-past::after,
+html.chrome-macos #trainer-schedule .calendar-slot-past:hover::after {
+  opacity: 0;
+}
+
+html.chrome-macos #trainer-schedule .calendar-event {
+  box-shadow: none;
+}
+
+html.chrome-macos #trainer-schedule .calendar-event-content {
+  transition: none;
+}
+
+html.chrome-macos #trainer-schedule .calendar-event--flash {
+  animation: none;
+}
+
+html.chrome-macos #trainer-schedule .calendar-event-content::after {
+  content: '';
+  position: absolute;
+  inset: 2px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.12);
+  opacity: 0;
+  transition: opacity 0.18s ease;
+  pointer-events: none;
+}
+
+html.chrome-macos #trainer-schedule .calendar-event:hover .calendar-event-content::after {
+  opacity: 0.12;
+}
+
+html.chrome-macos #trainer-schedule .calendar-header {
+  background: #f3f9fd;
+}
+
+html.chrome-macos #trainer-schedule .calendar-day-header--today {
+  background: #ffe6c8;
+}
+
+html.chrome-macos #trainer-schedule .calendar-day-column {
+  background: #ffffff;
+  overflow: visible;
+}
+
+html.chrome-macos #trainer-schedule .calendar-day-column:nth-child(even) {
+  background: #f3f9ff;
+}
+
+html.chrome-macos #trainer-schedule .calendar-day-column:nth-child(odd) {
+  background: #ffffff;
+}
+
+html.chrome-macos #trainer-schedule .calendar-slot {
+  background: #f7fbff;
+}
+
+html.chrome-macos #trainer-schedule .calendar-day-column--today {
+  box-shadow: none;
+  outline: 1px solid rgba(247, 147, 26, 0.55);
+  outline-offset: -1px;
+  background: #fff3e5;
+}
+
+html.chrome-macos #trainer-schedule #calendar-card .calendar-wrapper {
+  margin-left: 0;
+  margin-right: 0;
+  width: 100%;
+}
+
+html.chrome-macos #trainer-schedule .calendar-empty-state {
+  border-radius: 0;
 }

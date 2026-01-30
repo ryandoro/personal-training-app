@@ -2120,6 +2120,29 @@ def trainer_has_premium_generation_access(trainer: dict | None) -> bool:
     return False
 
 
+def _extract_search_terms(raw_query: str) -> list[str]:
+    if not raw_query:
+        return []
+    terms = re.findall(r"[A-Za-z0-9]+", raw_query.lower())
+    deduped = []
+    seen = set()
+    for term in terms:
+        if term in seen:
+            continue
+        seen.add(term)
+        deduped.append(term)
+    return deduped
+
+
+def _build_name_search_clause(raw_query: str, *, column: str = "w.name") -> tuple[str, list[str]]:
+    terms = _extract_search_terms(raw_query)
+    if not terms:
+        return "1=0", []
+    clause = " AND ".join([f"{column} ILIKE %s" for _ in terms])
+    params = [f"%{term}%" for term in terms]
+    return clause, params
+
+
 @app.route('/client_profile/<int:client_id>')
 @login_required
 def client_profile(client_id):
@@ -2189,8 +2212,9 @@ def client_profile(client_id):
             session_packages = cursor.fetchall() or []
 
             if exercise_search_term:
+                name_clause, name_params = _build_name_search_clause(exercise_search_term)
                 cursor.execute(
-                    """
+                    f"""
                     SELECT w.id AS workout_id,
                            w.name,
                            w.description,
@@ -2203,7 +2227,7 @@ def client_profile(client_id):
                  LEFT JOIN user_exercise_progress uep
                         ON uep.workout_id = w.id
                        AND uep.user_id = %s
-                     WHERE w.name ILIKE %s
+                     WHERE {name_clause}
                      ORDER BY CASE w.movement_type
                                   WHEN 'compound' THEN 1
                                   WHEN 'accessory' THEN 2
@@ -2212,7 +2236,7 @@ def client_profile(client_id):
                               w.name
                      LIMIT 25
                     """,
-                    (client_id, f"%{exercise_search_term}%"),
+                    (client_id, *name_params),
                 )
                 exercise_search_results = cursor.fetchall() or []
     booked_counts, completed_counts = _compute_client_schedule_counts(trainer_id, [client_id], sync_booked=True)
@@ -10208,8 +10232,9 @@ def search():
 
     with get_connection() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            name_clause, name_params = _build_name_search_clause(query)
             cursor.execute(
-                """
+                f"""
                 SELECT w.id AS workout_id,
                        w.name,
                        w.description,
@@ -10223,7 +10248,7 @@ def search():
             LEFT JOIN user_exercise_progress uep
                    ON w.id = uep.workout_id
                   AND uep.user_id = %s
-                WHERE LOWER(w.name) LIKE LOWER(%s)
+                WHERE {name_clause}
                  ORDER BY CASE w.movement_type
                               WHEN 'compound' THEN 1
                               WHEN 'accessory' THEN 2
@@ -10231,7 +10256,7 @@ def search():
                           END,
                           w.name
                 """,
-                (user_id, f"%{query}%"),
+                (user_id, *name_params),
             )
             results = cursor.fetchall() or []
 

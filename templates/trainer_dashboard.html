@@ -232,11 +232,16 @@
                         </div>
                     </div>
                 </div>
-                <div class="calendar-scroll" id="calendar-scroll">
-                    <div class="calendar-header" id="calendar-days-header"></div>
-                    <div class="calendar-grid">
+                <div class="calendar-shell">
+                    <div class="calendar-times-pane">
+                        <div class="calendar-time-spacer"></div>
                         <div class="calendar-times" id="calendar-times"></div>
-                        <div class="calendar-columns" id="calendar-day-columns"></div>
+                    </div>
+                    <div class="calendar-scroll" id="calendar-scroll">
+                        <div class="calendar-header" id="calendar-days-header"></div>
+                        <div class="calendar-grid">
+                            <div class="calendar-columns" id="calendar-day-columns"></div>
+                        </div>
                     </div>
                 </div>
                 <div class="calendar-empty-state" id="calendar-empty-state" hidden>
@@ -591,7 +596,6 @@
             <div class="calendar-event-time"></div>
         </div>
         <div class="calendar-event-handle calendar-event-handle-top"></div>
-        <div class="calendar-event-handle calendar-event-handle-bottom"></div>
     </div>
 </template>
 
@@ -600,6 +604,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const calendarRoot = document.getElementById('trainer-calendar');
     if (!calendarRoot) return;
 
+    const isChromeMacos = document.documentElement.classList.contains('chrome-macos');
     const dayHeaderEl = document.getElementById('calendar-days-header');
     const timesEl = document.getElementById('calendar-times');
     const columnsEl = document.getElementById('calendar-day-columns');
@@ -895,8 +900,150 @@ document.addEventListener('DOMContentLoaded', () => {
         modalEvent: null,
         justDragged: false,
         dragHoldInfo: null,
-        dragHoldTimer: null
+        dragHoldTimer: null,
+        suspendRender: false,
+        pendingRender: false,
+        pendingUpdates: new Map(),
+        updateCounter: 0
     };
+
+    function createDragGhost(sourceEl, baseRect) {
+        if (!sourceEl) return null;
+        const ghost = sourceEl.cloneNode(true);
+        ghost.classList.add('calendar-event--ghost');
+        ghost.classList.remove('calendar-event--dragging');
+        if (calendarRoot && calendarRoot.classList.contains('calendar-mode-full')) {
+            ghost.classList.add('calendar-event--ghost-full');
+        }
+        ghost.style.position = 'fixed';
+        ghost.style.margin = '0';
+        ghost.style.left = '0';
+        ghost.style.top = '0';
+        ghost.style.right = 'auto';
+        ghost.style.pointerEvents = 'none';
+        ghost.style.zIndex = '9999';
+        ghost.style.opacity = '0.45';
+        if (baseRect) {
+            ghost.style.left = `${baseRect.left}px`;
+            ghost.style.top = `${baseRect.top}px`;
+            ghost.style.width = `${baseRect.width}px`;
+            ghost.style.height = `${baseRect.height}px`;
+            ghost.style.transform = 'translate3d(0, 0, 0)';
+        }
+        document.body.appendChild(ghost);
+        return ghost;
+    }
+
+    function updateDragGhost(ghost, baseRect, targetLeft, targetTop) {
+        if (!ghost || !baseRect) return;
+        const deltaX = targetLeft - baseRect.left;
+        const deltaY = targetTop - baseRect.top;
+        ghost.style.transform = `translate3d(${deltaX}px, ${deltaY}px, 0)`;
+    }
+
+    function getEventVisibleRange(startDate, endDate) {
+        const totalMinutes = (state.viewEnd - state.viewStart) * 60;
+        const windowStart = state.viewStart * 60;
+        const windowEnd = state.viewEnd * 60;
+        const eventStartMinutes = startDate.getHours() * 60 + startDate.getMinutes();
+        const eventEndMinutes = endDate.getHours() * 60 + endDate.getMinutes();
+        const visibleStart = Math.max(windowStart, eventStartMinutes);
+        const visibleEnd = Math.min(windowEnd, eventEndMinutes);
+        if (visibleEnd <= windowStart || visibleStart >= windowEnd) return null;
+        const top = ((visibleStart - windowStart) / totalMinutes) * 100;
+        const durationVisible = Math.max(FIFTEEN_MINUTES, visibleEnd - visibleStart);
+        const height = (durationVisible / totalMinutes) * 100;
+        return { top, height, visibleStart, visibleEnd, totalMinutes, windowStart };
+    }
+
+    function scheduleDragFrame() {
+        const dragMeta = state.dragging;
+        if (!dragMeta || dragMeta.rafId) return;
+        dragMeta.rafId = requestAnimationFrame(processDragFrame);
+    }
+
+    function processDragFrame() {
+        const dragMeta = state.dragging;
+        if (!dragMeta || !dragMeta.pendingPointer) return;
+        const { x, y } = dragMeta.pendingPointer;
+        dragMeta.pendingPointer = null;
+        dragMeta.rafId = null;
+
+        const { type: action, originalStart, originalEnd, columnIndex, initialWidth } = dragMeta;
+        const totalMinutes = (state.viewEnd - state.viewStart) * 60;
+        const deltaX = x - dragMeta.startX;
+        const deltaY = y - dragMeta.startY;
+
+        let targetIndex = columnIndex;
+        if (action === 'move' && initialWidth) {
+            const rawDayDelta = Math.round(deltaX / initialWidth);
+            targetIndex = Math.max(0, Math.min(dayColumns.length - 1, columnIndex + rawDayDelta));
+        }
+        const scrollWrap = document.getElementById('calendar-scroll');
+        if (scrollWrap && initialWidth) {
+            const visibleStartIndex = Math.floor(scrollWrap.scrollLeft / initialWidth);
+            const visibleCount = Math.ceil(scrollWrap.clientWidth / initialWidth);
+            const visibleEndIndex = Math.min(dayColumns.length - 1, visibleStartIndex + visibleCount - 1);
+            targetIndex = Math.max(visibleStartIndex, Math.min(visibleEndIndex, targetIndex));
+        }
+        dragMeta.currentColumnIndex = targetIndex;
+
+        const column = dayColumns[targetIndex];
+        if (!column) return;
+        const columnRect = column.getBoundingClientRect();
+        dragMeta.rect = columnRect;
+
+        const minutesPerPixel = totalMinutes / (columnRect.height || 1);
+        const offsetMinutes = deltaY * minutesPerPixel;
+        const windowStartMinutes = state.viewStart * 60;
+        const windowEndMinutes = state.viewEnd * 60;
+        const originalStartMinutes = originalStart.getHours() * 60 + originalStart.getMinutes();
+        const originalEndMinutes = originalEnd.getHours() * 60 + originalEnd.getMinutes();
+        const startRel = originalStartMinutes - windowStartMinutes;
+        const endRel = originalEndMinutes - windowStartMinutes;
+        const minOffset = -startRel;
+        const maxOffset = totalMinutes - endRel;
+        const clampedOffsetMinutes = Math.min(maxOffset, Math.max(minOffset, offsetMinutes));
+        const effectiveDayDelta = targetIndex - columnIndex;
+        const newStart = new Date(originalStart.getTime() + (clampedOffsetMinutes + effectiveDayDelta * 1440) * MILLI_IN_MINUTE);
+        const newEnd = new Date(originalEnd.getTime() + (clampedOffsetMinutes + effectiveDayDelta * 1440) * MILLI_IN_MINUTE);
+
+        const minMinutes = FIFTEEN_MINUTES;
+        if ((newEnd - newStart) / MILLI_IN_MINUTE < minMinutes) return;
+
+        const visibleRange = getEventVisibleRange(newStart, newEnd);
+        if (!visibleRange) return;
+
+        let targetLeft = columnRect.left;
+        let targetTop = columnRect.top + ((visibleRange.visibleStart - visibleRange.windowStart) / totalMinutes) * columnRect.height;
+        if (scrollWrap && dragMeta.baseRect) {
+            const scrollRect = scrollWrap.getBoundingClientRect();
+            const maxLeft = scrollRect.right - dragMeta.baseRect.width;
+            const maxTop = scrollRect.bottom - dragMeta.baseRect.height;
+            targetLeft = Math.min(maxLeft, Math.max(scrollRect.left, targetLeft));
+            targetTop = Math.min(maxTop, Math.max(scrollRect.top, targetTop));
+        }
+        if (dragMeta.ghost && dragMeta.baseRect) {
+            updateDragGhost(dragMeta.ghost, dragMeta.baseRect, targetLeft, targetTop);
+        }
+
+        const snappedOffset = Math.round(clampedOffsetMinutes / FIFTEEN_MINUTES) * FIFTEEN_MINUTES;
+        const snappedStart = new Date(originalStart.getTime() + (snappedOffset + effectiveDayDelta * 1440) * MILLI_IN_MINUTE);
+        const snappedEnd = new Date(originalEnd.getTime() + (snappedOffset + effectiveDayDelta * 1440) * MILLI_IN_MINUTE);
+        dragMeta.previewStart = snappedStart;
+        dragMeta.previewEnd = snappedEnd;
+
+        dragMeta.lastSnappedKey = `${snappedStart.getTime()}-${snappedEnd.getTime()}`;
+    }
+
+    function syncHeaderHeight() {
+        if (!calendarRoot || !dayHeaderEl) return;
+        const height = dayHeaderEl.getBoundingClientRect().height;
+        if (height) {
+            calendarRoot.style.setProperty('--calendar-header-height', `${Math.round(height)}px`);
+        }
+    }
+
 
     function getClientSessionSnapshot(clientId) {
         const fallback = { sessionsLeft: null, sessionsTotal: null };
@@ -2007,10 +2154,6 @@ function applyWeekPicker(event) {
         columnsEl.innerHTML = '';
         dayColumns = [];
 
-        const spacer = document.createElement('div');
-        spacer.className = 'calendar-time-spacer';
-        dayHeaderEl.appendChild(spacer);
-
         for (let i = 0; i < 7; i += 1) {
             const dayDate = new Date(state.weekStart);
             dayDate.setDate(dayDate.getDate() + i);
@@ -2040,6 +2183,8 @@ function applyWeekPicker(event) {
             columnsEl.appendChild(col);
             dayColumns.push(col);
         }
+
+        requestAnimationFrame(syncHeaderHeight);
     }
 
     function renderTimes() {
@@ -2121,7 +2266,18 @@ function applyWeekPicker(event) {
         requestAnimationFrame(() => attemptFocus());
     }
 
+    function flushPendingRender() {
+        if (state.suspendRender) return;
+        if (!state.pendingRender) return;
+        state.pendingRender = false;
+        renderEvents();
+    }
+
     function renderEvents() {
+        if (state.suspendRender) {
+            state.pendingRender = true;
+            return;
+        }
         dayColumns.forEach(col => col.querySelectorAll('.calendar-event').forEach(el => el.remove()));
         if (state.events.length === 0) {
             if (state.selectedClient) {
@@ -2210,12 +2366,8 @@ function applyWeekPicker(event) {
                 contentArea.addEventListener('click', (evt) => handleEventClick(evt, event));
             }
             const topHandle = eventNode.querySelector('.calendar-event-handle-top');
-            const bottomHandle = eventNode.querySelector('.calendar-event-handle-bottom');
             if (topHandle) {
                 topHandle.addEventListener('pointerdown', (evt) => beginResize(evt, event, column, 'top'));
-            }
-            if (bottomHandle) {
-                bottomHandle.addEventListener('pointerdown', (evt) => beginResize(evt, event, column, 'bottom'));
             }
 
             column.appendChild(eventNode);
@@ -3283,12 +3435,25 @@ function applyWeekPicker(event) {
     function beginDrag(evt, eventData, column) {
         if (evt.target.closest('.calendar-event-handle')) return;
         evt.preventDefault();
+        if (isChromeMacos) {
+            calendarRoot.classList.add('calendar-dragging');
+        }
+        state.suspendRender = true;
+        state.pendingRender = false;
         const rect = column.getBoundingClientRect();
         const columnIndex = dayColumns.indexOf(column);
+        if (state.dragging) return;
         const eventElement = columnsEl.querySelector(`.calendar-event[data-id="${eventData.id}"][data-type="${getEntryType(eventData)}"]`);
         if (eventElement) {
             eventElement.classList.add('calendar-event--dragging');
         }
+        const baseRect = eventElement ? eventElement.getBoundingClientRect() : null;
+        const ghost = createDragGhost(eventElement, baseRect);
+        if (ghost && eventElement) {
+            eventElement.classList.add('calendar-event--ghost-hidden');
+        }
+        const timeEl = eventElement ? eventElement.querySelector('.calendar-event-time') : null;
+        const ghostTimeEl = ghost ? ghost.querySelector('.calendar-event-time') : null;
         state.dragging = {
             type: 'move',
             id: eventData.id,
@@ -3303,7 +3468,17 @@ function applyWeekPicker(event) {
             initialWidth: rect.width || 1,
             originalStart: new Date(eventData.start_time),
             originalEnd: new Date(eventData.end_time),
-            element: eventElement
+            element: eventElement,
+            useTransformDrag: isChromeMacos,
+            ghost,
+            baseRect,
+            timeEl,
+            ghostTimeEl,
+            previewTop: null,
+            previewHeight: null,
+            pendingPointer: null,
+            rafId: null,
+            lastSnappedKey: null
         };
         setPointerCapture(evt, evt.currentTarget || evt.target);
     }
@@ -3314,8 +3489,25 @@ function applyWeekPicker(event) {
             return;
         }
         evt.preventDefault();
+        if (isChromeMacos) {
+            calendarRoot.classList.add('calendar-dragging');
+        }
+        state.suspendRender = true;
+        state.pendingRender = false;
         const rect = column.getBoundingClientRect();
         const columnIndex = dayColumns.indexOf(column);
+        if (state.dragging) return;
+        const eventElement = columnsEl.querySelector(`.calendar-event[data-id="${eventData.id}"][data-type="${getEntryType(eventData)}"]`);
+        if (eventElement) {
+            eventElement.classList.add('calendar-event--dragging');
+        }
+        const baseRect = eventElement ? eventElement.getBoundingClientRect() : null;
+        const ghost = createDragGhost(eventElement, baseRect);
+        if (ghost && eventElement) {
+            eventElement.classList.add('calendar-event--ghost-hidden');
+        }
+        const timeEl = eventElement ? eventElement.querySelector('.calendar-event-time') : null;
+        const ghostTimeEl = ghost ? ghost.querySelector('.calendar-event-time') : null;
         state.dragging = {
             type: direction === 'top' ? 'resize-start' : 'resize-end',
             id: eventData.id,
@@ -3330,7 +3522,17 @@ function applyWeekPicker(event) {
             initialWidth: rect.width || 1,
             originalStart: new Date(eventData.start_time),
             originalEnd: new Date(eventData.end_time),
-            element: null
+            element: eventElement,
+            useTransformDrag: false,
+            ghost,
+            baseRect,
+            timeEl,
+            ghostTimeEl,
+            previewTop: null,
+            previewHeight: null,
+            pendingPointer: null,
+            rafId: null,
+            lastSnappedKey: null
         };
         setPointerCapture(evt, evt.currentTarget || evt.target);
     }
@@ -3347,67 +3549,9 @@ function applyWeekPicker(event) {
     }
 
     function handlePointerMove(evt) {
-        if (!state.dragging) return;
-        const { type: action, originalStart, originalEnd, columnIndex, initialWidth, entryType } = state.dragging;
-        let currentColumnIndex = state.dragging.currentColumnIndex;
-        const deltaY = evt.clientY - state.dragging.startY;
-        const totalMinutes = (state.viewEnd - state.viewStart) * 60;
-
-        if (action === 'move' && initialWidth) {
-            const deltaX = evt.clientX - state.dragging.startX;
-            const rawDayDelta = Math.round(deltaX / initialWidth);
-            let targetIndex = columnIndex + rawDayDelta;
-            targetIndex = Math.max(0, Math.min(dayColumns.length - 1, targetIndex));
-            if (targetIndex !== currentColumnIndex) {
-                const eventElement = columnsEl.querySelector(`.calendar-event[data-id="${state.dragging.id}"][data-type="${entryType}"]`);
-                if (eventElement && dayColumns[targetIndex]) {
-                    dayColumns[targetIndex].appendChild(eventElement);
-                    state.dragging.currentColumnIndex = targetIndex;
-                    const newRect = dayColumns[targetIndex].getBoundingClientRect();
-                    state.dragging.rect = newRect;
-                    state.dragging.initialWidth = newRect.width || state.dragging.initialWidth;
-                    state.dragging.column = dayColumns[targetIndex];
-                }
-                currentColumnIndex = targetIndex;
-            }
-        }
-
-        const column = dayColumns[currentColumnIndex];
-        if (!column) return;
-        const columnRect = column.getBoundingClientRect();
-        const minutesPerPixel = totalMinutes / (columnRect.height || 1);
-        const offsetMinutes = Math.round(deltaY * minutesPerPixel / FIFTEEN_MINUTES) * FIFTEEN_MINUTES;
-
-        const effectiveDayDelta = state.dragging.currentColumnIndex - columnIndex;
-        let newStart = new Date(originalStart.getTime() + (offsetMinutes + effectiveDayDelta * 1440) * MILLI_IN_MINUTE);
-        let newEnd = new Date(originalEnd.getTime() + (offsetMinutes + effectiveDayDelta * 1440) * MILLI_IN_MINUTE);
-
-        const minMinutes = FIFTEEN_MINUTES;
-        if ((newEnd - newStart) / MILLI_IN_MINUTE < minMinutes) return;
-
-        const eventElement = columnsEl.querySelector(`.calendar-event[data-id="${state.dragging.id}"][data-type="${entryType}"]`);
-        if (!eventElement) return;
-
-        const durationMinutes = (newEnd - newStart) / MILLI_IN_MINUTE;
-        const startMinutesRelative = (newStart.getHours() - state.viewStart) * 60 + newStart.getMinutes();
-        let visibleStart = Math.max(0, startMinutesRelative);
-        const maxStart = totalMinutes - durationMinutes;
-        visibleStart = Math.min(maxStart, visibleStart);
-        const adjustment = visibleStart - startMinutesRelative;
-        if (adjustment !== 0) {
-            newStart = new Date(newStart.getTime() + adjustment * MILLI_IN_MINUTE);
-            newEnd = new Date(newEnd.getTime() + adjustment * MILLI_IN_MINUTE);
-        }
-
-        const visibleEnd = Math.min(totalMinutes, visibleStart + durationMinutes);
-        const top = (visibleStart / totalMinutes) * 100;
-        const height = Math.max((visibleEnd - visibleStart) / totalMinutes * 100, 2);
-        eventElement.style.top = `${top}%`;
-        eventElement.style.height = `${height}%`;
-        eventElement.querySelector('.calendar-event-time').textContent = `${formatTime(newStart)} – ${formatTime(newEnd)}`;
-
-        state.dragging.previewStart = newStart;
-        state.dragging.previewEnd = newEnd;
+        if (!state.dragging || state.dragging.committing) return;
+        state.dragging.pendingPointer = { x: evt.clientX, y: evt.clientY };
+        scheduleDragFrame();
     }
 
     function handlePointerUp() {
@@ -3417,17 +3561,45 @@ function applyWeekPicker(event) {
             try { dragPointer.target.releasePointerCapture(dragPointer.id); } catch (_) {}
         }
         state.dragPointer = null;
+        if (isChromeMacos) {
+            calendarRoot.classList.remove('calendar-dragging');
+        }
         if (!state.dragging) return;
+        state.suspendRender = false;
         const dragMeta = state.dragging;
+        dragMeta.committing = true;
+        if (dragMeta.rafId) {
+            cancelAnimationFrame(dragMeta.rafId);
+        }
+        dragMeta.pendingPointer = null;
         const { previewStart, previewEnd, id, entryType, entryKey, element } = dragMeta;
         if (element) {
+            if (typeof dragMeta.currentColumnIndex === 'number' && dayColumns[dragMeta.currentColumnIndex]) {
+                dayColumns[dragMeta.currentColumnIndex].appendChild(element);
+            }
+            if (previewStart && previewEnd) {
+                const visibleRange = getEventVisibleRange(previewStart, previewEnd);
+                if (visibleRange) {
+                    element.style.top = `${visibleRange.top}%`;
+                    element.style.height = `${visibleRange.height}%`;
+                }
+                if (dragMeta.timeEl) {
+                    dragMeta.timeEl.textContent = `${formatTime(previewStart)} – ${formatTime(previewEnd)}`;
+                }
+            }
+            element.style.transform = '';
+            element.classList.remove('calendar-event--ghost-hidden');
             element.classList.remove('calendar-event--dragging');
+        }
+        if (dragMeta.ghost) {
+            dragMeta.ghost.remove();
         }
         const hadPreview = Boolean(previewStart && previewEnd);
         state.dragging = null;
         if (!hadPreview) {
             state.justDragged = false;
             renderEvents();
+            flushPendingRender();
             return;
         }
         if (hasBlockingConflict(previewStart, previewEnd, entryType, entryKey)) {
@@ -3436,8 +3608,17 @@ function applyWeekPicker(event) {
                 ? 'Personal time cannot overlap sessions or other personal time blocks.'
                 : 'Sessions cannot overlap other sessions or personal time blocks.';
             showDashboardToast(overlapMessage, 'danger');
+            flushPendingRender();
             return;
         }
+        const updateId = ++state.updateCounter;
+        state.pendingUpdates.set(entryKey, updateId);
+        const optimistic = { ...(state.events.find(ev => eventKey(ev) === entryKey) || {}), id };
+        optimistic.type = entryType === 'time_off' ? 'time_off' : 'session';
+        optimistic.start_time = previewStart.toISOString();
+        optimistic.end_time = previewEnd.toISOString();
+        upsertEvent(optimistic);
+        sortEvents();
         state.justDragged = true;
         setTimeout(() => {
             state.justDragged = false;
@@ -3453,6 +3634,10 @@ function applyWeekPicker(event) {
         })
             .then(res => res.json())
             .then(data => {
+                if (state.pendingUpdates.get(entryKey) !== updateId) {
+                    return;
+                }
+                state.pendingUpdates.delete(entryKey);
                 if (!data.success) {
                     const errorMessage = data.error || (entryType === 'time_off'
                         ? 'Unable to update personal time block.'
@@ -3469,10 +3654,12 @@ function applyWeekPicker(event) {
                 upsertEvent(payload);
                 sortEvents();
                 renderEvents();
-                const successMessage = entryType === 'time_off' ? 'Personal time updated.' : 'Booking updated.';
-                showDashboardToast(successMessage, 'success');
+                flushPendingRender();
             })
             .catch(() => {
+                if (state.pendingUpdates.get(entryKey) === updateId) {
+                    state.pendingUpdates.delete(entryKey);
+                }
                 const networkMessage = entryType === 'time_off'
                     ? 'Network error updating personal time block.'
                     : 'Network error updating booking.';
@@ -3590,6 +3777,7 @@ function applyWeekPicker(event) {
         rebuildGrid({ focusToday: true });
         updateWeekLabel();
         fetchEvents();
+        window.addEventListener('resize', syncHeaderHeight);
 
         bookButtons.forEach(btn => {
             btn.addEventListener('click', () => selectClient(btn));

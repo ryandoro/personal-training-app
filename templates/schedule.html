@@ -76,11 +76,16 @@
                         </div>
                     </div>
                 </div>
-                <div class="calendar-scroll" id="client-calendar-scroll">
-                    <div class="calendar-header" id="client-days-header"></div>
-                    <div class="calendar-grid">
+                <div class="calendar-shell">
+                    <div class="calendar-times-pane">
+                        <div class="calendar-time-spacer"></div>
                         <div class="calendar-times" id="client-times"></div>
-                        <div class="calendar-columns" id="client-day-columns"></div>
+                    </div>
+                    <div class="calendar-scroll" id="client-calendar-scroll">
+                        <div class="calendar-header" id="client-days-header"></div>
+                        <div class="calendar-grid">
+                            <div class="calendar-columns" id="client-day-columns"></div>
+                        </div>
                     </div>
                 </div>
                 <div class="calendar-scroll-hint" id="client-scroll-hint">Swipe sideways to explore the week</div>
@@ -459,14 +464,10 @@
         fetchEvents();
     }
 
-   function renderHeaders() {
+    function renderHeaders() {
         dayHeaderEl.innerHTML = '';
         columnsEl.innerHTML = '';
         dayColumns = [];
-
-        const spacer = document.createElement('div');
-        spacer.className = 'calendar-time-spacer';
-        dayHeaderEl.appendChild(spacer);
         const today = new Date();
         today.setHours(0, 0, 0, 0);
 
@@ -474,7 +475,7 @@
             const dayDate = new Date(state.weekStart);
             dayDate.setDate(dayDate.getDate() + i);
 
-           const header = document.createElement('div');
+            const header = document.createElement('div');
             header.className = 'calendar-day-header';
             header.dataset.date = dayDate.toISOString();
             const { weekday, month, day } = formatDayParts(dayDate);
@@ -500,6 +501,14 @@
             }
             columnsEl.appendChild(col);
             dayColumns.push(col);
+        }
+    }
+
+    function syncHeaderHeight() {
+        if (!calendarRoot || !dayHeaderEl) return;
+        const height = dayHeaderEl.getBoundingClientRect().height;
+        if (height) {
+            calendarRoot.style.setProperty('--calendar-header-height', `${Math.round(height)}px`);
         }
     }
 
@@ -780,6 +789,7 @@
     function rebuild(options = {}) {
         const { focusToday = false, smooth = false } = options;
         renderHeaders();
+        requestAnimationFrame(syncHeaderHeight);
         renderTimes();
         renderSlots();
         if (focusToday && focusTodayColumn({ smooth })) {
@@ -817,6 +827,8 @@
                     setTimeout(hideHint, 4000);
                 }
             });
+
+        window.addEventListener('resize', syncHeaderHeight);
 
         prevWeekBtn.addEventListener('click', () => {
             state.weekStart.setDate(state.weekStart.getDate() - 7);
