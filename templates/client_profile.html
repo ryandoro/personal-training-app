@@ -3234,6 +3234,17 @@
             const descId = target.dataset.id;
             const descEl = document.getElementById(descId);
             if (!descEl) return;
+            const isOverlay = descEl.classList.contains('lookup-description');
+            if (!isOverlay) {
+                const isHidden = descEl.style.display === '' || descEl.style.display === 'none';
+                descEl.style.display = isHidden ? 'block' : 'none';
+                if (typeof target.dataset.labelShow !== 'undefined') {
+                    target.textContent = isHidden
+                        ? (target.dataset.labelHide || 'Hide Description')
+                        : (target.dataset.labelShow || 'View Description');
+                }
+                return;
+            }
             const isOpen = descEl.classList.contains('is-open');
             if (!isOpen) {
                 document.querySelectorAll('.lookup-description.is-open').forEach((openEl) => {
