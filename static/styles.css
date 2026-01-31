@@ -2985,6 +2985,82 @@ iframe.fullscreen-sim {
   font-weight: 600;
 }
 
+.client-injury-alert {
+  background: rgba(180, 35, 46, 0.08);
+  border: 1px solid rgba(180, 35, 46, 0.2);
+  border-left: 4px solid #b4232e;
+  border-radius: 8px;
+  color: #4a1f24;
+  contain: paint;
+  box-shadow: none;
+  filter: none;
+}
+
+.client-injury-alert > .d-flex {
+  justify-content: center;
+  text-align: center;
+}
+
+.client-injury-alert > .d-flex > div {
+  text-align: center;
+}
+
+.client-injury-alert > .d-flex .bi {
+  margin-right: 0;
+}
+
+.client-injury-alert .bi {
+  color: #9b2c2c;
+}
+
+.client-injury-alert .badge {
+  background: rgba(180, 35, 46, 0.12);
+  border: 1px solid rgba(180, 35, 46, 0.35);
+  color: #5a232a;
+  border-radius: 6px;
+  box-shadow: none;
+}
+
+.client-injury-alert .badge.bg-danger,
+.client-injury-alert .badge.bg-light {
+  background: rgba(180, 35, 46, 0.12) !important;
+  color: inherit !important;
+}
+
+.client-injury-alert .text-white-50 {
+  color: rgba(74, 31, 36, 0.55) !important;
+}
+
+.client-injury-alert em {
+  color: #5a2a30;
+}
+
+.client-profile-container .surface-hero--dashboard {
+  background: #1ea4e6;
+}
+
+.client-profile-container .client-hero-name {
+  text-shadow: none;
+}
+
+.client-profile-container .client-pill:hover,
+.client-profile-container .client-pill:focus-visible,
+.client-profile-container .client-metric--cta:hover {
+  transform: none;
+}
+
+html.chrome-macos .client-injury-alert {
+  isolation: isolate;
+}
+
+html.chrome-macos .client-injury-alert .badge {
+  background: rgba(180, 35, 46, 0.12) !important;
+  color: inherit !important;
+  border: 1px solid rgba(180, 35, 46, 0.35);
+  border-radius: 6px;
+  box-shadow: none;
+}
+
 /* Bitcoin Orange Styles */
 .bitcoin-orange {
     color: #f7931a !important;
@@ -3320,8 +3396,8 @@ iframe.fullscreen-sim {
   width: 100%;
   max-width: 100%;
   margin: 0 auto;
-  background: rgba(30, 164, 230, 0.08);
-  border: 1px solid rgba(30, 164, 230, 0.3);
+  background: none;
+  border: none;
   border-radius: 14px;
   padding: 0.85rem 1rem;
   display: flex;
@@ -8833,10 +8909,6 @@ body.persona-lightbox-open {
   background: #ffffff;
 }
 
-.lookup-result-card:hover {
-  transform: translateY(-3px);
-}
-
 .lookup-results-grid {
   justify-content: center;
 }
@@ -8869,6 +8941,8 @@ body.persona-lightbox-open {
   text-align: center;
   height: 100%;
   padding: 1.35rem;
+  position: relative;
+  overflow: visible;
 }
 
 .lookup-result-card .card-body > * {
@@ -8926,11 +9000,113 @@ body.persona-lightbox-open {
   text-align: left;
 }
 
+.client-profile-container .lookup-result-card .max-pill-row {
+  flex-wrap: nowrap;
+  gap: 0.5rem;
+}
+
+.client-profile-container .lookup-result-card .max-pill {
+  min-width: 0;
+  padding: 0.3rem 0.7rem;
+  white-space: nowrap;
+}
+
+
 .lookup-description {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  padding: 1.5rem 1.25rem 1.25rem;
   border-radius: 12px;
-  border: 1px dashed #d7e3ff;
-  padding: 0.75rem;
-  background: #f8faff;
+  border: 2px solid rgba(110, 120, 135, 0.55);
+  background: #eef1f5;
+  box-sizing: border-box;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateX(-50%) translateY(6px);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  z-index: 2;
+  overflow: visible;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.lookup-description-trigger {
+  position: relative;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+.lookup-result-card .lookup-description {
+  width: calc(100% - 1.2rem);
+  max-width: 360px;
+  height: auto;
+  max-height: none;
+  text-align: center;
+}
+
+.lookup-description.is-open {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: translateX(-50%) translateY(0);
+}
+
+.lookup-description p {
+  max-width: 92%;
+}
+
+@media (max-width: 576px) {
+  body.description-modal-open {
+    overflow: hidden;
+  }
+
+  body.description-modal-open::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background: rgba(18, 24, 34, 0.55);
+    z-index: 9000;
+  }
+
+  .lookup-description {
+    position: fixed;
+    top: 12vh;
+    left: 50%;
+    bottom: auto;
+    width: min(92vw, 420px);
+    max-width: 92vw;
+    max-height: calc(100vh - 160px);
+    overflow: auto;
+    z-index: 9010;
+    transform: translateX(-50%) translateY(6px);
+  }
+
+  .lookup-description.is-open {
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+.lookup-description__close {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  border: none;
+  background: transparent;
+  color: #1a57d1;
+  font-size: 0.9rem;
+  line-height: 1;
+  padding: 0.25rem;
+  cursor: pointer;
+}
+
+.lookup-description__close:hover,
+.lookup-description__close:focus-visible {
+  color: #0d5f9b;
 }
 
 .lookup-result-card .card-title {
