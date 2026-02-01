@@ -6,6 +6,23 @@
 {% endblock %}
 
 {% block content %}
+<style>
+    html.client-profile-page,
+    body.client-profile-page {
+        height: auto;
+        min-height: 100%;
+        min-height: 100dvh;
+    }
+
+    body.client-profile-page main {
+        flex: 0 0 auto;
+        padding-bottom: 0;
+    }
+
+    body.client-profile-page .client-profile-container {
+        padding-bottom: 10rem;
+    }
+</style>
 <div class="container client-profile-container">
     {% set sessions_summary = session_summary %}
     {% set sessions_total = sessions_summary.sessions_total %}
@@ -1154,6 +1171,8 @@
 <script src="{{ url_for('static', filename='js/exercise_picker.js') }}"></script>
 <script>
 (function(){
+    document.documentElement.classList.add('client-profile-page');
+    document.body.classList.add('client-profile-page');
     const configNode = document.getElementById('client-profile-config');
     let serverConfig = {};
     if (configNode) {
