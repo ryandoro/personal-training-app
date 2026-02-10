@@ -571,11 +571,6 @@ footer {
   color: inherit;
 }
 
-.client-pill:hover,
-.client-pill:focus-visible {
-  transform: translateY(-1px);
-}
-
 .client-pill--contact,
 .client-pill--stat {
   background: rgba(17, 33, 56, 0.65) !important;
@@ -7214,7 +7209,7 @@ html.chrome-macos .client-injury-alert .badge {
   display: none;
 }
 
-@media (min-width: 992px) {
+@media (min-width: 768px) {
   .client-profile-container .training-container .exercise-card:not(.exercise-card-collapsed) {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto auto;
@@ -7541,7 +7536,7 @@ html.chrome-macos .client-injury-alert .badge {
   }
 }
 
-@media (min-width: 992px) {
+@media (min-width: 768px) {
   .training-container:not(.client-workout) .exercise-card:not(.exercise-card-collapsed) {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto auto;
