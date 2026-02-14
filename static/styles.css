@@ -490,7 +490,7 @@ footer {
 
 
 .card {
-    background: rgba(255, 255, 255, 0.68);
+    background: #BDC3D0;
     border: 1px solid rgba(30, 164, 230, 0.16);
     border-radius: 20px;
     padding: 1.75rem;
@@ -2395,12 +2395,7 @@ iframe.fullscreen-sim {
   pointer-events: none;
 }
 
-.generate-workout-btn:hover:not(:disabled) {
-  transform: translateY(-2px);
-}
-
 .generate-workout-btn:active:not(:disabled) {
-  transform: translateY(0px) scale(0.99);
   background: #1EA4E6;
 }
 
@@ -2515,11 +2510,6 @@ iframe.fullscreen-sim {
 
 .session-complete-btn:hover {
   color: #ffffff;
-  transform: translateY(-1px);
-}
-
-.session-complete-btn:active {
-  transform: translateY(0px) scale(0.99);
 }
 
 .session-action-row {
@@ -3445,11 +3435,6 @@ html.chrome-macos .client-injury-alert .badge {
 
 .max-pill.update-pr-trigger {
   cursor: pointer;
-}
-
-.max-pill.update-pr-trigger:hover,
-.max-pill.update-pr-trigger:focus-visible {
-  transform: translateY(-1px);
 }
 
 .max-pill.update-pr-trigger:focus-visible {
@@ -6967,7 +6952,6 @@ html.chrome-macos .client-injury-alert .badge {
 .training-container .exercise-refresh-btn:hover,
 .training-container .exercise-refresh-btn:focus-visible {
   color: #159a74;
-  transform: scale(1.05);
 }
 
 .training-container .exercise-refresh-btn:disabled {
@@ -6995,7 +6979,6 @@ html.chrome-macos .client-injury-alert .badge {
 .exercise-card-controls .exercise-remove-btn:hover,
 .exercise-card-controls .exercise-remove-btn:focus-visible {
   color: #a71d2a;
-  transform: scale(1.05);
 }
 
 .exercise-card-controls .exercise-remove-btn:disabled {
@@ -7929,7 +7912,7 @@ html.chrome-macos .client-injury-alert .badge {
 }
 
 .training-container .exercise-media-image:hover {
-  transform: translateY(-2px);
+  cursor: pointer;
 }
 
 .training-container .exercise-video-wrapper {
