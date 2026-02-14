@@ -1129,6 +1129,32 @@
         </div>
     </div>
 
+    <div class="modal fade exercise-video-modal"
+         id="exerciseVideoModal"
+         tabindex="-1"
+         aria-labelledby="exerciseVideoModalTitle"
+         aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered exercise-video-modal__dialog">
+            <div class="modal-content exercise-video-modal__content border-0">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="exerciseVideoModalTitle">Exercise Demo</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-0">
+                    <div class="exercise-video-modal__player">
+                        <iframe id="exerciseVideoModalFrame"
+                                class="exercise-video-modal__frame"
+                                src=""
+                                title="Exercise demo video"
+                                allow="autoplay; encrypted-media; picture-in-picture"
+                                allowfullscreen
+                                loading="lazy"></iframe>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
 </div>
 
 <script id="client-profile-config" type="application/json">
@@ -1289,6 +1315,12 @@
         currentIndex: 0,
         groupImages: [],
         touchStartX: null
+    };
+    const exerciseVideoModalState = {
+        initialized: false,
+        modal: null,
+        frame: null,
+        title: null
     };
     const workoutToggleContainer = document.getElementById('client-workout-toggle-container');
     const workoutCollapseToggle = document.getElementById('client-workout-collapse-toggle');
@@ -2885,6 +2917,40 @@
         });
     }
 
+    function buildExerciseVideoEmbedUrl(youtubeId) {
+        const safeId = String(youtubeId || '').trim();
+        if (!safeId) return '';
+        return `https://www.youtube.com/embed/${encodeURIComponent(safeId)}?autoplay=1&mute=1&playsinline=1&rel=0`;
+    }
+
+    function initExerciseVideoModal() {
+        const state = exerciseVideoModalState;
+        state.modal = document.getElementById('exerciseVideoModal');
+        state.frame = document.getElementById('exerciseVideoModalFrame');
+        state.title = document.getElementById('exerciseVideoModalTitle');
+        if (!state.modal || !state.frame) return;
+        if (state.initialized) return;
+        state.initialized = true;
+
+        document.body.addEventListener('click', (event) => {
+            const trigger = event.target.closest('.exercise-video-launch');
+            if (!trigger) return;
+            const youtubeId = trigger.dataset.youtubeId || '';
+            const exerciseName = (trigger.dataset.exerciseName || '').trim();
+            state.frame.src = buildExerciseVideoEmbedUrl(youtubeId);
+            if (state.title) {
+                state.title.textContent = exerciseName ? `${exerciseName} Demo` : 'Exercise Demo';
+            }
+        });
+
+        state.modal.addEventListener('hidden.bs.modal', () => {
+            state.frame.src = '';
+            if (state.title) {
+                state.title.textContent = 'Exercise Demo';
+            }
+        });
+    }
+
     function bindImageClickEvents() {
         const state = exerciseLightboxState;
         state.lightbox = document.getElementById('exerciseLightbox');
@@ -3214,6 +3280,7 @@
         setupTrainerInjuryForm();
         bindTrainerGoalLimit();
         bindImageClickEvents();
+        initExerciseVideoModal();
         initTrainerSettingsCollapsible();
 
         document.body.addEventListener('click', handleUpdatePrClick);

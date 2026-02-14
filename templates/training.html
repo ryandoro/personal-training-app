@@ -7,7 +7,7 @@
 {% block content %}
 <div class="container-fluid training-container px-0">
     {% if not form_completed %}   
-        <div class="card shadow p-4 mb-5 rounded">
+        <div class="card p-4 mb-5 rounded">
             <div class="card-body">
                 {% if user_role == 'trainer' %}
                     <h3 class="card-title text-center fw-bold mb-4">Welcome to your FitBaseAI Trainer launchpad!</h3>
@@ -66,7 +66,7 @@
                 </div>
             </div>
         </div>
-        <div class="card shadow p-4 rounded mb-5">
+        <div class="card p-4 rounded mb-5">
             <h4 class="text-center text-primary mb-4">Personal Training Questionnaire</h4>
             <div class="card-body">
                 <form id="training-form" action="/training" method="post" class="needs-validation" novalidate>
@@ -808,7 +808,7 @@
             <div id="workout-details" class="mt-0">
                 {% for category, workouts in grouped_workouts.items() %}
                 <div id="{{ category|replace(' ', '-')|lower }}-workouts" class="d-none">
-                    <div class="card shadow-sm mb-2">
+                    <div class="card mb-2">
                         <div class="card-header bg-primary text-white">
                             <h5 class="m-0">{{ category }}</h5>
                         </div>
@@ -2171,6 +2171,23 @@
                     : `${weightDisplay} × ${repsDisplay}`;
                 const youtubeSection = exercise.youtube_id ? `
                         <p class="exercise-media-label mb-2">Video Demonstration:</p>
+                        <button type="button"
+                                class="exercise-video-launch mb-4"
+                                data-youtube-id="${exercise.youtube_id}"
+                                data-exercise-name="${safeExerciseName}"
+                                data-bs-toggle="modal"
+                                data-bs-target="#exerciseVideoModal"
+                                aria-label="Watch ${safeExerciseName} demo video">
+                            <span class="exercise-video-launch__thumb-wrap">
+                                <img src="https://i.ytimg.com/vi/${exercise.youtube_id}/hqdefault.jpg"
+                                     alt=""
+                                     class="exercise-video-launch__thumb"
+                                     loading="lazy">
+                                <span class="exercise-video-launch__play" aria-hidden="true">
+                                    <i class="bi bi-play-fill"></i>
+                                </span>
+                            </span>
+                        </button>
                         <div class="exercise-video-wrapper mb-4">
                             <div class="exercise-video-shell">
                                 <iframe
@@ -2327,7 +2344,7 @@
                     <li class="mb-4 exercise-list-item"
                         data-subcategory="${subcategoryAttr}"
                         data-workout-id="${workoutIdAttr}">
-                        <div class="card shadow text-center w-100 exercise-card${cardCustomClass}"
+                        <div class="card text-center w-100 exercise-card${cardCustomClass}"
                              data-workout-card="${sanitizedKey}">
                             <div class="exercise-card-header">
                                 <button class="exercise-card-toggle" type="button" aria-expanded="true" aria-controls="${bodyId}">
@@ -2918,6 +2935,32 @@
                 </div>
             </div>
         </div>
+
+        <div class="modal fade exercise-video-modal"
+             id="exerciseVideoModal"
+             tabindex="-1"
+             aria-labelledby="exerciseVideoModalTitle"
+             aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered exercise-video-modal__dialog">
+                <div class="modal-content exercise-video-modal__content border-0">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="exerciseVideoModalTitle">Exercise Demo</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body p-0">
+                        <div class="exercise-video-modal__player">
+                            <iframe id="exerciseVideoModalFrame"
+                                    class="exercise-video-modal__frame"
+                                    src=""
+                                    title="Exercise demo video"
+                                    allow="autoplay; encrypted-media; picture-in-picture"
+                                    allowfullscreen
+                                    loading="lazy"></iframe>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
         
             
         <script>
@@ -2957,8 +3000,50 @@
             }
         });
 
+        const exerciseVideoModalState = {
+            initialized: false,
+            modal: null,
+            frame: null,
+            title: null
+        };
+
+        function buildExerciseVideoEmbedUrl(youtubeId) {
+            const safeId = String(youtubeId || '').trim();
+            if (!safeId) return '';
+            return `https://www.youtube.com/embed/${encodeURIComponent(safeId)}?autoplay=1&mute=1&playsinline=1&rel=0`;
+        }
+
+        function initExerciseVideoModal() {
+            const state = exerciseVideoModalState;
+            state.modal = document.getElementById('exerciseVideoModal');
+            state.frame = document.getElementById('exerciseVideoModalFrame');
+            state.title = document.getElementById('exerciseVideoModalTitle');
+            if (!state.modal || !state.frame) return;
+            if (state.initialized) return;
+            state.initialized = true;
+
+            document.body.addEventListener('click', (event) => {
+                const trigger = event.target.closest('.exercise-video-launch');
+                if (!trigger) return;
+                const youtubeId = trigger.dataset.youtubeId || '';
+                const exerciseName = (trigger.dataset.exerciseName || '').trim();
+                state.frame.src = buildExerciseVideoEmbedUrl(youtubeId);
+                if (state.title) {
+                    state.title.textContent = exerciseName ? `${exerciseName} Demo` : 'Exercise Demo';
+                }
+            });
+
+            state.modal.addEventListener('hidden.bs.modal', () => {
+                state.frame.src = '';
+                if (state.title) {
+                    state.title.textContent = 'Exercise Demo';
+                }
+            });
+        }
+
         document.addEventListener('DOMContentLoaded', function () {
             bindImageClickEvents();
+            initExerciseVideoModal();
         });
 
         // Clickable Image JS 

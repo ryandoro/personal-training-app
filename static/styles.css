@@ -7360,6 +7360,16 @@ html.chrome-macos .client-injury-alert .badge {
     margin: 0 !important;
   }
 
+  .client-profile-container .training-container .exercise-card:not(.exercise-card-collapsed) .exercise-video-launch {
+    display: inline-flex;
+    width: clamp(170px, 19vw, 230px);
+    margin: 0 !important;
+  }
+
+  .client-profile-container .training-container .exercise-card:not(.exercise-card-collapsed) .exercise-video-wrapper {
+    display: none;
+  }
+
   .client-profile-container .training-container .exercise-card:not(.exercise-card-collapsed) .exercise-video-shell {
     width: 100%;
     height: 100%;
@@ -7687,6 +7697,16 @@ html.chrome-macos .client-injury-alert .badge {
     margin: 0 !important;
   }
 
+  .training-container:not(.client-workout) .exercise-card:not(.exercise-card-collapsed) .exercise-video-launch {
+    display: inline-flex;
+    width: clamp(170px, 19vw, 230px);
+    margin: 0 !important;
+  }
+
+  .training-container:not(.client-workout) .exercise-card:not(.exercise-card-collapsed) .exercise-video-wrapper {
+    display: none;
+  }
+
   .training-container:not(.client-workout) .exercise-card:not(.exercise-card-collapsed) .exercise-video-shell {
     width: 100%;
     height: 100%;
@@ -7921,6 +7941,58 @@ html.chrome-macos .client-injury-alert .badge {
   justify-content: center;
 }
 
+.training-container .exercise-video-launch {
+  display: none;
+  width: min(100%, 240px);
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  align-items: center;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.training-container .exercise-video-launch__thumb-wrap {
+  width: 100%;
+  aspect-ratio: 9 / 16;
+  position: relative;
+  border-radius: 18px;
+  overflow: hidden;
+  background: #0f172a;
+  border: 2px solid #f4b66a;
+}
+
+.training-container .exercise-video-launch__thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.training-container .exercise-video-launch__play {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(6, 18, 42, 0.24);
+}
+
+.training-container .exercise-video-launch__play i {
+  width: 64px;
+  height: 64px;
+  border-radius: 999px;
+  background: #1ea4e6;
+  color: #ffffff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2.1rem;
+  line-height: 1;
+  padding-left: 0.2rem;
+}
+
 .training-container .exercise-video-shell {
   width: 100%;
   max-width: 260px;
@@ -7935,6 +8007,51 @@ html.chrome-macos .client-injury-alert .badge {
   aspect-ratio: 9 / 16;
   border: 0;
   border-radius: 12px;
+  display: block;
+}
+
+.exercise-video-modal__dialog {
+  max-width: min(430px, 92vw);
+}
+
+.exercise-video-modal__content {
+  background: #0f172a;
+  border: 1px solid #1f2f45;
+  border-radius: 20px;
+  overflow: hidden;
+}
+
+.exercise-video-modal .modal-header {
+  background: #0f172a;
+  border-bottom: 1px solid #1f2f45;
+}
+
+.exercise-video-modal .modal-title {
+  color: #ffffff;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.exercise-video-modal .btn-close {
+  filter: invert(1);
+  opacity: 0.85;
+}
+
+.exercise-video-modal .btn-close:hover,
+.exercise-video-modal .btn-close:focus-visible {
+  opacity: 1;
+}
+
+.exercise-video-modal__player {
+  width: 100%;
+  aspect-ratio: 9 / 16;
+  background: #000000;
+}
+
+.exercise-video-modal__frame {
+  width: 100%;
+  height: 100%;
+  border: 0;
   display: block;
 }
 

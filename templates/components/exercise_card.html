@@ -182,6 +182,23 @@
                     {% endif %}
                     {% if exercise.youtube_id %}
                         <p class="exercise-media-label mb-2">Video Demonstration:</p>
+                        <button type="button"
+                                class="exercise-video-launch mb-4"
+                                data-youtube-id="{{ exercise.youtube_id }}"
+                                data-exercise-name="{{ exercise_name }}"
+                                data-bs-toggle="modal"
+                                data-bs-target="#exerciseVideoModal"
+                                aria-label="Watch {{ exercise_name }} demo video">
+                            <span class="exercise-video-launch__thumb-wrap">
+                                <img src="https://i.ytimg.com/vi/{{ exercise.youtube_id }}/hqdefault.jpg"
+                                     alt=""
+                                     class="exercise-video-launch__thumb"
+                                     loading="lazy">
+                                <span class="exercise-video-launch__play" aria-hidden="true">
+                                    <i class="bi bi-play-fill"></i>
+                                </span>
+                            </span>
+                        </button>
                         <div class="exercise-video-wrapper mb-4">
                             <div class="exercise-video-shell">
                                 <iframe class="exercise-video-frame"
@@ -193,7 +210,7 @@
                         </div>
                     {% endif %}
                     <div class="d-flex flex-wrap justify-content-center gap-2 max-action-buttons">
-                        <button class="btn btn-outline-primary btn-sm max-action-btn toggle-description"
+                        <button class="btn btn-outline-primary btn-sm max-action-btn toggle-description mt-2 mb-2"
                                 type="button"
                                 data-id="{{ desc_dom_id }}"
                                 data-label-show="View Description"
