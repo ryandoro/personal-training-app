@@ -2173,14 +2173,12 @@ iframe.fullscreen-sim {
 
 .session-card:hover,
 .session-card:focus-visible {
-  transform: translateY(-2px);
   border-color: rgba(30, 164, 230, 0.45);
 }
 
 .session-card:active,
 .session-card.session-card--pressed {
-  border-color: rgba(30, 164, 230, 0.7);
-  transform: translateY(0);
+  border-color: rgba(30, 164, 230, 0.8);
 }
 
 .session-card__column {
@@ -2703,7 +2701,6 @@ iframe.fullscreen-sim {
 }
 
 .btn-ignite:hover {
-  transform: translateY(-2px) scale(1.04);
   background-position: right center;
 }
 
@@ -2745,7 +2742,6 @@ iframe.fullscreen-sim {
 }
 
 .btn-brand:hover {
-  transform: translateY(-1px);
   color: #fff;
 }
 
@@ -4483,6 +4479,223 @@ html.chrome-macos .client-injury-alert .badge {
   opacity: 0.9;
 }
 
+.trainer-schedule-client-picker {
+  width: min(560px, 100%);
+}
+
+.trainer-schedule-client-picker__row {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.trainer-schedule-client-picker .form-select {
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  background: rgba(255, 255, 255, 0.96);
+  color: #0f4c75;
+  font-weight: 600;
+  min-height: 2.2rem;
+}
+
+.trainer-schedule-client-picker .form-select:focus {
+  border-color: #ffffff;
+  box-shadow: 0 0 0 0.2rem rgba(255, 255, 255, 0.32);
+}
+
+.trainer-schedule-client-picker__manage {
+  border-radius: 999px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+#trainer-schedule .trainer-schedule-card .card-header {
+  padding-top: 0.4rem;
+  padding-bottom: 0.75rem;
+}
+
+#trainer-schedule .trainer-schedule-hero {
+  background: #ffffff;
+  border: 0;
+  box-shadow: none;
+}
+
+#trainer-schedule .trainer-schedule-header-content {
+  width: min(860px, 100%);
+  margin-inline: auto;
+  gap: 0.75rem !important;
+  color: #0f4c75;
+}
+
+#trainer-schedule .trainer-schedule-header-intro {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+#trainer-schedule .trainer-schedule-header-intro h4 {
+  letter-spacing: 0.01em;
+  color: #0f4c75;
+  font-weight: 700;
+}
+
+#trainer-schedule .trainer-schedule-subtitle {
+  color: #5b7e98;
+  font-weight: 600;
+}
+
+#trainer-schedule .trainer-schedule-header-controls {
+  width: min(760px, 100%);
+  margin-inline: auto;
+  padding: 0.65rem 0.95rem 0.75rem;
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(70, 180, 228, 0.24) 0%, rgba(62, 170, 220, 0.16) 100%);
+  border: 1px solid rgba(30, 164, 230, 0.34);
+  box-shadow: none;
+}
+
+#trainer-schedule .trainer-schedule-client-picker {
+  width: min(680px, 100%);
+}
+
+#trainer-schedule .trainer-schedule-client-picker .form-label {
+  color: #5b7e98 !important;
+  letter-spacing: 0.1em;
+  font-weight: 700;
+}
+
+#trainer-schedule .trainer-schedule-client-picker .form-select {
+  --trainer-client-select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1.5 1.5 6 6l4.5-4.5' fill='none' stroke='%230f4c75' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  border-color: rgba(30, 164, 230, 0.36);
+  background-color: rgba(246, 252, 255, 0.96);
+  background-image: var(--trainer-client-select-arrow);
+  background-repeat: no-repeat;
+  background-position: calc(100% - 0.9rem) center;
+  background-size: 12px 8px;
+  -webkit-appearance: none;
+  appearance: none;
+  box-shadow: none;
+  text-align: center;
+  text-align-last: center;
+  -moz-text-align-last: center;
+  padding-left: 0.9rem;
+  padding-right: 2rem;
+  color: #0f4c75;
+}
+
+#trainer-schedule .trainer-schedule-client-picker .form-select:focus {
+  border-color: rgba(30, 164, 230, 0.6);
+  box-shadow: none;
+  outline: 2px solid rgba(30, 164, 230, 0.24);
+  outline-offset: 1px;
+}
+
+#trainer-schedule .trainer-schedule-client-picker .form-select option {
+  text-align: center;
+}
+
+#trainer-schedule .trainer-schedule-client-picker__manage {
+  border-color: rgba(30, 164, 230, 0.45);
+  color: #0f4c75;
+  background: rgba(231, 246, 255, 0.92);
+}
+
+#trainer-schedule .trainer-schedule-client-picker__manage:hover,
+#trainer-schedule .trainer-schedule-client-picker__manage:focus-visible {
+  background: #1EA4E6;
+  color: #ffffff;
+  border-color: #1EA4E6;
+}
+
+#trainer-schedule .selected-client-pill {
+  min-height: 2.85rem;
+  background: rgba(236, 247, 255, 0.92);
+  border-color: rgba(30, 164, 230, 0.42);
+  box-shadow: none;
+}
+
+#trainer-schedule .selected-client-pill__label {
+  color: #1EA4E6;
+}
+
+#trainer-schedule .selected-client-pill__name {
+  color: #0f4c75;
+}
+
+#trainer-schedule .selected-client-pill--empty {
+  background: rgba(224, 242, 254, 0.94);
+  border-color: rgba(30, 164, 230, 0.4);
+}
+
+#trainer-schedule .selected-client-pill--empty .selected-client-pill__label,
+#trainer-schedule .selected-client-pill--empty .selected-client-pill__name {
+  color: #0f4c75;
+  opacity: 0.9;
+}
+
+#trainer-schedule #trainer-week-stats .trainer-week-pill {
+  --pill-accent: #1f6fb2;
+  --pill-accent-dark: #154f7f;
+  --pill-label: #255d8d;
+  --pill-bg: rgba(31, 111, 178, 0.14);
+  --pill-border: rgba(31, 111, 178, 0.34);
+  position: relative;
+  overflow: hidden;
+  border-color: var(--pill-border) !important;
+  background: linear-gradient(135deg, var(--pill-bg) 0%, rgba(255, 255, 255, 0.97) 62%) !important;
+  box-shadow: none;
+}
+
+#trainer-schedule #trainer-week-stats .trainer-week-pill::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: linear-gradient(180deg, var(--pill-accent), var(--pill-accent-dark));
+}
+
+#trainer-schedule #trainer-week-stats .trainer-week-pill__label {
+  color: var(--pill-label);
+}
+
+#trainer-schedule #trainer-week-stats .trainer-week-pill__value {
+  color: var(--pill-accent-dark);
+}
+
+#trainer-schedule #trainer-week-stats .trainer-week-pill:nth-child(1) {
+  --pill-accent: #1f6fb2;
+  --pill-accent-dark: #154f7f;
+  --pill-label: #255d8d;
+  --pill-bg: rgba(31, 111, 178, 0.14);
+  --pill-border: rgba(31, 111, 178, 0.34);
+}
+
+#trainer-schedule #trainer-week-stats .trainer-week-pill:nth-child(2) {
+  --pill-accent: #0b8fb8;
+  --pill-accent-dark: #0b5f78;
+  --pill-label: #18708a;
+  --pill-bg: rgba(11, 143, 184, 0.14);
+  --pill-border: rgba(11, 143, 184, 0.34);
+}
+
+#trainer-schedule #trainer-week-stats .trainer-week-pill:nth-child(3) {
+  --pill-accent: #c27216;
+  --pill-accent-dark: #7a4508;
+  --pill-label: #9a5810;
+  --pill-bg: rgba(247, 147, 26, 0.16);
+  --pill-border: rgba(194, 114, 22, 0.38);
+}
+
+#trainer-schedule #trainer-week-stats .trainer-week-pill:nth-child(4) {
+  --pill-accent: #1b8f5f;
+  --pill-accent-dark: #0f5e3f;
+  --pill-label: #1e6f4f;
+  --pill-bg: rgba(34, 197, 94, 0.15);
+  --pill-border: rgba(27, 143, 95, 0.34);
+}
+
 .calendar-wrapper.calendar-mode-full .calendar-header {
   grid-template-columns: var(--calendar-time-width) repeat(7, 1fr);
   min-width: 100%;
@@ -4737,6 +4950,12 @@ html.chrome-macos .client-injury-alert .badge {
   background: rgba(255, 255, 255, 0.95);
 }
 
+#trainer-dashboard-top .trainer-dashboard-card {
+  margin-bottom: 0;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
 .trainer-dashboard-hero,
 .admin-dashboard-hero {
   background: linear-gradient(135deg, #1EA4E6 0%, #33C3F0 100%);
@@ -4899,6 +5118,15 @@ html.chrome-macos .client-injury-alert .badge {
   gap: 0.5rem;
   color: rgba(13, 36, 58, 0.75);
   font-size: 0.9rem;
+}
+
+#trainer-schedule .trainer-schedule-quicklinks-wrap {
+  background: #ffffff;
+  padding: 0 1rem 0;
+}
+
+#trainer-schedule .trainer-schedule-quicklinks {
+  margin: 0;
 }
 
 .dashboard-quicklinks__label {
@@ -5385,7 +5613,6 @@ html.chrome-macos .client-injury-alert .badge {
 .trainer-client-action:focus-visible {
   background: #FFF2E4;
   color: #F7931A;
-  transform: translateY(-1px);
 }
 
 @media (max-width: 768px) {
@@ -5416,6 +5643,20 @@ html.chrome-macos .client-injury-alert .badge {
 
   .selected-client-pill__name {
     font-size: 0.95rem;
+  }
+
+  .trainer-schedule-client-picker {
+    width: 100%;
+  }
+
+  .trainer-schedule-client-picker__row {
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .trainer-schedule-client-picker__row .form-select,
+  .trainer-schedule-client-picker__manage {
+    width: 100%;
   }
 }
 
@@ -5519,6 +5760,142 @@ html.chrome-macos .client-injury-alert .badge {
   padding: 0.75rem 1rem 1.25rem;
 }
 
+#trainer-schedule .trainer-schedule-card {
+  margin-bottom: 0;
+  background: #ffffff;
+  border-top-left-radius: 0 !important;
+  border-top-right-radius: 0 !important;
+  border-bottom-left-radius: 0 !important;
+  border-bottom-right-radius: 0 !important;
+}
+
+#trainer-schedule .trainer-schedule-card .card-header {
+  padding-top: 0.4rem;
+  padding-bottom: 0.75rem;
+  border-top-left-radius: 0 !important;
+  border-top-right-radius: 0 !important;
+}
+
+#trainer-timeoff .timeoff-card {
+  width: 100%;
+  max-width: 1100px;
+  background: #ffffff;
+  margin-top: 0 !important;
+  border-top-left-radius: 0 !important;
+  border-top-right-radius: 0 !important;
+  border-left: 1px solid rgba(30, 164, 230, 0.18);
+  border-right: 1px solid rgba(30, 164, 230, 0.18);
+  border-bottom: 1px solid rgba(30, 164, 230, 0.14);
+  box-shadow: none !important;
+}
+
+#trainer-timeoff .timeoff-card .card-body {
+  background: #ffffff;
+}
+
+#trainer-timeoff .timeoff-card h5 {
+  color: #1a63bf !important;
+  font-weight: 800;
+}
+
+#trainer-timeoff .timeoff-card p.text-muted {
+  color: #506173 !important;
+}
+
+#trainer-timeoff .timeoff-card .badge.bg-warning-subtle {
+  background: linear-gradient(135deg, rgba(255, 199, 69, 0.18), rgba(247, 147, 26, 0.22)) !important;
+  border: 1px solid rgba(174, 109, 22, 0.34);
+  box-shadow: none;
+  justify-content: center;
+  text-align: center;
+}
+
+#trainer-timeoff .timeoff-card .badge.text-warning-emphasis {
+  color: #7a4a00 !important;
+}
+
+#trainer-timeoff .timeoff-card .form-label {
+  color: #4e657e !important;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+#trainer-timeoff .timeoff-card .form-control {
+  border-color: rgba(30, 164, 230, 0.22);
+  background-color: rgba(255, 255, 255, 0.96);
+  box-shadow: none;
+}
+
+#trainer-timeoff .timeoff-card .form-control:focus {
+  border-color: rgba(30, 164, 230, 0.6);
+  box-shadow: none;
+  outline: 2px solid rgba(30, 164, 230, 0.2);
+  outline-offset: 1px;
+}
+
+@media (min-width: 992px) {
+  #trainer-timeoff #timeOffStart,
+  #trainer-timeoff #timeOffEnd,
+  #trainer-timeoff #timeOffNote {
+    border-color: rgba(48, 76, 106, 0.52);
+  }
+
+  #trainer-timeoff #timeOffStart:focus,
+  #trainer-timeoff #timeOffEnd:focus,
+  #trainer-timeoff #timeOffNote:focus {
+    border-color: rgba(21, 102, 168, 0.72);
+  }
+}
+
+#trainer-timeoff input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  opacity: 0.8;
+}
+
+#trainer-timeoff #timeOffSubmit {
+  border: none;
+  color: #1d2530;
+  background: #ffd24f;
+  box-shadow: none;
+}
+
+#trainer-timeoff #timeOffSubmit:hover,
+#trainer-timeoff #timeOffSubmit:focus-visible {
+  color: #111827;
+  background: #ffd24f;
+  box-shadow: none;
+}
+
+#trainer-timeoff #timeOffSubmit:active {
+  transform: translateY(1px);
+}
+
+#trainer-schedule .calendar-wrapper {
+  --calendar-time-width: 56px;
+}
+
+#trainer-schedule .calendar-time-label {
+  white-space: nowrap;
+  height: 30px;
+  border-top: 0;
+  border-bottom: 0;
+  padding: 0.35rem 0.2rem 0;
+}
+
+#trainer-schedule .calendar-time-label:nth-child(4n) {
+  border-bottom: 2px solid rgba(30, 164, 230, 0.45);
+}
+
+@media (max-width: 576px) {
+  #trainer-schedule .calendar-wrapper {
+    --calendar-time-width: 48px;
+  }
+
+  #trainer-schedule .calendar-time-label {
+    white-space: nowrap;
+    padding: 0.3rem 0.1rem 0;
+  }
+}
+
 #trainer-schedule .calendar-shell {
   display: grid;
   grid-template-columns: var(--calendar-time-width) 1fr;
@@ -5541,9 +5918,10 @@ html.chrome-macos .client-injury-alert .badge {
 }
 
 #trainer-schedule .calendar-times {
+  display: block;
   position: relative;
   left: auto;
-  height: 100%;
+  height: auto;
   background: transparent;
   border-right: none;
 }
@@ -5567,6 +5945,19 @@ html.chrome-macos .client-injury-alert .badge {
 
 #trainer-schedule .calendar-event--ghost {
   opacity: 0.45;
+}
+
+#trainer-schedule .calendar-event-dragzone {
+  flex: 0 0 28px;
+  min-height: 28px;
+}
+
+#trainer-schedule .calendar-event-content {
+  height: calc(100% - 28px);
+  min-height: 0;
+  overflow: hidden;
+  justify-content: flex-start;
+  padding-top: 0.3rem;
 }
 
 #trainer-schedule .calendar-header {
@@ -5676,6 +6067,37 @@ html.chrome-macos .client-injury-alert .badge {
   grid-template-columns: repeat(7, 1fr);
   grid-column: 1 / -1;
   width: 100%;
+}
+
+#client-calendar {
+  --calendar-time-width: 56px;
+}
+
+#client-calendar .calendar-time-label {
+  white-space: nowrap;
+  height: 30px;
+  border-top: 0;
+  border-bottom: 0;
+  padding: 0.35rem 0.2rem 0;
+}
+
+#client-calendar .calendar-time-label:nth-child(4n) {
+  border-bottom: 2px solid rgba(30, 164, 230, 0.45);
+}
+
+#client-calendar .calendar-times {
+  display: block;
+  height: auto;
+}
+
+@media (max-width: 576px) {
+  #client-calendar {
+    --calendar-time-width: 48px;
+  }
+
+  #client-calendar .calendar-time-label {
+    padding: 0.3rem 0.1rem 0;
+  }
 }
 
 @media (min-width: 992px) {
@@ -7104,7 +7526,6 @@ html.chrome-macos .client-injury-alert .badge {
 
 .exercise-insert-control .exercise-add-btn:hover,
 .exercise-insert-control .exercise-add-btn:focus-visible {
-  transform: translateY(-2px);
   outline: none;
 }
 
@@ -8556,7 +8977,18 @@ html.chrome-macos .client-injury-alert .badge {
   visibility: visible;
 }
 
+html.persona-lightbox-open,
 body.persona-lightbox-open {
+  overflow: hidden;
+}
+
+html.client-profile-modal-open,
+body.client-profile-modal-open {
+  overflow: hidden;
+}
+
+html.training-modal-open,
+body.training-modal-open {
   overflow: hidden;
 }
 
@@ -8741,6 +9173,70 @@ body.persona-lightbox-open {
     max-height: calc(100vh - 12rem);
     border-radius: 28px;
   }
+
+  #personaLightbox {
+    align-items: center;
+    justify-content: center;
+    padding-top: max(0.55rem, env(safe-area-inset-top));
+    padding-right: max(0.6rem, env(safe-area-inset-right));
+    padding-bottom: max(0.6rem, env(safe-area-inset-bottom));
+    padding-left: max(0.6rem, env(safe-area-inset-left));
+  }
+
+  #personaLightbox .persona-lightbox__content {
+    width: 96vw;
+    max-width: 96vw;
+    height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 1rem);
+    max-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 1rem);
+    overflow: hidden;
+    padding: 0.55rem 0.55rem 0.7rem;
+    padding-top: 2.25rem;
+    gap: 0.3rem;
+  }
+
+  #personaLightbox .persona-lightbox__media {
+    flex: 1 1 auto;
+    min-height: 0;
+    margin-bottom: 0.35rem;
+    gap: 0.25rem;
+  }
+
+  #personaLightbox .persona-lightbox__media .persona-lightbox__frame {
+    height: 100%;
+    min-height: 0;
+  }
+
+  #personaLightbox .persona-lightbox__image {
+    width: 100%;
+    height: 100%;
+    max-height: 100%;
+    object-fit: contain;
+  }
+
+  #personaLightbox .persona-lightbox__details {
+    flex: 0 0 auto;
+    margin-top: 0;
+  }
+
+  #personaLightbox .persona-lightbox__badge {
+    font-size: 0.68rem;
+    padding: 0.3rem 0.65rem;
+  }
+
+  #personaLightbox .persona-lightbox__copy {
+    font-size: 0.84rem;
+    line-height: 1.24;
+    margin-top: 0.15rem;
+  }
+
+  #personaLightbox .persona-lightbox__close {
+    position: absolute;
+    top: 0.32rem;
+    right: 0.52rem;
+    width: 36px;
+    height: 36px;
+    z-index: 2;
+  }
 }
 
 @media (min-width: 768px) {
@@ -8817,6 +9313,94 @@ body.persona-lightbox-open {
 
   .persona-lightbox__details {
     flex: 0 0 auto;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1024px) {
+  #personaLightbox {
+    align-items: center;
+    justify-content: center;
+    padding-top: max(0.75rem, env(safe-area-inset-top));
+    padding-right: max(0.9rem, env(safe-area-inset-right));
+    padding-bottom: max(0.9rem, env(safe-area-inset-bottom));
+    padding-left: max(0.9rem, env(safe-area-inset-left));
+  }
+
+  #personaLightbox .persona-lightbox__content {
+    width: min(92vw, 760px);
+    max-width: 92vw;
+    height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 2rem);
+    max-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 2rem);
+    overflow: hidden;
+    padding-top: 2.6rem;
+  }
+
+  #personaLightbox .persona-lightbox__media {
+    flex: 1 1 auto;
+    min-height: 0;
+    margin-bottom: 0.45rem;
+  }
+
+  #personaLightbox .persona-lightbox__media .persona-lightbox__frame {
+    height: 100%;
+    min-height: 0;
+  }
+
+  #personaLightbox .persona-lightbox__image {
+    width: 100%;
+    height: 100%;
+    max-height: 100%;
+    object-fit: contain;
+  }
+
+  #personaLightbox .persona-lightbox__details {
+    flex: 0 0 auto;
+    margin-top: 0;
+  }
+
+  #personaLightbox .persona-lightbox__copy {
+    font-size: 0.92rem;
+    line-height: 1.3;
+  }
+
+  #personaLightbox .persona-lightbox__close {
+    position: absolute;
+    top: 0.4rem;
+    right: 0.6rem;
+    width: 38px;
+    height: 38px;
+    z-index: 2;
+  }
+
+  .persona-lightbox--exercise {
+    align-items: center;
+    justify-content: center;
+    padding-top: max(0.75rem, env(safe-area-inset-top));
+    padding-right: max(0.9rem, env(safe-area-inset-right));
+    padding-bottom: max(0.9rem, env(safe-area-inset-bottom));
+    padding-left: max(0.9rem, env(safe-area-inset-left));
+  }
+
+  .persona-lightbox--exercise .persona-lightbox__content {
+    width: min(92vw, 760px);
+    max-width: 92vw;
+    height: auto;
+    max-height: min(86dvh, calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 2rem));
+    overflow-y: auto;
+    padding-top: 2.6rem;
+  }
+
+  .persona-lightbox--exercise .persona-lightbox__image {
+    max-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 8.75rem);
+  }
+
+  .persona-lightbox--exercise .persona-lightbox__close {
+    position: absolute;
+    top: 0.4rem;
+    right: 0.6rem;
+    width: 38px;
+    height: 38px;
+    z-index: 2;
   }
 }
 
@@ -9093,6 +9677,23 @@ body.persona-lightbox-open {
 .lookup-result-card .exercise-notes,
 .lookup-result-card .lookup-description {
   text-align: left;
+}
+
+.notes-placeholder-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #0d6efd;
+}
+
+.notes-placeholder-icon .bi {
+  display: inline-block;
+  font-size: 0.9rem;
+  line-height: 1;
+}
+
+.exercise-notes .notes-placeholder-icon .bi {
+  display: inline-block !important;
 }
 
 .client-profile-container .lookup-result-card .max-pill-row {

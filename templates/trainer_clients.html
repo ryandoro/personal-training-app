@@ -1,0 +1,199 @@
+{% extends "layout.html" %}
+
+{% block title %}
+    Trainer Clients
+{% endblock %}
+
+{% block content %}
+<div class="trainer-dashboard-container container-fluid px-0 px-sm-3 px-lg-5" id="trainer-clients-top">
+    <div class="card w-100 border-0 shadow-lg trainer-dashboard-card mx-auto">
+        {% set add_client_url = url_for('add_client') %}
+        {% set first_name = trainer.name or '' %}
+        {% set last_name = trainer.last_name or '' %}
+        {% if first_name or last_name %}
+            {% set trainer_display_name = (first_name ~ ' ' ~ last_name)|trim %}
+        {% else %}
+            {% set trainer_display_name = trainer.username %}
+        {% endif %}
+
+        <div class="trainer-dashboard-hero text-white text-center">
+            <div class="trainer-dashboard-hero__content">
+                <div class="dashboard-snapshot__icon dashboard-snapshot__icon--hero mb-3" aria-hidden="true">
+                    <i class="bi bi-people-fill"></i>
+                </div>
+                <h2 class="trainer-dashboard-hero__title mb-3">Client Roster</h2>
+                <p class="trainer-dashboard-hero__subtitle mb-3">
+                    Search clients, review session counts, and jump straight into booking.
+                </p>
+                <div class="dashboard-snapshot dashboard-snapshot--inline" aria-label="Roster snapshot">
+                    <div class="dashboard-snapshot__body">
+                        <p class="dashboard-snapshot__label mb-1">Roster Snapshot</p>
+                        <p class="dashboard-snapshot__value mb-1">
+                            {{ trainer_stats.total_clients or 0 }} clients •
+                            <span class="trainer-sessions-completed-value">{{ trainer_stats.sessions_completed or 0 }}</span> sessions
+                        </p>
+                        <p class="dashboard-snapshot__meta mb-0">
+                            Sessions all time:
+                            <span class="trainer-sessions-completed-alltime-value">{{ trainer_stats.sessions_completed_all_time or 0 }}</span>
+                        </p>
+                    </div>
+                </div>
+                <div class="trainer-dashboard-hero__meta trainer-hero-inline mb-0 d-flex align-items-center justify-content-center gap-2 flex-wrap">
+                    <span class="fw-semibold d-inline-flex align-items-center gap-2">
+                        <i class="bi bi-person-badge"></i>
+                        Signed in as {{ trainer_display_name }}
+                    </span>
+                    <a href="{{ url_for('trainer_agenda') }}"
+                       class="btn btn-sm btn-outline-light trainer-agenda-btn d-inline-flex align-items-center px-2 py-1 fw-semibold">
+                        <i class="bi bi-journal-text me-1"></i>
+                        <span>My Agenda</span>
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <div class="trainer-dashboard-body">
+            <div class="dashboard-quicklinks mb-3">
+                <span class="dashboard-quicklinks__label">
+                    <i class="bi bi-arrow-down"></i> Quick Jump
+                </span>
+                <div class="dashboard-quicklinks__buttons d-flex align-items-center gap-2 flex-wrap">
+                    <a href="{{ url_for('trainer_dashboard') }}#trainer-schedule" class="dashboard-quicklink">
+                        Schedule
+                    </a>
+                    <a href="{{ url_for('trainer_dashboard') }}#trainer-timeoff" class="dashboard-quicklink">
+                        Personal Time
+                    </a>
+                </div>
+            </div>
+
+            <div id="trainer-search-section" class="trainer-dashboard-toolbar d-flex flex-column flex-lg-row align-items-stretch gap-3 mt-4">
+                <form method="GET"
+                      action="{{ url_for('trainer_clients') }}#trainer-search-section"
+                      class="trainer-search-form flex-grow-1">
+                    <label for="trainer-dashboard-search" class="visually-hidden">Search Clients</label>
+                    <div class="input-group trainer-search-group">
+                        <span class="input-group-text">
+                            <i class="bi bi-search"></i>
+                        </span>
+                        <input type="text"
+                               id="trainer-dashboard-search"
+                               name="search"
+                               class="form-control trainer-search-input"
+                               placeholder="Search clients..."
+                               value="{{ search_term }}">
+                        <button class="btn btn-brand trainer-search-button" type="submit">Search</button>
+                    </div>
+                </form>
+                <div class="trainer-add-client w-100">
+                    <a href="{{ add_client_url }}" class="btn btn-brand-outline w-100 trainer-add-client-btn">
+                        <i class="bi bi-person-plus-fill me-2"></i>Add Client
+                    </a>
+                </div>
+            </div>
+
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ category }} alert-dismissible fade show mt-4" role="alert">
+                            {{ message }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+
+            <div id="trainer-search-results" class="trainer-clients-table mt-4">
+                <div class="table-responsive trainer-client-table-wrapper">
+                    <table class="table table-borderless align-middle trainer-client-table">
+                        <thead>
+                            <tr>
+                                <th scope="col">Name</th>
+                                <th scope="col" class="text-center">Sessions Left</th>
+                                <th scope="col" class="text-center">Actions</th>
+                                <th scope="col" class="text-center">Sessions Booked</th>
+                                <th scope="col" class="text-center">Sessions Completed</th>
+                                <th scope="col" class="text-center">Workouts Completed</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% if clients %}
+                                {% for client in clients %}
+                                    <tr data-client-id="{{ client.id }}">
+                                        {% set client_profile_url = url_for('client_profile', client_id=client.id) %}
+                                        {% set full_name = ((client.name or '') ~ ' ' ~ (client.last_name or '')) | trim %}
+                                        {% set client_display_name = full_name if full_name else (client.username or '—') %}
+                                        <td>
+                                            <a href="{{ client_profile_url }}" class="trainer-client-link table-link-pill text-decoration-none">
+                                                <span>{{ client_display_name }}</span>
+                                                <span class="visually-hidden">Open client profile</span>
+                                            </a>
+                                        </td>
+                                        <td class="text-center sessions-left-cell">
+                                            {% if client.sessions_total is not none %}
+                                                {{ client.sessions_left }} / {{ client.sessions_total }}
+                                            {% else %}
+                                                &infin;
+                                            {% endif %}
+                                        </td>
+                                        <td class="text-center">
+                                            <a href="{{ url_for('trainer_dashboard', focus='client-' ~ client.id, action='book') }}#trainer-schedule"
+                                               class="btn trainer-client-action">
+                                                <span class="book-client-action-text">
+                                                    <span>Book</span>
+                                                    <span>Now</span>
+                                                </span>
+                                            </a>
+                                        </td>
+                                        <td class="text-center sessions-booked-cell">{{ client.sessions_booked or 0 }}</td>
+                                        <td class="text-center sessions-completed-cell">{{ client.sessions_completed_count }}</td>
+                                        <td class="text-center workouts-completed-cell">{{ client.workouts_completed or 0 }}</td>
+                                    </tr>
+                                {% endfor %}
+                            {% else %}
+                                <tr>
+                                    <td colspan="6" class="text-center text-muted py-4">No clients found.</td>
+                                </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="trainer-dashboard-backtotop text-center mb-5">
+    <a href="#trainer-clients-top"
+       class="dashboard-quicklink trainer-backtotop-link d-inline-flex align-items-center gap-2"
+       aria-label="Back to top">
+        <i class="bi bi-arrow-up-circle"></i>
+        <span>Back to top</span>
+    </a>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const searchValue = new URLSearchParams(window.location.search).get('search') || '';
+        const searchSection = document.getElementById('trainer-search-section');
+        const searchInput = document.getElementById('trainer-dashboard-search');
+
+        if (!searchValue.trim()) return;
+
+        if (searchSection) {
+            requestAnimationFrame(() => searchSection.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+        } else if (searchInput) {
+            requestAnimationFrame(() => searchInput.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+        }
+
+        if (searchInput) {
+            searchInput.focus({ preventScroll: true });
+        }
+
+        const url = new URL(window.location.href);
+        url.searchParams.delete('search');
+        const hash = url.hash || '#trainer-search-section';
+        history.replaceState({}, document.title, `${url.pathname}${url.searchParams.toString() ? `?${url.searchParams}` : ''}${hash}`);
+    });
+</script>
+{% endblock %}

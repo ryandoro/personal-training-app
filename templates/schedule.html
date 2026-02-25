@@ -106,11 +106,11 @@
         <form id="clientWindowForm" class="row g-3">
             <div class="col-6">
                 <label for="clientWindowStart" class="form-label">Start hour</label>
-                <input type="time" class="form-control" id="clientWindowStart" step="900" value="05:00">
+                <select class="form-select" id="clientWindowStart"></select>
             </div>
             <div class="col-6">
                 <label for="clientWindowEnd" class="form-label">End hour</label>
-                <input type="time" class="form-control" id="clientWindowEnd" step="900" value="21:00">
+                <select class="form-select" id="clientWindowEnd"></select>
             </div>
             <div class="col-12">
                 <div id="clientWindowError" class="text-danger small" role="alert" hidden></div>
@@ -523,7 +523,7 @@
             if (minutes === 0) {
                 const show = new Date();
                 show.setHours(hour, minutes, 0, 0);
-                label.textContent = show.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+                label.textContent = show.toLocaleTimeString([], { hour: 'numeric' });
             }
             timesEl.appendChild(label);
         }
@@ -724,6 +724,25 @@
         }
     }
 
+    function buildHourOptions(selectEl) {
+        if (!selectEl) return;
+        selectEl.innerHTML = '';
+        for (let hour = 0; hour < 24; hour += 1) {
+            const hourStr = String(hour).padStart(2, '0');
+            const option = document.createElement('option');
+            option.value = `${hourStr}:00`;
+            const hour12 = (hour % 12) || 12;
+            const meridiem = hour >= 12 ? 'PM' : 'AM';
+            option.textContent = `${hour12}:00 ${meridiem}`;
+            selectEl.appendChild(option);
+        }
+    }
+
+    function setupWindowTimeOptions() {
+        buildHourOptions(windowStartInput);
+        buildHourOptions(windowEndInput);
+    }
+
     function openWindowModal() {
         windowStartInput.value = `${String(state.viewStart).padStart(2, '0')}:00`;
         windowEndInput.value = `${String(state.viewEnd).padStart(2, '0')}:00`;
@@ -799,6 +818,7 @@
     }
 
     function init() {
+        setupWindowTimeOptions();
         fetch('/client/schedule/preferences')
             .then(res => res.json())
             .then(data => {
@@ -869,9 +889,11 @@
         windowForm.addEventListener('submit', applyWindow);
         if (windowStartInput) {
             windowStartInput.addEventListener('input', () => setWindowError(''));
+            windowStartInput.addEventListener('change', () => setWindowError(''));
         }
         if (windowEndInput) {
             windowEndInput.addEventListener('input', () => setWindowError(''));
+            windowEndInput.addEventListener('change', () => setWindowError(''));
         }
         if (weekLabel) {
             weekLabel.addEventListener('click', openWeekPicker);

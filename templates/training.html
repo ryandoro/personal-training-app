@@ -2116,6 +2116,11 @@
                     .replace(/'/g, '&#39;');
             }
 
+            function notesPlaceholderHtml() {
+                const label = escapeHtml(NOTES_PLACEHOLDER || 'No notes yet.');
+                return `<span class="notes-placeholder-icon" aria-label="${label}" title="${label}"><i class="bi bi-journal-text" aria-hidden="true"></i></span>`;
+            }
+
             function formatHoldDuration(seconds) {
                 const parsed = Number(seconds);
                 if (!Number.isFinite(parsed) || parsed <= 0) {
@@ -2208,7 +2213,7 @@
                 const hasNotes = rawNotes.trim().length > 0;
                 const notesDisplay = hasNotes
                     ? escapeHtml(rawNotes).replace(/\n/g, '<br>')
-                    : `<span class="text-muted">${escapeHtml(NOTES_PLACEHOLDER)}</span>`;
+                    : notesPlaceholderHtml();
                 const encodedNotes = encodeURIComponent(rawNotes);
                 const notesButtonLabel = hasNotes ? 'Edit Notes' : 'Add Notes';
                 const startImageBlock = exercise.image_exercise_start ? `
@@ -3174,6 +3179,95 @@
 
 
         // Update Max JS 
+        const trainingModalScrollState = {
+            lockCount: 0,
+            scrollY: 0,
+            previousBodyStyles: null,
+            previousHtmlOverflow: '',
+            previousHtmlScrollBehavior: '',
+            previousBodyScrollBehavior: ''
+        };
+
+        function lockTrainingModalScroll() {
+            const state = trainingModalScrollState;
+            if (state.lockCount === 0) {
+                state.scrollY = window.scrollY || window.pageYOffset || 0;
+                state.previousBodyStyles = {
+                    position: document.body.style.position,
+                    top: document.body.style.top,
+                    left: document.body.style.left,
+                    right: document.body.style.right,
+                    width: document.body.style.width,
+                    overflow: document.body.style.overflow
+                };
+                state.previousHtmlOverflow = document.documentElement.style.overflow;
+                state.previousHtmlScrollBehavior = document.documentElement.style.scrollBehavior;
+                state.previousBodyScrollBehavior = document.body.style.scrollBehavior;
+
+                document.documentElement.classList.add('training-modal-open');
+                document.body.classList.add('training-modal-open');
+                document.documentElement.style.overflow = 'hidden';
+                document.body.style.position = 'fixed';
+                document.body.style.top = `-${state.scrollY}px`;
+                document.body.style.left = '0';
+                document.body.style.right = '0';
+                document.body.style.width = '100%';
+                document.body.style.overflow = 'hidden';
+            }
+            state.lockCount += 1;
+        }
+
+        function unlockTrainingModalScroll() {
+            const state = trainingModalScrollState;
+            if (state.lockCount <= 0) return;
+            state.lockCount -= 1;
+            if (state.lockCount > 0) return;
+
+            const restoreY = state.scrollY || 0;
+            const previous = state.previousBodyStyles || {};
+            const previousHtmlScrollBehavior = state.previousHtmlScrollBehavior || '';
+            const previousBodyScrollBehavior = state.previousBodyScrollBehavior || '';
+
+            document.documentElement.classList.remove('training-modal-open');
+            document.body.classList.remove('training-modal-open');
+            document.documentElement.style.overflow = state.previousHtmlOverflow || '';
+            document.documentElement.style.scrollBehavior = 'auto';
+            document.body.style.scrollBehavior = 'auto';
+            document.body.style.position = previous.position || '';
+            document.body.style.top = previous.top || '';
+            document.body.style.left = previous.left || '';
+            document.body.style.right = previous.right || '';
+            document.body.style.width = previous.width || '';
+            document.body.style.overflow = previous.overflow || '';
+
+            window.scrollTo(0, restoreY);
+            requestAnimationFrame(() => {
+                window.scrollTo(0, restoreY);
+                document.documentElement.style.scrollBehavior = previousHtmlScrollBehavior;
+                document.body.style.scrollBehavior = previousBodyScrollBehavior;
+            });
+
+            state.scrollY = 0;
+            state.previousBodyStyles = null;
+            state.previousHtmlOverflow = '';
+            state.previousHtmlScrollBehavior = '';
+            state.previousBodyScrollBehavior = '';
+        }
+
+        function showTrainingModal(modal) {
+            if (!modal || modal.classList.contains('show')) return;
+            lockTrainingModalScroll();
+            modal.classList.add('show');
+            modal.style.display = 'flex';
+        }
+
+        function hideTrainingModal(modal) {
+            if (!modal || !modal.classList.contains('show')) return;
+            modal.classList.remove('show');
+            modal.style.display = 'none';
+            unlockTrainingModalScroll();
+        }
+
         document.addEventListener('DOMContentLoaded', function () {
             let currentWorkoutId = null;
             const prModal = document.getElementById('prModal');
@@ -3274,8 +3368,7 @@
                     maxRepsInput.title = maxRepsInput.placeholder;
                 }
 
-                prModal.classList.add('show');
-                prModal.style.display = 'flex';
+                showTrainingModal(prModal);
                 const focusTarget = isPlank
                     ? (maxMinutesInput || maxSecondsInput)
                     : (!maxWeightInput.disabled ? maxWeightInput : maxRepsInput);
@@ -3291,8 +3384,7 @@
                 }
 
                 if (e.target.id === 'prModalClose') {
-                    prModal.classList.remove('show');
-                    prModal.style.display = 'none';
+                    hideTrainingModal(prModal);
                     resetModalFields();
                 }
             });
@@ -3402,8 +3494,7 @@
                             }
                         }
 
-                        prModal.classList.remove('show');
-                        prModal.style.display = 'none';
+                        hideTrainingModal(prModal);
                         resetModalFields();
 
                         const toast = document.getElementById('toastSuccess');
@@ -3457,29 +3548,26 @@
             };
 
             document.addEventListener('click', function (e) {
-                const trigger = e.target.closest('.edit-notes-btn');
-                if (trigger) {
-                    e.preventDefault();
-                    currentNotesWorkoutId = trigger.dataset.id;
-                    const stored = trigger.dataset.notes ? decodeURIComponent(trigger.dataset.notes) : '';
-                    notesTextarea.value = stored;
-                    notesModal.classList.add('show');
-                    notesModal.style.display = 'flex';
+                    const trigger = e.target.closest('.edit-notes-btn');
+                    if (trigger) {
+                        e.preventDefault();
+                        currentNotesWorkoutId = trigger.dataset.id;
+                        const stored = trigger.dataset.notes ? decodeURIComponent(trigger.dataset.notes) : '';
+                        notesTextarea.value = stored;
+                    showTrainingModal(notesModal);
                     focusNotesTextarea();
                     return;
                 }
 
                 if (e.target && e.target.id === 'notesModalClose') {
-                    notesModal.classList.remove('show');
-                    notesModal.style.display = 'none';
+                    hideTrainingModal(notesModal);
                     currentNotesWorkoutId = null;
                 }
             });
 
             saveNotesBtn.addEventListener('click', async () => {
                 if (!currentNotesWorkoutId) {
-                    notesModal.classList.remove('show');
-                    notesModal.style.display = 'none';
+                    hideTrainingModal(notesModal);
                     return;
                 }
 
@@ -3497,7 +3585,7 @@
                     }
 
                     const normalized = data.notes || '';
-                    const placeholderHtml = `<span class="text-muted">${escapeHtml(NOTES_PLACEHOLDER)}</span>`;
+                    const placeholderHtml = notesPlaceholderHtml();
                     document.querySelectorAll(`.notes-body[data-id="${currentNotesWorkoutId}"]`).forEach(node => {
                         if (normalized.trim()) {
                             node.innerHTML = escapeHtml(normalized).replace(/\n/g, '<br>');
@@ -3526,8 +3614,7 @@
                     alert('Something went wrong while saving notes.');
                     return;
                 } finally {
-                    notesModal.classList.remove('show');
-                    notesModal.style.display = 'none';
+                    hideTrainingModal(notesModal);
                     currentNotesWorkoutId = null;
                 }
             });

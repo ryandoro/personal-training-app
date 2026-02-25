@@ -37,7 +37,7 @@
                     <div class="d-flex flex-wrap align-items-center gap-2 w-100 surface-hero__actions justify-content-start">
                         <a href="{{ url_for('trainer_dashboard') }}"
                            class="btn btn-outline-secondary hero-action bg-white bg-opacity-10 text-white border-white">
-                            <i class="bi bi-arrow-left me-1"></i>Back to Dashboard
+                            <i class="bi bi-arrow-left me-1"></i>Back to Schedule
                         </a>
                         <div class="dropdown ms-auto">
                             <button class="btn btn-outline-light hero-action d-flex align-items-center justify-content-center"
@@ -461,7 +461,11 @@
                                                                 {% if has_notes %}
                                                                     {{ notes_text|replace('\n', '<br>')|safe }}
                                                                 {% else %}
-                                                                    <span class="text-muted">{{ NOTES_PLACEHOLDER }}</span>
+                                                                    <span class="notes-placeholder-icon"
+                                                                          aria-label="{{ NOTES_PLACEHOLDER }}"
+                                                                          title="{{ NOTES_PLACEHOLDER }}">
+                                                                        <i class="bi bi-journal-text" aria-hidden="true"></i>
+                                                                    </span>
                                                                 {% endif %}
                                                             </div>
                                                         </div>
@@ -1314,7 +1318,14 @@
         currentGroup: null,
         currentIndex: 0,
         groupImages: [],
-        touchStartX: null
+        touchStartX: null,
+        scrollLockActive: false,
+        scrollY: 0,
+        previousBodyStyles: null,
+        previousHtmlOverflow: '',
+        previousHtmlScrollBehavior: '',
+        previousBodyScrollBehavior: '',
+        previousFocusedElement: null
     };
     const exerciseVideoModalState = {
         initialized: false,
@@ -2542,6 +2553,11 @@
             .replace(/'/g, '&#39;');
     }
 
+    function notesPlaceholderHtml() {
+        const label = escapeHtml(NOTES_PLACEHOLDER || 'No notes yet.');
+        return `<span class="notes-placeholder-icon" aria-label="${label}" title="${label}"><i class="bi bi-journal-text" aria-hidden="true"></i></span>`;
+    }
+
     function formatHoldDuration(totalSeconds) {
         const formatter = window.FitBaseExerciseHistory?.formatDurationClock;
         if (typeof formatter === 'function') {
@@ -2639,16 +2655,93 @@
         setTimeout(() => { toast.style.display = 'none'; }, 3000);
     }
 
+    const profileModalScrollState = {
+        lockCount: 0,
+        scrollY: 0,
+        previousBodyStyles: null,
+        previousHtmlOverflow: '',
+        previousHtmlScrollBehavior: '',
+        previousBodyScrollBehavior: ''
+    };
+
+    function lockProfileModalScroll() {
+        const state = profileModalScrollState;
+        if (state.lockCount === 0) {
+            state.scrollY = window.scrollY || window.pageYOffset || 0;
+            state.previousBodyStyles = {
+                position: document.body.style.position,
+                top: document.body.style.top,
+                left: document.body.style.left,
+                right: document.body.style.right,
+                width: document.body.style.width,
+                overflow: document.body.style.overflow
+            };
+            state.previousHtmlOverflow = document.documentElement.style.overflow;
+            state.previousHtmlScrollBehavior = document.documentElement.style.scrollBehavior;
+            state.previousBodyScrollBehavior = document.body.style.scrollBehavior;
+
+            document.documentElement.classList.add('client-profile-modal-open');
+            document.body.classList.add('client-profile-modal-open');
+            document.documentElement.style.overflow = 'hidden';
+            document.body.style.position = 'fixed';
+            document.body.style.top = `-${state.scrollY}px`;
+            document.body.style.left = '0';
+            document.body.style.right = '0';
+            document.body.style.width = '100%';
+            document.body.style.overflow = 'hidden';
+        }
+        state.lockCount += 1;
+    }
+
+    function unlockProfileModalScroll() {
+        const state = profileModalScrollState;
+        if (state.lockCount <= 0) return;
+        state.lockCount -= 1;
+        if (state.lockCount > 0) return;
+
+        const restoreY = state.scrollY || 0;
+        const previous = state.previousBodyStyles || {};
+        const previousHtmlScrollBehavior = state.previousHtmlScrollBehavior || '';
+        const previousBodyScrollBehavior = state.previousBodyScrollBehavior || '';
+
+        document.documentElement.classList.remove('client-profile-modal-open');
+        document.body.classList.remove('client-profile-modal-open');
+        document.documentElement.style.overflow = state.previousHtmlOverflow || '';
+        document.documentElement.style.scrollBehavior = 'auto';
+        document.body.style.scrollBehavior = 'auto';
+        document.body.style.position = previous.position || '';
+        document.body.style.top = previous.top || '';
+        document.body.style.left = previous.left || '';
+        document.body.style.right = previous.right || '';
+        document.body.style.width = previous.width || '';
+        document.body.style.overflow = previous.overflow || '';
+
+        window.scrollTo(0, restoreY);
+        requestAnimationFrame(() => {
+            window.scrollTo(0, restoreY);
+            document.documentElement.style.scrollBehavior = previousHtmlScrollBehavior;
+            document.body.style.scrollBehavior = previousBodyScrollBehavior;
+        });
+
+        state.scrollY = 0;
+        state.previousBodyStyles = null;
+        state.previousHtmlOverflow = '';
+        state.previousHtmlScrollBehavior = '';
+        state.previousBodyScrollBehavior = '';
+    }
+
     function openModal(modal) {
-        if (!modal) return;
+        if (!modal || modal.classList.contains('show')) return;
+        lockProfileModalScroll();
         modal.classList.add('show');
         modal.style.display = 'flex';
     }
 
     function closeModal(modal) {
-        if (!modal) return;
+        if (!modal || !modal.classList.contains('show')) return;
         modal.classList.remove('show');
         modal.style.display = 'none';
+        unlockProfileModalScroll();
     }
 
     function setDurationUi(minutes, pills) {
@@ -2962,6 +3055,73 @@
 
         const collectGroupImages = (group) => Array.from(document.querySelectorAll('.clickable-img')).filter((img) => img.dataset.group === group);
 
+        const lockBackgroundScroll = () => {
+            if (state.scrollLockActive) return;
+            state.scrollY = window.scrollY || window.pageYOffset || 0;
+            state.previousFocusedElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+            state.previousBodyStyles = {
+                position: document.body.style.position,
+                top: document.body.style.top,
+                left: document.body.style.left,
+                right: document.body.style.right,
+                width: document.body.style.width,
+                overflow: document.body.style.overflow
+            };
+            state.previousHtmlOverflow = document.documentElement.style.overflow;
+            state.previousHtmlScrollBehavior = document.documentElement.style.scrollBehavior;
+            state.previousBodyScrollBehavior = document.body.style.scrollBehavior;
+
+            document.documentElement.classList.add('persona-lightbox-open');
+            document.body.classList.add('persona-lightbox-open');
+            document.documentElement.style.overflow = 'hidden';
+            document.body.style.position = 'fixed';
+            document.body.style.top = `-${state.scrollY}px`;
+            document.body.style.left = '0';
+            document.body.style.right = '0';
+            document.body.style.width = '100%';
+            document.body.style.overflow = 'hidden';
+            state.scrollLockActive = true;
+        };
+
+        const unlockBackgroundScroll = () => {
+            if (!state.scrollLockActive) return;
+            const restoreY = state.scrollY || 0;
+            const previous = state.previousBodyStyles || {};
+            const previousFocused = state.previousFocusedElement;
+            const previousHtmlScrollBehavior = state.previousHtmlScrollBehavior || '';
+            const previousBodyScrollBehavior = state.previousBodyScrollBehavior || '';
+
+            document.documentElement.classList.remove('persona-lightbox-open');
+            document.body.classList.remove('persona-lightbox-open');
+            document.documentElement.style.overflow = state.previousHtmlOverflow || '';
+            document.documentElement.style.scrollBehavior = 'auto';
+            document.body.style.scrollBehavior = 'auto';
+            document.body.style.position = previous.position || '';
+            document.body.style.top = previous.top || '';
+            document.body.style.left = previous.left || '';
+            document.body.style.right = previous.right || '';
+            document.body.style.width = previous.width || '';
+            document.body.style.overflow = previous.overflow || '';
+
+            window.scrollTo(0, restoreY);
+            requestAnimationFrame(() => {
+                window.scrollTo(0, restoreY);
+                document.documentElement.style.scrollBehavior = previousHtmlScrollBehavior;
+                document.body.style.scrollBehavior = previousBodyScrollBehavior;
+                if (previousFocused && typeof previousFocused.focus === 'function') {
+                    previousFocused.focus({ preventScroll: true });
+                }
+            });
+
+            state.scrollLockActive = false;
+            state.scrollY = 0;
+            state.previousBodyStyles = null;
+            state.previousHtmlOverflow = '';
+            state.previousHtmlScrollBehavior = '';
+            state.previousBodyScrollBehavior = '';
+            state.previousFocusedElement = null;
+        };
+
         const showImageAt = (index) => {
             if (!state.groupImages.length) return;
             const target = state.groupImages[index];
@@ -2980,13 +3140,13 @@
             showImageAt(normalizedIndex);
             state.lightbox.classList.add('persona-lightbox--visible');
             state.lightbox.setAttribute('aria-hidden', 'false');
-            document.body.classList.add('persona-lightbox-open');
+            lockBackgroundScroll();
         };
 
         const closeLightbox = () => {
             state.lightbox.classList.remove('persona-lightbox--visible');
             state.lightbox.setAttribute('aria-hidden', 'true');
-            document.body.classList.remove('persona-lightbox-open');
+            unlockBackgroundScroll();
             state.image.src = '';
             state.groupImages = [];
             state.currentGroup = null;
@@ -3262,7 +3422,7 @@
                 return;
             }
             const triggers = document.querySelectorAll(`.edit-notes-btn[data-id="${currentWorkoutId}"]`);
-            const displayHtml = notesValue ? escapeHtml(notesValue).replace(/\n/g, '<br>') : `<span class="text-muted">${escapeHtml(NOTES_PLACEHOLDER)}</span>`;
+            const displayHtml = notesValue ? escapeHtml(notesValue).replace(/\n/g, '<br>') : notesPlaceholderHtml();
             document.querySelectorAll(`.notes-body[data-id="${currentWorkoutId}"]`).forEach((body) => {
                 body.innerHTML = displayHtml;
             });

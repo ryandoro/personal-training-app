@@ -1830,7 +1830,27 @@ def training():
 @app.route('/trainer_dashboard')
 @login_required
 def trainer_dashboard():
-    """Render trainer dashboard with stats and assigned clients."""
+    """Render trainer scheduler dashboard."""
+    user_id = session['user_id']
+    # Downgrade immediately if the trial/subscription has lapsed
+    check_and_downgrade_trial(user_id)
+    check_subscription_expiry(user_id)
+    trainer = _require_trainer(user_id)
+    if not trainer:
+        flash("Trainer access requires an active plan.", "danger")
+        return redirect(url_for('home'))
+    if trainer.get('role') == 'trainer' and not trainer.get('form_completed'):
+        flash("Complete your fitness questionnaire to unlock the trainer dashboard.", "warning")
+        return redirect(url_for('training'))
+
+    context = _build_trainer_dashboard_context(user_id, trainer, search_term='')
+    return render_template('trainer_dashboard.html', **context)
+
+
+@app.route('/trainer_clients')
+@login_required
+def trainer_clients():
+    """Render trainer clients roster table and search view."""
     user_id = session['user_id']
     # Downgrade immediately if the trial/subscription has lapsed
     check_and_downgrade_trial(user_id)
@@ -1844,6 +1864,13 @@ def trainer_dashboard():
         return redirect(url_for('training'))
 
     search_term = (request.args.get('search') or '').strip()
+    context = _build_trainer_dashboard_context(user_id, trainer, search_term=search_term)
+    return render_template('trainer_clients.html', **context)
+
+
+def _build_trainer_dashboard_context(user_id: int, trainer: dict, *, search_term: str = '') -> dict:
+    """Build shared trainer roster and schedule context for dashboard pages."""
+    normalized_search = (search_term or '').strip()
     total_clients = 0
 
     sessions_completed_all_time = 0
@@ -1873,8 +1900,8 @@ def trainer_dashboard():
             ]
             params = [user_id]
 
-            if search_term:
-                like = f"%{search_term}%"
+            if normalized_search:
+                like = f"%{normalized_search}%"
                 base_query.append(
                     """
                     AND (
@@ -1994,14 +2021,13 @@ def trainer_dashboard():
                 )
                 schedule_prefs = {'view_start': start_hour, 'view_end': end_hour}
 
-    return render_template(
-        'trainer_dashboard.html',
-        trainer_stats=trainer_stats,
-        clients=clients,
-        trainer=trainer_info,
-        schedule_prefs=schedule_prefs,
-        search_term=search_term,
-    )
+    return {
+        'trainer_stats': trainer_stats,
+        'clients': clients,
+        'trainer': trainer_info,
+        'schedule_prefs': schedule_prefs,
+        'search_term': normalized_search,
+    }
 
 
 def _require_trainer(user_id: int) -> dict | None:

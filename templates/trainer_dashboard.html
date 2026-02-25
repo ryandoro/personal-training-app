@@ -1,13 +1,12 @@
 {% extends "layout.html" %}
 
 {% block title %}
-    Trainer Dashboard
+    Trainer Schedule
 {% endblock %}
 
 {% block content %}
 <div class="trainer-dashboard-container container-fluid px-0 px-sm-3 px-lg-5" id="trainer-dashboard-top">
     <div class="card w-100 border-0 shadow-lg trainer-dashboard-card mx-auto">
-        {% set add_client_url = url_for('add_client') %}
         {% set show_trainer_column = trainer.role == 'admin' %}
         {% set first_name = trainer.name or '' %}
         {% set last_name = trainer.last_name or '' %}
@@ -22,7 +21,7 @@
                     <div class="dashboard-snapshot__icon dashboard-snapshot__icon--hero mb-3" aria-hidden="true">
                         <i class="bi bi-people-fill"></i>
                     </div>
-                    <h2 class="trainer-dashboard-hero__title mb-3">Trainer Dashboard</h2>
+                    <h2 class="trainer-dashboard-hero__title mb-3">Trainer Schedule</h2>
                 <p class="trainer-dashboard-hero__subtitle mb-3">
                     Manage your clients, upcoming sessions, and roster health.
                 </p>
@@ -53,136 +52,71 @@
             </div>
         </div>
 
-        <div class="trainer-dashboard-body">
-            <div class="dashboard-quicklinks mb-3">
+    </div>
+</div>
+
+<div id="trainer-client-book-sources" hidden aria-hidden="true">
+    {% for client in clients %}
+        <button type="button"
+                class="book-client-btn"
+                data-client-id="{{ client.id }}"
+                data-client-name="{{ client.name or client.username }}"
+                data-client-lastname="{{ client.last_name or '' }}"
+                data-sessions="{{ client.sessions_total if client.sessions_total is not none else '' }}"
+                data-sessions-left="{{ client.sessions_left if client.sessions_left is not none else '' }}"
+                data-sessions-booked="{{ client.sessions_booked or 0 }}"
+                data-sessions-completed="{{ client.sessions_completed_count }}"
+                data-workouts-completed="{{ client.workouts_completed or 0 }}">
+        </button>
+    {% endfor %}
+</div>
+
+<div class="trainer-calendar-container container-fluid px-0 px-sm-3 px-lg-5" id="trainer-schedule">
+    <div id="calendar-card" class="card border-0 trainer-schedule-card mx-auto" style="border-radius: 20px;">
+        <div class="trainer-schedule-quicklinks-wrap">
+            <div class="dashboard-quicklinks trainer-schedule-quicklinks mb-0">
                 <span class="dashboard-quicklinks__label">
                     <i class="bi bi-arrow-down"></i> Quick Jump
                 </span>
                 <div class="dashboard-quicklinks__buttons d-flex align-items-center gap-2 flex-wrap">
-                    <a href="#trainer-calendar-nav" class="dashboard-quicklink">
-                        Schedule
+                    <a href="{{ url_for('trainer_clients') }}" class="dashboard-quicklink">
+                        Client Roster
                     </a>
                     <a href="#trainer-timeoff" class="dashboard-quicklink">
                         Personal Time
                     </a>
                 </div>
             </div>
-
-            <div id="trainer-search-section" class="trainer-dashboard-toolbar d-flex flex-column flex-lg-row align-items-stretch gap-3 mt-4">
-                <form method="GET"
-                      action="{{ url_for('trainer_dashboard') }}#trainer-search-section"
-                      class="trainer-search-form flex-grow-1">
-                    <label for="trainer-dashboard-search" class="visually-hidden">Search Clients</label>
-                    <div class="input-group trainer-search-group">
-                        <span class="input-group-text">
-                            <i class="bi bi-search"></i>
-                        </span>
-                        <input type="text"
-                               id="trainer-dashboard-search"
-                               name="search"
-                               class="form-control trainer-search-input"
-                               placeholder="Search clients..."
-                               value="{{ search_term }}">
-                        <button class="btn btn-brand trainer-search-button" type="submit">Search</button>
-                    </div>
-                </form>
-                <div class="trainer-add-client w-100">
-                    <a href="{{ add_client_url }}" class="btn btn-brand-outline w-100 trainer-add-client-btn">
-                        <i class="bi bi-person-plus-fill me-2"></i>Add Client
-                    </a>
-                </div>
-            </div>
-
-            {% with messages = get_flashed_messages(with_categories=true) %}
-                {% if messages %}
-                    {% for category, message in messages %}
-                        <div class="alert alert-{{ category }} alert-dismissible fade show mt-4" role="alert">
-                            {{ message }}
-                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                        </div>
-                    {% endfor %}
-                {% endif %}
-            {% endwith %}
-
-            <div id="trainer-search-results" class="trainer-clients-table mt-4">
-                <div class="table-responsive trainer-client-table-wrapper">
-                    <table class="table table-borderless align-middle trainer-client-table">
-                        <thead>
-                            <tr>
-                                <th scope="col">Name</th>
-                                <th scope="col" class="text-center">Sessions Left</th>
-                                <th scope="col" class="text-center">Actions</th>
-                                <th scope="col" class="text-center">Sessions Booked</th>
-                                <th scope="col" class="text-center">Sessions Completed</th>
-                                <th scope="col" class="text-center">Workouts Completed</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% if clients %}
-                                {% for client in clients %}
-                                    <tr data-client-id="{{ client.id }}">
-                                        {% set client_profile_url = url_for('client_profile', client_id=client.id) %}
-                                        {% set full_name = ((client.name or '') ~ ' ' ~ (client.last_name or '')) | trim %}
-                                        {% set client_display_name = full_name if full_name else (client.username or '—') %}
-                                        <td>
-                                            <a href="{{ client_profile_url }}" class="trainer-client-link table-link-pill text-decoration-none">
-                                                <span>{{ client_display_name }}</span>
-                                                <span class="visually-hidden">Open client profile</span>
-                                            </a>
-                                        </td>
-                                        <td class="text-center sessions-left-cell">
-                                            {% if client.sessions_total is not none %}
-                                                {{ client.sessions_left }} / {{ client.sessions_total }}
-                                            {% else %}
-                                                &infin;
-                                            {% endif %}
-                                        </td>
-                                        <td class="text-center">
-                                            <button type="button"
-                                                    class="btn trainer-client-action book-client-btn"
-                                                    data-client-id="{{ client.id }}"
-                                                    data-client-name="{{ client.name or client.username }}"
-                                                    data-client-lastname="{{ client.last_name or '' }}"
-                                                    data-sessions="{{ client.sessions_total if client.sessions_total is not none else '' }}"
-                                                    data-sessions-left="{{ client.sessions_left if client.sessions_left is not none else '' }}"
-                                                    data-sessions-booked="{{ client.sessions_booked or 0 }}"
-                                                    data-sessions-completed="{{ client.sessions_completed_count }}"
-                                                    data-workouts-completed="{{ client.workouts_completed or 0 }}">
-                                                    <span class="book-client-action-text">
-                                                        <span>Book</span>
-                                                        <span>Now</span>
-                                                    </span>
-                                                </button>
-                                        </td>
-                                        <td class="text-center sessions-booked-cell">{{ client.sessions_booked or 0 }}</td>
-                                        <td class="text-center sessions-completed-cell">{{ client.sessions_completed_count }}</td>
-                                        <td class="text-center workouts-completed-cell">{{ client.workouts_completed or 0 }}</td>
-                                    </tr>
-                                {% endfor %}
-                            {% else %}
-                                <tr>
-                                    <td colspan="6" class="text-center text-muted py-4">No clients assigned yet.</td>
-                                </tr>
-                            {% endif %}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
         </div>
-    </div>
-</div>
-
-<div class="trainer-calendar-container container-fluid px-0 px-sm-3 px-lg-5" id="trainer-schedule">
-    <div id="calendar-card" class="card border-0 mt-4 trainer-schedule-card mx-auto" style="border-radius: 20px;">
-        <div class="card-header border-0 d-flex flex-column align-items-center text-center gap-3"
-             style="background: linear-gradient(135deg, #1EA4E6 0%, #33C3F0 100%); border-top-left-radius: 20px; border-top-right-radius: 20px;">
-            <div class="d-flex flex-column gap-3 text-white">
-                <div>
-                    <h4 class="mb-1 text-white">Weekly Schedule</h4>
-                    <p class="mb-0 text-white-50">Plan sessions, drag to adjust, and stay aligned with your clients.</p>
+        <div class="card-header border-0 d-flex flex-column align-items-center text-center trainer-schedule-hero"
+             style="border-top-left-radius: 20px; border-top-right-radius: 20px;">
+            <div class="d-flex flex-column gap-3 trainer-schedule-header-content">
+                <div class="trainer-schedule-header-intro">
+                    <h4 class="mb-1 mt-3">Weekly Schedule</h4>
+                    <p class="mb-0 trainer-schedule-subtitle">Book sessions, drag & drop time blocks, and stay aligned with your clients.</p>
                 </div>
-                <div class="d-flex flex-column align-items-center">
-                    <div id="selected-client-pill" class="selected-client-pill selected-client-pill--empty mb-2" role="status" aria-live="polite">
+                <div class="d-flex flex-column align-items-center trainer-schedule-header-controls">
+                    <div class="trainer-schedule-client-picker mt-1">
+                        <label for="trainer-client-picker" class="form-label small text-uppercase mb-1">Choose Client</label>
+                        <div class="trainer-schedule-client-picker__row">
+                            <select id="trainer-client-picker" class="form-select form-select-sm" {% if not clients %}disabled{% endif %}>
+                                <option value="">Select client</option>
+                                {% for client in clients %}
+                                    {% set full_name = ((client.name or '') ~ ' ' ~ (client.last_name or '')) | trim %}
+                                    {% set client_display_name = full_name if full_name else (client.username or 'Client') %}
+                                    <option value="{{ client.id }}">
+                                        {{ client_display_name }}
+                                        {% if client.sessions_total is not none %}
+                                            ({{ client.sessions_left }} / {{ client.sessions_total }})
+                                        {% else %}
+                                            (&infin;)
+                                        {% endif %}
+                                    </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                    <div id="selected-client-pill" class="selected-client-pill selected-client-pill--empty mt-2" role="status" aria-live="polite">
                         <span class="selected-client-pill__label">Selected Client</span>
                         <span id="selected-client-display" class="selected-client-pill__name">No client selected</span>
                     </div>
@@ -190,6 +124,16 @@
             </div>
         </div>
         <div class="card-body pb-0">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ category }} alert-dismissible fade show mb-3" role="alert">
+                            {{ message }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
             <div class="calendar-wrapper" id="trainer-calendar" data-mode="trainer"
                  data-view-start="{{ schedule_prefs.view_start }}" data-view-end="{{ schedule_prefs.view_end }}">
                 <div class="calendar-controls">
@@ -271,7 +215,7 @@
 </div>
 
 <div class="trainer-timeoff-container container-fluid px-0 px-sm-3 px-lg-5" id="trainer-timeoff">
-    <div class="card border-0 shadow-sm mt-4 mb-5 timeoff-card mx-auto" style="border-radius: 18px;">
+    <div class="card border-0 shadow-sm mt-0 mb-5 timeoff-card mx-auto" style="border-radius: 18px;">
         <div class="card-body p-4">
             <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center mb-3 gap-3">
                 <div>
@@ -325,11 +269,11 @@
         <form id="windowForm" class="row g-3">
             <div class="col-6">
                 <label for="windowStart" class="form-label">Start hour</label>
-                <input type="time" class="form-control" id="windowStart" step="900" value="05:00">
+                <select class="form-select" id="windowStart"></select>
             </div>
             <div class="col-6">
                 <label for="windowEnd" class="form-label">End hour</label>
-                <input type="time" class="form-control" id="windowEnd" step="900" value="21:00">
+                <select class="form-select" id="windowEnd"></select>
             </div>
             <div class="col-12">
                 <div id="windowFormError" class="text-danger small" role="alert" hidden></div>
@@ -501,32 +445,6 @@
 
 <script>
     document.addEventListener('DOMContentLoaded', () => {
-        const searchValue = new URLSearchParams(window.location.search).get('search') || '';
-        const searchSection = document.getElementById('trainer-search-section');
-        const searchInput = document.getElementById('trainer-dashboard-search');
-
-        if (!searchValue.trim()) return;
-
-        if (searchSection) {
-            requestAnimationFrame(() => searchSection.scrollIntoView({ behavior: 'smooth', block: 'start' }));
-        } else if (searchInput) {
-            requestAnimationFrame(() => searchInput.scrollIntoView({ behavior: 'smooth', block: 'start' }));
-        }
-
-        if (searchInput) {
-            searchInput.focus({ preventScroll: true });
-        }
-
-        // Remove the search query from the URL so a refresh returns the full list.
-        const url = new URL(window.location.href);
-        url.searchParams.delete('search');
-        const hash = url.hash || '#trainer-search-section';
-        history.replaceState({}, document.title, `${url.pathname}${url.searchParams.toString() ? `?${url.searchParams}` : ''}${hash}`);
-    });
-</script>
-
-<script>
-    document.addEventListener('DOMContentLoaded', () => {
         if (!('ontouchstart' in window)) return;
         requestAnimationFrame(() => {
             const body = document.body || document.documentElement;
@@ -634,6 +552,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const windowFormError = document.getElementById('windowFormError');
     const eventTemplate = document.getElementById('calendar-event-template');
     const bookButtons = document.querySelectorAll('.book-client-btn');
+    const clientPicker = document.getElementById('trainer-client-picker');
     const eventModal = document.getElementById('eventModal');
     const eventModalClose = document.getElementById('eventModalClose');
     const eventModalTitle = document.getElementById('eventModalTitle');
@@ -907,6 +826,16 @@ document.addEventListener('DOMContentLoaded', () => {
         updateCounter: 0
     };
 
+    function syncClientPickerSelection() {
+        if (!clientPicker) return;
+        const nextValue = state.selectedClient && state.selectedClient.id
+            ? String(state.selectedClient.id)
+            : '';
+        if (clientPicker.value !== nextValue) {
+            clientPicker.value = nextValue;
+        }
+    }
+
     function createDragGhost(sourceEl, baseRect) {
         if (!sourceEl) return null;
         const ghost = sourceEl.cloneNode(true);
@@ -1105,6 +1034,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function refreshSelectedClientLabel() {
         if (!state.selectedClient) {
             setSelectedClientDisplay('No client selected', true);
+            syncClientPickerSelection();
             if (state.modalEvent && (state.modalEvent.type || 'session') !== 'time_off') {
                 rememberEventStatusDefault(STATUS_INFO_DEFAULT_SESSION, STATUS_INFO_DEFAULT_VARIANT);
             }
@@ -1113,6 +1043,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const fullName = `${state.selectedClient.name || ''} ${state.selectedClient.last || ''}`.trim() || 'Client';
         const message = buildSelectedClientMessage(fullName, state.selectedClient.sessionsLeft, state.selectedClient.sessions);
         setSelectedClientDisplay(message, false);
+        syncClientPickerSelection();
         updateModalSessionsRemaining(state.selectedClient.id);
     }
 
@@ -2198,7 +2129,7 @@ function applyWeekPicker(event) {
             if (slotMinutes === 0) {
                 const label = new Date();
                 label.setHours(slotHour, slotMinutes, 0, 0);
-                time.textContent = label.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+                time.textContent = label.toLocaleTimeString([], { hour: 'numeric' });
             }
             timesEl.appendChild(time);
         }
@@ -2505,8 +2436,8 @@ function applyWeekPicker(event) {
             showDashboardToast(`${name} ${last} has no sessions remaining.`, 'danger');
             state.selectedClient = null;
             state.selectedClientButton = null;
-            setSelectedClientDisplay('No client selected', true);
             bookButtons.forEach(btn => btn.classList.remove('active'));
+            refreshSelectedClientLabel();
             return;
         }
         refreshSelectedClientLabel();
@@ -2525,8 +2456,8 @@ function applyWeekPicker(event) {
             showDashboardToast('That client has no sessions remaining.', 'danger');
             state.selectedClient = null;
             state.selectedClientButton = null;
-            setSelectedClientDisplay('No client selected', true);
             bookButtons.forEach(btn => btn.classList.remove('active'));
+            refreshSelectedClientLabel();
             return;
         }
         if (slot.classList.contains('calendar-slot-past')) {
@@ -3683,6 +3614,27 @@ function applyWeekPicker(event) {
         }
     }
 
+    function buildHourOptions(selectEl) {
+        if (!selectEl) return;
+        selectEl.innerHTML = '';
+        for (let hour = 0; hour < 24; hour += 1) {
+            const hourStr = String(hour).padStart(2, '0');
+            const value = `${hourStr}:00`;
+            const option = document.createElement('option');
+            option.value = value;
+
+            const hour12 = (hour % 12) || 12;
+            const meridiem = hour >= 12 ? 'PM' : 'AM';
+            option.textContent = `${hour12}:00 ${meridiem}`;
+            selectEl.appendChild(option);
+        }
+    }
+
+    function setupWindowTimeOptions() {
+        buildHourOptions(windowStartInput);
+        buildHourOptions(windowEndInput);
+    }
+
     function openWindowModal() {
         windowStartInput.value = `${String(state.viewStart).padStart(2, '0')}:00`;
         windowEndInput.value = `${String(state.viewEnd).padStart(2, '0')}:00`;
@@ -3774,6 +3726,7 @@ function applyWeekPicker(event) {
     }
 
     function init() {
+        setupWindowTimeOptions();
         rebuildGrid({ focusToday: true });
         updateWeekLabel();
         fetchEvents();
@@ -3782,6 +3735,23 @@ function applyWeekPicker(event) {
         bookButtons.forEach(btn => {
             btn.addEventListener('click', () => selectClient(btn));
         });
+
+        if (clientPicker) {
+            clientPicker.addEventListener('change', () => {
+                const selectedId = String(clientPicker.value || '').trim();
+                if (!selectedId) {
+                    state.selectedClient = null;
+                    state.selectedClientButton = null;
+                    bookButtons.forEach(btn => btn.classList.remove('active'));
+                    refreshSelectedClientLabel();
+                    renderEvents();
+                    return;
+                }
+                const targetBtn = document.querySelector(`.book-client-btn[data-client-id="${selectedId}"]`);
+                if (!targetBtn) return;
+                selectClient(targetBtn);
+            });
+        }
 
         prevWeekBtn.addEventListener('click', () => {
             state.weekStart.setDate(state.weekStart.getDate() - 7);
@@ -3823,9 +3793,11 @@ function applyWeekPicker(event) {
         windowForm.addEventListener('submit', applyWindow);
         if (windowStartInput) {
             windowStartInput.addEventListener('input', () => setWindowError(''));
+            windowStartInput.addEventListener('change', () => setWindowError(''));
         }
         if (windowEndInput) {
             windowEndInput.addEventListener('input', () => setWindowError(''));
+            windowEndInput.addEventListener('change', () => setWindowError(''));
         }
         if (weekLabel) {
             weekLabel.addEventListener('click', openWeekPicker);

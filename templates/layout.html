@@ -56,8 +56,8 @@
                 </button>
                 <div class="collapse navbar-collapse" id="navbarNav">
                     {% if 'user_id' in session %}
-                        <!-- Search bar only visible when menu is expanded -->
-                        <form class="d-flex ms-lg-auto me-3 mt-2 mt-lg-0" role="search" action="/search" method="GET">
+                        <!-- Desktop search bar -->
+                        <form class="d-none d-lg-flex ms-lg-auto me-3 mt-2 mt-lg-0" role="search" action="/search" method="GET">
                         <input class="form-control me-2 bitcoin-search"
                                 type="search" placeholder="Search exercises..." name="q" aria-label="Search">
                         <button class="btn bitcoin-btn" type="submit">Search</button>
@@ -65,35 +65,43 @@
                     {% endif %}
                     <ul class="navbar-nav ms-auto">                 
                         {% if 'user_id' in session %}
-                            {% if is_admin %}
-                                <li class="nav-item">
-                                    <a class="nav-link" href="{{ url_for('admin_users') }}">Admin Dashboard</a>
-                                </li>
-                            {% endif %}
-                            {% if session.get('role') in ['trainer', 'admin'] %}
-                                <li class="nav-item">
-                                    <a class="nav-link" href="{{ url_for('trainer_dashboard') }}">Trainer Dashboard</a>
-                                </li>
-                            {% endif %}                 
                             <li class="nav-item">
                                 <a class="nav-link" aria-current="page" href="/">Home</a>
                             </li>
+                            {% if session.get('role') in ['trainer', 'admin'] %}
+                                <li class="nav-item">
+                                    <a class="nav-link" href="{{ url_for('trainer_dashboard') }}">Trainer Schedule</a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link" href="{{ url_for('trainer_clients') }}">Client Roster</a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link" href="{{ url_for('trainer_self_schedule_view') }}">Workout Log</a>
+                                </li>
+                            {% endif %}
                             <li class="nav-item">
-                                <a class="nav-link" href="/training">Training</a>
+                                <a class="nav-link" href="/training">My Training</a>
                             </li>
                             {% if session.get('role') == 'user' and user_has_schedule_access %}
                                 <li class="nav-item">
                                     <a class="nav-link" href="{{ url_for('client_schedule_view') }}">Schedule</a>
                                 </li>
                             {% endif %}
-                            {% if session.get('role') in ['trainer', 'admin'] %}
+                            {% if is_admin %}
                                 <li class="nav-item">
-                                    <a class="nav-link" href="{{ url_for('trainer_self_schedule_view') }}">Workout Log</a>
+                                    <a class="nav-link" href="{{ url_for('admin_users') }}">Admin Dashboard</a>
                                 </li>
                             {% endif %}
                             <li class="nav-item">
                                 <a class="nav-link" href="{{ url_for('settings') }}">Account Settings</a>
-                            </li>                        
+                            </li>
+                            <li class="nav-item d-lg-none mt-2">
+                                <form class="d-flex" role="search" action="/search" method="GET">
+                                    <input class="form-control me-2 bitcoin-search"
+                                           type="search" placeholder="Search exercises..." name="q" aria-label="Search">
+                                    <button class="btn bitcoin-btn" type="submit">Search</button>
+                                </form>
+                            </li>
                             <li class="nav-item">
                                 <a href="/logout" class="nav-link" onclick="return confirmLogout()">Logout</a>
                                 <script>
