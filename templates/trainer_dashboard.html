@@ -6,7 +6,7 @@
 
 {% block content %}
 <div class="trainer-dashboard-container container-fluid px-0 px-sm-3 px-lg-5" id="trainer-dashboard-top">
-    <div class="card w-100 border-0 shadow-lg trainer-dashboard-card mx-auto">
+    <div class="card w-100 border-0 trainer-dashboard-card mx-auto">
         {% set show_trainer_column = trainer.role == 'admin' %}
         {% set first_name = trainer.name or '' %}
         {% set last_name = trainer.last_name or '' %}
@@ -97,7 +97,7 @@
                 </div>
                 <div class="d-flex flex-column align-items-center trainer-schedule-header-controls">
                     <div class="trainer-schedule-client-picker mt-1">
-                        <label for="trainer-client-picker" class="form-label small text-uppercase mb-1">Choose Client</label>
+                        <label for="trainer-client-picker" class="form-label small text-uppercase mb-1">Book A Session</label>
                         <div class="trainer-schedule-client-picker__row">
                             <select id="trainer-client-picker" class="form-select form-select-sm" {% if not clients %}disabled{% endif %}>
                                 <option value="">Select client</option>
@@ -215,7 +215,7 @@
 </div>
 
 <div class="trainer-timeoff-container container-fluid px-0 px-sm-3 px-lg-5" id="trainer-timeoff">
-    <div class="card border-0 shadow-sm mt-0 mb-5 timeoff-card mx-auto" style="border-radius: 18px;">
+    <div class="card border-0 mt-0 mb-5 timeoff-card mx-auto" style="border-radius: 18px;">
         <div class="card-body p-4">
             <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center mb-3 gap-3">
                 <div>
