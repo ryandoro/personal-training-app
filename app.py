@@ -10993,6 +10993,7 @@ def _load_trainer_session_payload_for_edit(trainer: dict, event_id: int):
                   FROM trainer_schedule
                  WHERE id = %s
                 """,
+                (event_id,),
             )
             row = cursor.fetchone()
     if not row:

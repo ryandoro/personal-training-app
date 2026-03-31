@@ -320,7 +320,7 @@
 
                 const meta = document.createElement('div');
                 meta.className = 'fitbaseai-reply-option-card__meta';
-                meta.textContent = option.metric_label || 'No EST. 1RM yet';
+                meta.textContent = option.metric_label || 'No data yet';
 
                 button.appendChild(title);
                 button.appendChild(meta);
@@ -375,6 +375,17 @@
         return unit ? `${rounded} ${unit}` : rounded;
     }
 
+    function formatHoldTime(value) {
+        const numericValue = Number(value);
+        if (!Number.isFinite(numericValue)) {
+            return '';
+        }
+        const totalSeconds = Math.max(0, Math.round(numericValue));
+        const minutes = Math.floor(totalSeconds / 60);
+        const seconds = totalSeconds % 60;
+        return `${minutes}:${String(seconds).padStart(2, '0')}`;
+    }
+
     function formatWeightAndReps(weight, reps) {
         const weightLabel = formatNumberLabel(weight, 'lbs');
         const repsNumber = Number(reps);
@@ -383,6 +394,36 @@
             return `${weightLabel} × ${repsLabel}`;
         }
         return weightLabel || repsLabel || '';
+    }
+
+    function formatMetricValue(value, mode) {
+        if (mode === 'time_hold') {
+            return formatHoldTime(value);
+        }
+        if (mode === 'cardio') {
+            return formatNumberLabel(value, 'min');
+        }
+        if (mode === 'bodyweight_reps') {
+            const numericValue = Number(value);
+            return Number.isFinite(numericValue) ? `${Math.round(numericValue)} reps` : '';
+        }
+        return formatNumberLabel(value, 'lbs');
+    }
+
+    function formatMetricSummary(weight, reps, mode) {
+        if (mode === 'cardio') {
+            const timeLabel = formatMetricValue(reps, mode);
+            return timeLabel ? `Bodyweight × ${timeLabel}` : '';
+        }
+        if (mode === 'time_hold') {
+            const holdLabel = formatMetricValue(reps, mode);
+            return holdLabel ? `Bodyweight × ${holdLabel}` : '';
+        }
+        if (mode === 'bodyweight_reps') {
+            const repsLabel = formatMetricValue(reps, mode);
+            return repsLabel ? `Bodyweight × ${repsLabel}` : '';
+        }
+        return formatWeightAndReps(weight, reps);
     }
 
     function createExerciseDetailStat(label, value) {
@@ -417,12 +458,21 @@
         return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
     }
 
-    function formatChartValue(value, unit) {
+    function formatChartValue(value, unit, mode) {
         const numeric = Number(value);
         if (!Number.isFinite(numeric)) {
             return '—';
         }
-        return `${numeric} ${unit || ''}`.trim();
+        if (mode === 'time_hold') {
+            return formatHoldTime(numeric);
+        }
+        if (mode === 'cardio') {
+            return formatNumberLabel(numeric, unit || 'min') || '—';
+        }
+        if (mode === 'bodyweight_reps') {
+            return `${Math.round(numeric)} reps`;
+        }
+        return formatNumberLabel(numeric, unit || 'lbs') || '—';
     }
 
     function destroyExerciseDetailChart(canvas) {
@@ -455,7 +505,7 @@
             chartWrapper.hidden = false;
             placeholder.hidden = false;
             canvas.hidden = true;
-            placeholder.textContent = 'Log a max to unlock this chart.';
+            placeholder.textContent = 'Log progress to unlock this chart.';
             revealExpandedExerciseDetail(card);
             return;
         }
@@ -505,7 +555,7 @@
                     y: {
                         beginAtZero: true,
                         ticks: {
-                            callback: (val) => formatChartValue(val, payload?.chart_unit),
+                            callback: (val) => formatChartValue(val, payload?.chart_unit, payload?.value_mode),
                         },
                     },
                     x: {
@@ -522,14 +572,31 @@
                         callbacks: {
                             label: (ctx) => {
                                 const entry = history[ctx.dataIndex] || {};
-                                const lines = [formatChartValue(ctx.parsed.y, payload?.chart_unit)];
-                                const weightLine = formatNumberLabel(entry?.weight, 'lbs');
-                                const repsLine = Number.isFinite(Number(entry?.reps)) ? `${Math.round(Number(entry.reps))} reps` : '';
-                                if (weightLine) {
-                                    lines.push(`Weight: ${weightLine}`);
-                                }
-                                if (repsLine) {
-                                    lines.push(`Reps: ${repsLine}`);
+                                const lines = [formatChartValue(ctx.parsed.y, payload?.chart_unit, payload?.value_mode)];
+                                if (payload?.value_mode === 'strength') {
+                                    const weightLine = formatNumberLabel(entry?.weight, 'lbs');
+                                    const repsLine = Number.isFinite(Number(entry?.reps)) ? `${Math.round(Number(entry.reps))} reps` : '';
+                                    if (weightLine) {
+                                        lines.push(`Weight: ${weightLine}`);
+                                    }
+                                    if (repsLine) {
+                                        lines.push(`Reps: ${repsLine}`);
+                                    }
+                                } else if (payload?.value_mode === 'cardio') {
+                                    const timeLine = formatMetricValue(entry?.reps, 'cardio');
+                                    if (timeLine) {
+                                        lines.push(`Time: ${timeLine}`);
+                                    }
+                                } else if (payload?.value_mode === 'time_hold') {
+                                    const holdLine = formatMetricValue(entry?.reps, 'time_hold');
+                                    if (holdLine) {
+                                        lines.push(`Hold: ${holdLine}`);
+                                    }
+                                } else if (payload?.value_mode === 'bodyweight_reps') {
+                                    const repsLine = formatMetricValue(entry?.reps, 'bodyweight_reps');
+                                    if (repsLine) {
+                                        lines.push(`Reps: ${repsLine}`);
+                                    }
                                 }
                                 return lines;
                             },
@@ -543,12 +610,15 @@
 
     function buildExerciseProgressSummary(payload) {
         const summary = payload?.summary || {};
-        const firstLabel = formatNumberLabel(summary?.first_one_rm ?? summary?.first_value, 'lbs');
-        const latestLabel = formatNumberLabel(summary?.latest_one_rm ?? summary?.latest_value, 'lbs');
+        const valueMode = payload?.value_mode || 'strength';
+        const firstValue = valueMode === 'strength' ? (summary?.first_one_rm ?? summary?.first_value) : summary?.first_value;
+        const latestValue = valueMode === 'strength' ? (summary?.latest_one_rm ?? summary?.latest_value) : summary?.latest_value;
+        const firstLabel = formatMetricValue(firstValue, valueMode);
+        const latestLabel = formatMetricValue(latestValue, valueMode);
         if (firstLabel && latestLabel && firstLabel !== latestLabel) {
             return `Progressed from ${firstLabel} to ${latestLabel}.`;
         }
-        const bestLabel = formatNumberLabel(summary?.best_value, payload?.chart_unit || 'lbs');
+        const bestLabel = formatMetricValue(summary?.best_value, valueMode);
         if (bestLabel) {
             return `Best recorded value: ${bestLabel}.`;
         }
@@ -558,14 +628,15 @@
     function createExerciseDetailCard(payload, sourceButton) {
         const workout = payload?.workout || {};
         const summary = payload?.summary || {};
+        const valueMode = payload?.value_mode || 'strength';
         const card = document.createElement('div');
         card.className = 'fitbaseai-exercise-detail';
 
         const stats = document.createElement('div');
         stats.className = 'fitbaseai-exercise-detail__stats';
         const statNodes = [
-            createExerciseDetailStat('Started with', formatWeightAndReps(summary.first_weight, summary.first_reps)),
-            createExerciseDetailStat('Latest logged max', formatWeightAndReps(workout.max_weight, workout.max_reps)),
+            createExerciseDetailStat('Started with', formatMetricSummary(summary.first_weight, summary.first_reps, valueMode)),
+            createExerciseDetailStat('Latest logged max', formatMetricSummary(workout.max_weight, workout.max_reps, valueMode)),
             createExerciseDetailStat('First recorded', formatShortDate(summary.first_recorded_at)),
             createExerciseDetailStat('Last updated', formatShortDate(workout.updated_at || summary.latest_recorded_at)),
         ].filter(Boolean);

@@ -93,6 +93,41 @@ def _normalize_text(value: Any) -> str:
     return re.sub(r"\s+", " ", str(value)).strip()
 
 
+def _format_duration_seconds(total_seconds: Any) -> str | None:
+    numeric = _coerce_float(total_seconds)
+    if numeric is None:
+        return None
+    total = int(round(numeric))
+    if total < 0:
+        return None
+    minutes = total // 60
+    seconds = total % 60
+    return f"{minutes}:{seconds:02d}"
+
+
+def _format_metric_display(value_mode: str, value: Any) -> str | None:
+    numeric = _coerce_float(value)
+    if numeric is None:
+        return None
+    if value_mode == "time_hold":
+        return _format_duration_seconds(numeric)
+    if value_mode == "cardio":
+        rounded = str(int(round(numeric))) if abs(numeric - round(numeric)) < 0.01 else f"{numeric:.1f}".rstrip("0").rstrip(".")
+        return f"{rounded} min"
+    if value_mode == "bodyweight_reps":
+        return f"{int(round(numeric))} reps"
+    rounded = str(int(round(numeric))) if abs(numeric - round(numeric)) < 0.01 else f"{numeric:.1f}".rstrip("0").rstrip(".")
+    return f"{rounded} lbs"
+
+
+def _missing_metric_display(value_mode: str) -> str:
+    if value_mode in {"cardio", "time_hold"}:
+        return "No best time yet"
+    if value_mode == "bodyweight_reps":
+        return "No best reps yet"
+    return "No EST. 1RM yet"
+
+
 def _normalize_role(user_row: dict | None) -> str:
     return (_normalize_text((user_row or {}).get("role")) or "user").lower()
 
@@ -620,16 +655,21 @@ def _extract_one_rep_max_exercise_query(message_text: str, actor_row: dict, page
         return None
 
     patterns = (
+        r"\bbest time\b\s*(?:for|of|on)\s+(.+?)[?.!]*$",
         r"\b(?:est(?:imated)?\.?\s*)?1rm\b\s*(?:for|of|on)\s+(.+?)[?.!]*$",
         r"\bone[\s-]?rep max\b\s*(?:for|of|on)\s+(.+?)[?.!]*$",
         r"\bmax\b\s*(?:for|of|on)\s+(.+?)[?.!]*$",
         r"\bpr\b\s*(?:for|of|on)\s+(.+?)[?.!]*$",
         r"\bpersonal record\b\s*(?:for|of|on)\s+(.+?)[?.!]*$",
         r"\brecord\b\s*(?:for|of|on)\s+(.+?)[?.!]*$",
+        r"\bmax time\b\s*(?:for|of|on)\s+(.+?)[?.!]*$",
         r"\bmax\b\s+(?!for\b|of\b|on\b)(.+?)[?.!]*$",
         r"\bpr\b\s+(?!for\b|of\b|on\b)(.+?)[?.!]*$",
         r"\bpersonal record\b\s+(?!for\b|of\b|on\b)(.+?)[?.!]*$",
         r"\brecord\b\s+(?!for\b|of\b|on\b)(.+?)[?.!]*$",
+        r"\bbest time\b\s+(?!for\b|of\b|on\b)(.+?)[?.!]*$",
+        r"\bmax time\b\s+(?!for\b|of\b|on\b)(.+?)[?.!]*$",
+        r"\b(.+?)\s+\bbest time\b[?.!]*$",
         r"\b(.+?)\s+\b(?:est(?:imated)?\.?\s*)?1rm\b[?.!]*$",
         r"\b(.+?)\s+\bone[\s-]?rep max\b[?.!]*$",
         r"\b(.+?)\s+\bmax\b[?.!]*$",
@@ -675,7 +715,7 @@ def _extract_one_rep_max_exercise_query(message_text: str, actor_row: dict, page
         )
 
     captured = re.sub(
-        r"\b(?:what(?:'s| is)?|show|tell|give|pull|get|me|my|latest|current|estimated|est|max|1rm|one[\s-]?rep max|pr|personal record|record|for|of|on)\b",
+        r"\b(?:what(?:'s| is)?|show|tell|give|pull|get|me|my|latest|current|estimated|est|max|1rm|one[\s-]?rep max|pr|personal record|record|best|time|minute|minutes|min|mins|second|seconds|sec|secs|for|of|on)\b",
         " ",
         captured,
         flags=re.IGNORECASE,
@@ -715,22 +755,41 @@ def _latest_prior_user_message(recent_history: list[dict[str, str]] | None, curr
     return None
 
 
-def _compute_search_result_estimated_one_rep_max(row: dict[str, Any]) -> tuple[float | None, str | None]:
+def _compute_search_result_metric(row: dict[str, Any]) -> dict[str, Any]:
     app_module = _load_app_module()
     workout_name = _normalize_text(row.get("name"))
     category_label = _normalize_text(row.get("category"))
     is_cardio = category_label.lower() == "cardio"
     is_time_hold = app_module._is_plank_exercise(workout_name)
     is_bodyweight_name = app_module._is_bodyweight_exercise(workout_name)
-    if is_cardio or is_time_hold or is_bodyweight_name:
-        return None, None
 
     max_weight = _coerce_float(row.get("max_weight"))
     max_reps = _coerce_float(row.get("max_reps"))
-    est_one_rm = app_module._estimate_one_rep_max(max_weight, max_reps)
-    if est_one_rm is None:
-        return None, None
-    return est_one_rm, f"{est_one_rm:.0f} lbs"
+    value_mode = "strength"
+    metric_value = None
+    est_one_rm = None
+
+    if is_cardio:
+        value_mode = "cardio"
+        metric_value = max_reps
+    elif is_time_hold:
+        value_mode = "time_hold"
+        metric_value = int(round(max_reps)) if max_reps is not None else None
+    elif is_bodyweight_name:
+        value_mode = "bodyweight_reps"
+        metric_value = int(round(max_reps)) if max_reps is not None else None
+    else:
+        est_one_rm = app_module._estimate_one_rep_max(max_weight, max_reps)
+        metric_value = est_one_rm
+
+    metric_display = _format_metric_display(value_mode, metric_value)
+    return {
+        "value_mode": value_mode,
+        "metric_value": metric_value,
+        "metric_display": metric_display,
+        "estimated_one_rep_max": est_one_rm,
+        "estimated_one_rep_max_display": metric_display if value_mode == "strength" else None,
+    }
 
 
 def _normalize_exercise_name_for_match(value: str | None) -> str:
@@ -787,12 +846,11 @@ def _search_workout_results_for_one_rep_max(target_row: dict, actor_row: dict, e
 
     enriched_rows: list[dict[str, Any]] = []
     for row in rows:
-        estimated_one_rep_max, estimated_one_rep_max_display = _compute_search_result_estimated_one_rep_max(row)
+        metric_info = _compute_search_result_metric(row)
         enriched_rows.append(
             {
                 **row,
-                "estimated_one_rep_max": estimated_one_rep_max,
-                "estimated_one_rep_max_display": estimated_one_rep_max_display,
+                **metric_info,
             }
         )
     return enriched_rows
@@ -813,7 +871,7 @@ def _build_estimated_one_rep_max_reply_options(
             {
                 "kind": "exercise_detail",
                 "label": workout_name,
-                "metric_label": row.get("estimated_one_rep_max_display") or "No EST. 1RM yet",
+                "metric_label": row.get("metric_display") or _missing_metric_display(row.get("value_mode") or "strength"),
                 "workout_id": row.get("workout_id") or row.get("id"),
                 "target_user_id": target_row.get("id"),
                 "target_name": target_name,
@@ -846,9 +904,9 @@ def _lookup_estimated_one_rep_max(target_row: dict, arguments: dict[str, Any], a
 
     if len(results) == 1:
         row = results[0]
-        est_display = row.get("estimated_one_rep_max_display")
+        metric_display = row.get("metric_display")
         detail_options = _build_estimated_one_rep_max_reply_options(actor_row, target_row, [row])
-        if not est_display:
+        if not metric_display:
             return {
                 "success": False,
                 "error": f"I found the exact match below for {target_name}. Select it for more details.",
@@ -861,7 +919,10 @@ def _lookup_estimated_one_rep_max(target_row: dict, arguments: dict[str, Any], a
             "target_name": target_name,
             "exercise_name": row.get("name"),
             "exercise_query": exercise_query,
-            "estimated_one_rep_max_display": est_display,
+            "estimated_one_rep_max_display": row.get("estimated_one_rep_max_display"),
+            "metric_display": metric_display,
+            "value_mode": row.get("value_mode") or "strength",
+            "metric_value": row.get("metric_value"),
             "best_estimated_one_rep_max": row.get("estimated_one_rep_max"),
             "best_entry": row,
             "reply_options": detail_options,
@@ -1794,6 +1855,12 @@ def maybe_prepare_direct_lookup(
         return None
     prior_user_message = _latest_prior_user_message(recent_history, message_text)
     one_rm_markers = (
+        r"\bbest time\b\s+(?:for|of|on)\b",
+        r"\bbest time\b\s+(?!for\b|of\b|on\b)[a-z0-9]",
+        r"\bbest time\b[?.!]*$",
+        r"\bmax time\b\s+(?:for|of|on)\b",
+        r"\bmax time\b\s+(?!for\b|of\b|on\b)[a-z0-9]",
+        r"\bmax time\b[?.!]*$",
         r"\b1rm\b",
         r"\bone rep max\b",
         r"\bestimated 1rm\b",
@@ -2479,6 +2546,38 @@ def _extract_relative_or_named_date(message_text: str, page_context: dict | None
         if not re.search(r"\d{4}", raw_value):
             raw_value = f"{raw_value}, {today_local.year}"
         return _parse_local_date(raw_value, page_context)
+
+    weekday_match = re.search(
+        r"\b(?:(this|next|last)\s+)?"
+        r"(monday|tuesday|wednesday|thursday|friday|saturday|sunday)"
+        r"(?:\s+(this|next|last)\s+week)?\b",
+        lowered,
+        flags=re.IGNORECASE,
+    )
+    if weekday_match:
+        prefix = (weekday_match.group(1) or "").lower()
+        weekday_name = (weekday_match.group(2) or "").lower()
+        suffix = (weekday_match.group(3) or "").lower()
+        direction = suffix or prefix
+        weekday_lookup = {
+            "monday": 0,
+            "tuesday": 1,
+            "wednesday": 2,
+            "thursday": 3,
+            "friday": 4,
+            "saturday": 5,
+            "sunday": 6,
+        }
+        target_weekday = weekday_lookup.get(weekday_name)
+        if target_weekday is not None:
+            start_of_week = today_local - timedelta(days=today_local.weekday())
+            week_offset = 0
+            if direction == "next":
+                week_offset = 1
+            elif direction == "last":
+                week_offset = -1
+            target_week_start = start_of_week + timedelta(weeks=week_offset)
+            return target_week_start + timedelta(days=target_weekday)
     return None
 
 

@@ -1163,13 +1163,20 @@ def _fallback_tool_response(tool_result: dict[str, Any], pending_action: dict[st
 
     metric_key = tool_result.get("metric_key")
     if metric_key == "estimated_one_rep_max":
-        best_display = tool_result.get("estimated_one_rep_max_display")
+        best_display = tool_result.get("metric_display") or tool_result.get("estimated_one_rep_max_display")
         name = tool_result.get("exercise_name")
         target = tool_result.get("target_name")
+        value_mode = tool_result.get("value_mode") or "strength"
         if best_display:
             reply_options = tool_result.get("reply_options") or []
             if reply_options:
                 return f"I found the exact match below for {target}. Select it for more details."
+            if value_mode == "cardio":
+                return f"{target}'s best time for {name} is {best_display}."
+            if value_mode == "time_hold":
+                return f"{target}'s best hold time for {name} is {best_display}."
+            if value_mode == "bodyweight_reps":
+                return f"{target}'s best reps for {name} is {best_display}."
             return f"{target}'s EST. 1RM for {name} is {best_display}."
         best = tool_result.get("best_estimated_one_rep_max")
         return f"{target}'s EST. 1RM for {name} is {best} lbs."
@@ -1279,6 +1286,12 @@ def _message_likely_needs_tools(message_text: str) -> bool:
         return False
 
     exact_metric_patterns = (
+        r"\bbest time\b\s+(?:for|of|on)\b",
+        r"\bbest time\b\s+(?!for\b|of\b|on\b)[a-z0-9]",
+        r"\bbest time\b[?.!]*$",
+        r"\bmax time\b\s+(?:for|of|on)\b",
+        r"\bmax time\b\s+(?!for\b|of\b|on\b)[a-z0-9]",
+        r"\bmax time\b[?.!]*$",
         r"\b1rm\b",
         r"\bone rep max\b",
         r"\bestimated 1rm\b",
