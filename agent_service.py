@@ -17,6 +17,7 @@ from agent_prompts import FITBASEAI_SYSTEM_PROMPT, MAX_AGENT_TURNS, build_runtim
 from agent_retrieval import extract_uploaded_text, ingest_document, search_retrieval_context, sync_free_research_sources
 from agent_tools import (
     AGENT_TOOL_SPECS,
+    BATCH_ACTION_LIMIT,
     execute_pending_action,
     execute_tool_call,
     maybe_prepare_batched_schedule_actions,
@@ -41,6 +42,37 @@ DEFAULT_MONTHLY_BUDGET_USD = Decimal("5.00")
 DEFAULT_INTERNAL_STOP_USD = Decimal("4.25")
 DEFAULT_MAX_OUTPUT_TOKENS = 500
 DEFAULT_OPENAI_TIMEOUT_SECONDS = 60
+DEFAULT_PLANNER_OUTPUT_TOKENS = 350
+
+MULTI_REQUEST_START_PATTERN = re.compile(
+    r"(?:^|(?:[,;]|\n+)\s*|\s+(?:and then|then|also|and|&)\s+)"
+    r"(?:(?:please|can you|could you|would you)\s+)?"
+    r"(?:swap|cancel|reschedule|schedule|book|assign|move|delete|remove|complete|mark|"
+    r"what(?:'s| is)?|show|tell me|give me|how many|how often|who do i have|what do i have|do i have|am i|did i)\b",
+    flags=re.IGNORECASE,
+)
+
+MULTI_REQUEST_PLANNER_INSTRUCTIONS = f"""
+You split one FitBaseAI user message into standalone sub-requests.
+
+Rules:
+- Return JSON only. No markdown and no explanation.
+- Preserve the user's original order.
+- Rewrite each item so it stands alone with the explicit client, date, time, or exercise context needed from the original message.
+- Do not invent missing details.
+- If one sentence asks to schedule or book a session and also assign a workout to that same session, keep that as one combined request.
+- If there are more than {BATCH_ACTION_LIMIT} clear requests, set "too_many" to true and return only the clearest first {BATCH_ACTION_LIMIT}.
+- If there is really only one request, return an empty requests array.
+
+Return exactly this JSON shape:
+{{
+  "too_many": false,
+  "requests": [
+    {{"text": "first standalone request"}},
+    {{"text": "second standalone request"}}
+  ]
+}}
+""".strip()
 
 MODEL_PRICING_USD_PER_MILLION: dict[str, dict[str, Decimal]] = {
     "gpt-5-mini": {"input": Decimal("0.25"), "output": Decimal("2.00")},
@@ -972,10 +1004,14 @@ def _call_openai_responses(
     instructions: str,
     input_messages: list[dict[str, Any]],
     reasoning_effort: str = "low",
+    max_output_tokens_override: int | None = None,
 ) -> tuple[dict[str, Any], Decimal]:
     api_key = _get_openai_api_key()
     model_name = _get_agent_model()
-    max_output_tokens = max(_get_max_output_tokens(), 700)
+    if max_output_tokens_override is None:
+        max_output_tokens = max(_get_max_output_tokens(), 700)
+    else:
+        max_output_tokens = max(100, int(max_output_tokens_override))
     if not api_key:
         raise RuntimeError("OPENAI_API_KEY is not configured.")
 
@@ -1009,6 +1045,77 @@ def _call_openai_responses(
     if response.status_code >= 400:
         raise RuntimeError(f"OpenAI responses request failed: {response.status_code} {response.text[:500]}")
     return response.json(), estimated_cost
+
+
+def _message_likely_contains_multiple_requests(message_text: str) -> bool:
+    raw_text = str(message_text or "")
+    if not _normalize_text(raw_text):
+        return False
+    matches = list(MULTI_REQUEST_START_PATTERN.finditer(raw_text))
+    return len(matches) >= 2
+
+
+def _extract_json_object_from_text(raw_text: str) -> dict[str, Any] | None:
+    text = _normalize_message_content(raw_text)
+    if not text:
+        return None
+    match = re.search(r"\{.*\}", text, flags=re.DOTALL)
+    if not match:
+        return None
+    try:
+        parsed = json.loads(match.group(0))
+    except json.JSONDecodeError:
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
+def _plan_batched_requests(
+    *,
+    thread_id: str,
+    user_id: int,
+    message_text: str,
+) -> dict[str, Any] | None:
+    try:
+        response_json, estimated_cost = _call_openai_responses(
+            instructions=MULTI_REQUEST_PLANNER_INSTRUCTIONS,
+            input_messages=[{"role": "user", "content": _normalize_text(message_text)}],
+            reasoning_effort="low",
+            max_output_tokens_override=DEFAULT_PLANNER_OUTPUT_TOKENS,
+        )
+        _record_chat_usage(
+            response_json=response_json,
+            estimated_cost=estimated_cost,
+            thread_id=thread_id,
+            user_id=user_id,
+            metadata={"endpoint": "responses", "mode": "batch_planner"},
+        )
+        planner_payload = _extract_json_object_from_text(_extract_response_output_text(response_json))
+        if not planner_payload:
+            logger.warning(
+                "Batch planner returned unparseable output for thread %s user %s. status=%s keys=%s",
+                thread_id,
+                user_id,
+                response_json.get("status"),
+                sorted(response_json.keys()),
+            )
+            return None
+        request_rows = planner_payload.get("requests") or []
+        requests_list: list[str] = []
+        for item in request_rows:
+            if not isinstance(item, dict):
+                continue
+            request_text = _normalize_text(item.get("text"))
+            if request_text:
+                requests_list.append(request_text)
+        if len(requests_list) < 2:
+            return None
+        return {
+            "too_many": bool(planner_payload.get("too_many")),
+            "requests": requests_list[:BATCH_ACTION_LIMIT],
+        }
+    except Exception:
+        logger.exception("Batch planner failed")
+        return None
 
 
 def _record_chat_usage(
@@ -1176,9 +1283,17 @@ def _message_likely_needs_tools(message_text: str) -> bool:
         r"\bone rep max\b",
         r"\bestimated 1rm\b",
         r"\bmax\b\s+(?:for|of|on)\b",
+        r"\bmax\b\s+(?!for\b|of\b|on\b)[a-z0-9]",
+        r"\bmax\b[?.!]*$",
         r"\bpr\b\s+(?:for|of|on)\b",
+        r"\bpr\b\s+(?!for\b|of\b|on\b)[a-z0-9]",
+        r"\bpr\b[?.!]*$",
         r"\bpersonal record\b\s+(?:for|of|on)\b",
+        r"\bpersonal record\b\s+(?!for\b|of\b|on\b)[a-z0-9]",
+        r"\bpersonal record\b[?.!]*$",
         r"\brecord\b\s+(?:for|of|on)\b",
+        r"\brecord\b\s+(?!for\b|of\b|on\b)[a-z0-9]",
+        r"\brecord\b[?.!]*$",
         r"\bmost tracked workout\b",
         r"\bhow many clients\b",
         r"\bmy roster\b",
@@ -1481,6 +1596,159 @@ def _postprocess_general_coaching_answer(text: str) -> str:
     return trimmed
 
 
+def _build_planned_request_response_text(
+    *,
+    lookup_texts: list[str],
+    unresolved_items: list[str],
+    pending_action_count: int,
+) -> str:
+    sections: list[str] = []
+    if pending_action_count:
+        sections.append("Handling those requests... Review each one below.")
+    if lookup_texts:
+        if pending_action_count:
+            sections.append("\n\n".join(lookup_texts))
+        else:
+            sections.append("\n\n".join(lookup_texts))
+    if unresolved_items:
+        unresolved_block = "I still need one detail for:\n" + "\n".join(f"• {item}" for item in unresolved_items)
+        sections.append(unresolved_block)
+    return "\n\n".join(section for section in sections if section).strip()
+
+
+def _handle_planned_request_batch(
+    *,
+    thread_id: str,
+    user_id: int,
+    message_text: str,
+    user_row: dict[str, Any],
+    page_context: dict[str, Any] | None,
+    recent_history: list[dict[str, str]] | None,
+) -> dict[str, Any] | None:
+    if not _message_likely_contains_multiple_requests(message_text):
+        return None
+
+    plan = _plan_batched_requests(
+        thread_id=thread_id,
+        user_id=user_id,
+        message_text=message_text,
+    )
+    if not plan:
+        return None
+
+    request_texts = plan.get("requests") or []
+    if len(request_texts) < 2:
+        return None
+
+    lookup_texts: list[str] = []
+    unresolved_items: list[str] = []
+    pending_action_results: list[dict[str, Any]] = []
+    reply_options: list[dict[str, Any]] = []
+    chosen_tool_result: dict[str, Any] | None = None
+
+    if plan.get("too_many"):
+        unresolved_items.append(
+            f"I can handle up to {BATCH_ACTION_LIMIT} clear requests at a time. I planned the first {BATCH_ACTION_LIMIT} below."
+        )
+
+    for request_text in request_texts:
+        direct_lookup_result = maybe_prepare_direct_lookup(
+            request_text,
+            user_row,
+            page_context or {},
+            recent_history,
+        )
+        if direct_lookup_result:
+            if direct_lookup_result.get("success"):
+                lookup_texts.append(_fallback_tool_response(direct_lookup_result, None))
+                if not reply_options:
+                    reply_options = direct_lookup_result.get("reply_options") or []
+                    if reply_options:
+                        chosen_tool_result = direct_lookup_result
+            else:
+                unresolved_items.append(f"{request_text}: {direct_lookup_result.get('error') or 'I could not resolve that lookup.'}")
+            continue
+
+        direct_batch_result = maybe_prepare_batched_schedule_actions(
+            request_text,
+            user_row,
+            page_context or {},
+            recent_history,
+        )
+        if direct_batch_result:
+            if direct_batch_result.get("success"):
+                batch_items = direct_batch_result.get("items") or []
+                if len(pending_action_results) + len(batch_items) > BATCH_ACTION_LIMIT:
+                    unresolved_items.append(
+                        f"{request_text}: I can handle up to {BATCH_ACTION_LIMIT} requests at a time. Split the rest into another message."
+                    )
+                else:
+                    pending_action_results.extend(batch_items)
+            else:
+                unresolved_items.append(
+                    f"{request_text}: {direct_batch_result.get('error') or 'I could not break that into a separate request.'}"
+                )
+            continue
+
+        direct_schedule_result = maybe_prepare_direct_schedule_action(
+            request_text,
+            user_row,
+            page_context or {},
+            recent_history,
+        )
+        if direct_schedule_result:
+            if direct_schedule_result.get("success") and direct_schedule_result.get("kind") == "pending_action":
+                if len(pending_action_results) >= BATCH_ACTION_LIMIT:
+                    unresolved_items.append(
+                        f"{request_text}: I can handle up to {BATCH_ACTION_LIMIT} requests at a time. Split the rest into another message."
+                    )
+                else:
+                    pending_action_results.append(direct_schedule_result)
+            else:
+                unresolved_items.append(
+                    f"{request_text}: {direct_schedule_result.get('error') or 'I could not prepare that task.'}"
+                )
+            continue
+
+        unresolved_items.append(f"{request_text}: I couldn't clearly resolve that part yet.")
+
+    if not lookup_texts and not pending_action_results and not unresolved_items:
+        return None
+
+    pending_actions_payload = (
+        _create_pending_actions(thread_id, user_id, pending_action_results)
+        if pending_action_results
+        else []
+    )
+    assistant_text = _build_planned_request_response_text(
+        lookup_texts=lookup_texts,
+        unresolved_items=unresolved_items,
+        pending_action_count=len(pending_actions_payload),
+    )
+    tool_result_payload = {
+        "kind": "planned_request_batch",
+        "planned_requests": request_texts,
+        "reply_options": reply_options,
+    }
+    if plan.get("too_many"):
+        tool_result_payload["too_many"] = True
+    if chosen_tool_result:
+        tool_result_payload = {
+            **chosen_tool_result,
+            **tool_result_payload,
+            "reply_options": reply_options or chosen_tool_result.get("reply_options") or [],
+        }
+
+    return _finalize_assistant_message(
+        thread_id,
+        user_id,
+        assistant_text,
+        citations=[],
+        pending_actions=pending_actions_payload,
+        tool_result=tool_result_payload,
+    )
+
+
 def _finalize_assistant_message(
     thread_id: str,
     user_id: int,
@@ -1533,6 +1801,17 @@ def chat_with_fitbaseai(
     _store_message(thread_id, user_id, "user", cleaned_message, {"page_context": page_context or {}})
 
     recent_history = _load_recent_thread_history(user_id, thread_id)
+
+    planned_batch_response = _handle_planned_request_batch(
+        thread_id=thread_id,
+        user_id=user_id,
+        message_text=cleaned_message,
+        user_row=user_row,
+        page_context=page_context or {},
+        recent_history=recent_history,
+    )
+    if planned_batch_response:
+        return planned_batch_response
 
     direct_lookup_result = maybe_prepare_direct_lookup(
         cleaned_message,

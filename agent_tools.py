@@ -57,9 +57,10 @@ CUSTOM_WORKOUT_COMPONENTS = (
     (r"\bcardio\b", "CARDIO", "Cardio"),
 )
 DEFAULT_CUSTOM_DURATION_CHOICES = (20, 30, 45, 60)
+DEFAULT_ASSIGNED_WORKOUT_DURATION_MINUTES = 60
 BATCH_ACTION_LIMIT = 3
 _BATCH_REQUEST_SPLIT_PATTERN = re.compile(
-    r"(?:\s*(?:;|\n+|[.!?]+)\s*|\s+(?:and then|then|also|and)\s+)(?=(?:please\s+)?(?:swap|cancel|reschedule|schedule|book|assign|move|delete|remove|complete|mark)\b)",
+    r"(?:\s*(?:;|\n+|[.!?]+)\s*|\s+(?:and then|then|also|and|&)\s+)(?=(?:please\s+)?(?:swap|cancel|reschedule|schedule|book|assign|move|delete|remove|complete|mark)\b)",
     flags=re.IGNORECASE,
 )
 
@@ -625,6 +626,10 @@ def _extract_one_rep_max_exercise_query(message_text: str, actor_row: dict, page
         r"\bpr\b\s*(?:for|of|on)\s+(.+?)[?.!]*$",
         r"\bpersonal record\b\s*(?:for|of|on)\s+(.+?)[?.!]*$",
         r"\brecord\b\s*(?:for|of|on)\s+(.+?)[?.!]*$",
+        r"\bmax\b\s+(?!for\b|of\b|on\b)(.+?)[?.!]*$",
+        r"\bpr\b\s+(?!for\b|of\b|on\b)(.+?)[?.!]*$",
+        r"\bpersonal record\b\s+(?!for\b|of\b|on\b)(.+?)[?.!]*$",
+        r"\brecord\b\s+(?!for\b|of\b|on\b)(.+?)[?.!]*$",
         r"\b(.+?)\s+\b(?:est(?:imated)?\.?\s*)?1rm\b[?.!]*$",
         r"\b(.+?)\s+\bone[\s-]?rep max\b[?.!]*$",
         r"\b(.+?)\s+\bmax\b[?.!]*$",
@@ -734,12 +739,18 @@ def _normalize_exercise_name_for_match(value: str | None) -> str:
         return ""
     cleaned = re.sub(r"[^a-z0-9]+", " ", cleaned)
     cleaned = re.sub(r"\b(?:the|a|an)\b", " ", cleaned)
+    cleaned = re.sub(r"\bpull\s*ups?\b", "pullup", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\bpush\s*ups?\b", "pushup", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\bchin\s*ups?\b", "chinup", cleaned, flags=re.IGNORECASE)
     return _normalize_text(cleaned)
 
 
 def _search_workout_results_for_one_rep_max(target_row: dict, actor_row: dict, exercise_query: str) -> list[dict[str, Any]]:
     app_module = _load_app_module()
-    name_clause, name_params = app_module._build_name_search_clause(exercise_query)
+    search_query = re.sub(r"\bpull[\s-]*ups?\b", "pull up", _normalize_text(exercise_query), flags=re.IGNORECASE)
+    search_query = re.sub(r"\bpush[\s-]*ups?\b", "push up", search_query, flags=re.IGNORECASE)
+    search_query = re.sub(r"\bchin[\s-]*ups?\b", "chin up", search_query, flags=re.IGNORECASE)
+    name_clause, name_params = app_module._build_name_search_clause(search_query)
     if not name_params:
         return []
     catalog_mode, catalog_gym_id = app_module._catalog_scope_from_user_row(actor_row)
@@ -1788,9 +1799,17 @@ def maybe_prepare_direct_lookup(
         r"\bestimated 1rm\b",
         r"\best\.?\s*1rm\b",
         r"\bmax\b\s+(?:for|of|on)\b",
+        r"\bmax\b\s+(?!for\b|of\b|on\b)[a-z0-9]",
+        r"\bmax\b[?.!]*$",
         r"\bpr\b\s+(?:for|of|on)\b",
+        r"\bpr\b\s+(?!for\b|of\b|on\b)[a-z0-9]",
+        r"\bpr\b[?.!]*$",
         r"\bpersonal record\b\s+(?:for|of|on)\b",
+        r"\bpersonal record\b\s+(?!for\b|of\b|on\b)[a-z0-9]",
+        r"\bpersonal record\b[?.!]*$",
         r"\brecord\b\s+(?:for|of|on)\b",
+        r"\brecord\b\s+(?!for\b|of\b|on\b)[a-z0-9]",
+        r"\brecord\b[?.!]*$",
     )
     references_one_rep_max = any(re.search(pattern, lowered, flags=re.IGNORECASE) for pattern in one_rm_markers)
     contextual_one_rep_max = (
@@ -2050,17 +2069,7 @@ def _prepare_schedule_action(arguments: dict[str, Any], actor_row: dict, page_co
                         if not custom_workout_categories:
                             return {"success": False, "error": "Which categories would you like in this custom workout?"}
                         if not _coerce_int(arguments.get("duration_minutes")):
-                            choices_label = ", ".join(str(value) for value in DEFAULT_CUSTOM_DURATION_CHOICES)
-                            return {
-                                "success": False,
-                                "error": f"What duration would you like this workout to be? Choose {choices_label} minutes.",
-                                "reply_options": _build_duration_reply_options(
-                                    action_type=action_type,
-                                    client_row=client_row,
-                                    arguments=arguments,
-                                    page_context=page_context,
-                                ),
-                            }
+                            arguments["duration_minutes"] = DEFAULT_ASSIGNED_WORKOUT_DURATION_MINUTES
 
                 cursor.execute(
                     """
@@ -2324,17 +2333,7 @@ def _prepare_schedule_action(arguments: dict[str, Any], actor_row: dict, page_co
                     if not custom_categories:
                         return {"success": False, "error": "Which categories would you like in this custom workout?"}
                     if not _coerce_int(arguments.get("duration_minutes")):
-                        choices_label = ", ".join(str(value) for value in DEFAULT_CUSTOM_DURATION_CHOICES)
-                        return {
-                            "success": False,
-                            "error": f"What duration would you like this workout to be? Choose {choices_label} minutes.",
-                            "reply_options": _build_duration_reply_options(
-                                action_type=action_type,
-                                client_row=client_row,
-                                arguments=arguments,
-                                page_context=page_context,
-                            ),
-                        }
+                        arguments["duration_minutes"] = DEFAULT_ASSIGNED_WORKOUT_DURATION_MINUTES
                 client_name = _format_person_name(client_row)
                 workout_display_label = _normalize_text(arguments.get("workout_display_label")) or workout_category
                 return {
@@ -3122,8 +3121,11 @@ def _merge_assign_request_into_pending_bookings(
         "custom_categories": workout_request.get("custom_categories") or [],
         "workout_display_label": workout_request.get("display_label"),
     }
-    if _extract_duration_minutes_from_message(segment_text):
-        merged_arguments["duration_minutes"] = _extract_duration_minutes_from_message(segment_text)
+    duration_minutes = _extract_duration_minutes_from_message(segment_text)
+    if duration_minutes:
+        merged_arguments["duration_minutes"] = duration_minutes
+    elif workout_request.get("is_custom"):
+        merged_arguments["duration_minutes"] = DEFAULT_ASSIGNED_WORKOUT_DURATION_MINUTES
 
     merged_result = prepare_fitbase_action(merged_arguments, actor_row, page_context)
     if not merged_result.get("success") or merged_result.get("kind") != "pending_action":
@@ -3134,12 +3136,12 @@ def _merge_assign_request_into_pending_bookings(
 
 
 def _split_batch_schedule_requests(message_text: str) -> list[str]:
-    normalized = _normalize_text(message_text)
-    if not normalized:
+    raw_text = str(message_text or "")
+    if not _normalize_text(raw_text):
         return []
     segments = [
-        segment.strip(" ,.;")
-        for segment in _BATCH_REQUEST_SPLIT_PATTERN.split(normalized)
+        _normalize_text(segment.strip(" ,.;"))
+        for segment in _BATCH_REQUEST_SPLIT_PATTERN.split(raw_text)
         if _normalize_text(segment.strip(" ,.;"))
     ]
     return segments
@@ -3307,17 +3309,7 @@ def maybe_prepare_direct_schedule_action(
                     "success": False,
                     "error": "Which categories would you like in this custom workout?",
                 }
-            choices_label = ", ".join(str(value) for value in DEFAULT_CUSTOM_DURATION_CHOICES)
-            return {
-                "success": False,
-                "error": f"What duration would you like this workout to be? Choose {choices_label} minutes.",
-                "reply_options": _build_duration_reply_options(
-                    action_type=action_type,
-                    client_row=client_row,
-                    arguments=arguments,
-                    page_context=page_context,
-                ),
-            }
+            arguments["duration_minutes"] = DEFAULT_ASSIGNED_WORKOUT_DURATION_MINUTES
 
     if action_type == "reschedule_session":
         if not target_day:

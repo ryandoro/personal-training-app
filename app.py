@@ -4887,7 +4887,10 @@ def trainer_has_premium_generation_access(trainer: dict | None) -> bool:
 def _extract_search_terms(raw_query: str) -> list[str]:
     if not raw_query:
         return []
-    terms = re.findall(r"[A-Za-z0-9]+", raw_query.lower())
+    normalized_query = re.sub(r"\bpull[\s-]*ups?\b", "pull up", raw_query, flags=re.IGNORECASE)
+    normalized_query = re.sub(r"\bpush[\s-]*ups?\b", "push up", normalized_query, flags=re.IGNORECASE)
+    normalized_query = re.sub(r"\bchin[\s-]*ups?\b", "chin up", normalized_query, flags=re.IGNORECASE)
+    terms = re.findall(r"[A-Za-z0-9]+", normalized_query.lower())
     deduped = []
     seen = set()
     for term in terms:
@@ -10682,6 +10685,11 @@ def _family_sequence_from_entries(entries: list[dict]) -> dict[str, int]:
     return {family: idx for idx, family in enumerate(family_sequence)}
 
 
+def _normalize_workout_subcategory_order_key(value: str | None) -> str:
+    normalized = re.sub(r'[^A-Z0-9]+', ' ', (value or '').strip().upper())
+    return normalized.strip()
+
+
 def _sort_workout_block_exercises_for_efficiency(exercises: list, metadata_map: dict[int, dict]) -> tuple[list, dict]:
     annotated: list[dict] = []
     for original_index, entry in enumerate(exercises or []):
@@ -10773,21 +10781,42 @@ def _optimize_workout_payload_layout(workout_payload: dict) -> tuple[dict, dict]
             }
         )
 
-    family_rank = _family_sequence_from_entries(block_layout_meta)
-    ordered_indexes = sorted(
-        range(len(optimized_blocks)),
-        key=lambda idx: (
-            block_layout_meta[idx]['primary_movement_rank'],
-            family_rank.get(block_layout_meta[idx]['primary_family'], len(family_rank)),
-            block_layout_meta[idx]['original_index'],
-        ),
-    )
+    custom_categories = normalize_custom_workout_categories(normalized_payload.get('custom_categories') or [])
+    if custom_categories:
+        custom_order = {
+            _normalize_workout_subcategory_order_key(token): idx
+            for idx, token in enumerate(custom_categories)
+        }
+        ordered_indexes = sorted(
+            range(len(optimized_blocks)),
+            key=lambda idx: (
+                custom_order.get(
+                    _normalize_workout_subcategory_order_key(
+                        optimized_blocks[idx].get('subcategory')
+                    ),
+                    len(custom_order) + idx,
+                ),
+                block_layout_meta[idx]['original_index'],
+            ),
+        )
+    else:
+        family_rank = _family_sequence_from_entries(block_layout_meta)
+        ordered_indexes = sorted(
+            range(len(optimized_blocks)),
+            key=lambda idx: (
+                block_layout_meta[idx]['primary_movement_rank'],
+                family_rank.get(block_layout_meta[idx]['primary_family'], len(family_rank)),
+                block_layout_meta[idx]['original_index'],
+            ),
+        )
     block_order_changed = ordered_indexes != list(range(len(optimized_blocks)))
     reordered_blocks = [optimized_blocks[idx] for idx in ordered_indexes]
 
     updated_payload = dict(normalized_payload)
     updated_payload['plan'] = reordered_blocks
-    grouped_families = [family for family in family_rank.keys() if family != 'other']
+    grouped_families = []
+    if not custom_categories:
+        grouped_families = [family for family in family_rank.keys() if family != 'other']
     return updated_payload, {
         'changed': bool(changed_exercise_blocks or block_order_changed),
         'changed_exercise_blocks': changed_exercise_blocks,
