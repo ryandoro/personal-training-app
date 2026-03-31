@@ -2829,21 +2829,45 @@ def _extract_swap_segment_details(segment_text: str, page_context: dict | None) 
 
 def _prepare_swap_sessions_action(message_text: str, actor_row: dict, page_context: dict | None) -> dict[str, Any]:
     segments = re.split(r"\bwith\b", message_text, maxsplit=1, flags=re.IGNORECASE)
-    if len(segments) != 2:
-        return {
-            "success": False,
-            "error": "Tell me both sessions to swap, like 'swap Client A on March 30 at 5:00 PM with Client B on March 31 at 5:00 PM'.",
-        }
+    first_client = None
+    second_client = None
+    first_day = None
+    first_start_mention = None
+    first_end_mention = None
+    second_day = None
+    second_start_mention = None
+    second_end_mention = None
 
-    first_client = _match_client_from_segment(actor_row, segments[0], page_context, allow_page_fallback=True)
-    if not first_client:
+    if len(segments) == 2:
+        first_client = _match_client_from_segment(actor_row, segments[0], page_context, allow_page_fallback=True)
+        if not first_client:
+            first_client = _match_client_from_message(actor_row, message_text, page_context)
+        if not first_client:
+            return {"success": False, "error": "Tell me which client's session should move first."}
+        second_client = _match_client_from_segment(actor_row, segments[1], page_context, fallback_client=first_client)
+        first_day, first_start_mention, first_end_mention = _extract_swap_segment_details(segments[0], page_context)
+        second_day, second_start_mention, second_end_mention = _extract_swap_segment_details(segments[1], page_context)
+    else:
         first_client = _match_client_from_message(actor_row, message_text, page_context)
-    if not first_client:
-        return {"success": False, "error": "Tell me which client's session should move first."}
-    second_client = _match_client_from_segment(actor_row, segments[1], page_context, fallback_client=first_client)
+        date_mentions = _extract_date_mentions_with_spans(message_text, page_context)
+        if first_client and len(date_mentions) >= 2:
+            first_day = date_mentions[0]["date"]
+            second_day = date_mentions[1]["date"]
+            first_segment = message_text[:date_mentions[1]["start"]]
+            second_segment = message_text[date_mentions[1]["start"]:]
+            first_mentions = _extract_time_mentions(first_segment)
+            second_mentions = _extract_time_mentions(second_segment)
+            first_start_mention = first_mentions[0] if first_mentions else None
+            first_end_mention = first_mentions[1] if len(first_mentions) > 1 else None
+            second_start_mention = second_mentions[0] if second_mentions else None
+            second_end_mention = second_mentions[1] if len(second_mentions) > 1 else None
+            second_client = _match_client_from_segment(actor_row, second_segment, page_context, fallback_client=first_client)
+        else:
+            return {
+                "success": False,
+                "error": "Tell me both sessions to swap, like 'swap Client A on March 30 at 5:00 PM with Client B on March 31 at 5:00 PM'.",
+            }
 
-    first_day, first_start_mention, first_end_mention = _extract_swap_segment_details(segments[0], page_context)
-    second_day, second_start_mention, second_end_mention = _extract_swap_segment_details(segments[1], page_context)
     if not first_day or not second_day:
         return {"success": False, "error": "I need both session dates to swap them."}
 
