@@ -287,6 +287,35 @@
         return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
     }
 
+    function formatCompletionLabel(start, end, completedAt) {
+        const hasStart = start instanceof Date && !Number.isNaN(start.getTime());
+        const hasEnd = end instanceof Date && !Number.isNaN(end.getTime());
+        if (hasStart) {
+            const startDate = start.toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' });
+            const startTime = formatTime(start);
+            if (hasEnd) {
+                const endTime = formatTime(end);
+                if (start.toDateString() === end.toDateString()) {
+                    return `${startDate} at ${startTime} - ${endTime}`;
+                }
+                const endDate = end.toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' });
+                return `${startDate} at ${startTime} - ${endDate} at ${endTime}`;
+            }
+            return `${startDate} at ${startTime}`;
+        }
+
+        if (completedAt instanceof Date && !Number.isNaN(completedAt.getTime())) {
+            return completedAt.toLocaleString(undefined, {
+                month: 'long',
+                day: 'numeric',
+                year: 'numeric',
+                hour: 'numeric',
+                minute: '2-digit',
+            });
+        }
+        return '';
+    }
+
     function toISO(date) {
         return new Date(date).toISOString();
     }
@@ -646,8 +675,8 @@
         if (event.session_completed_at) {
             clientModalCategorySection.hidden = false;
             const completedAt = new Date(event.session_completed_at);
-            if (!Number.isNaN(completedAt.getTime())) {
-                const completedLabel = completedAt.toLocaleString(undefined, { month: 'long', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+            const completedLabel = formatCompletionLabel(start, end, completedAt);
+            if (completedLabel) {
                 clientModalCompleted.textContent = `Completed: ${completedLabel}`;
             } else {
                 clientModalCompleted.textContent = '';

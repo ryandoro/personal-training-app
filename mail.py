@@ -130,3 +130,93 @@ def send_verification_email(*, to_email: str, first_name: str, verify_url: str, 
         to=to_email, 
         subject=subject, 
         html=html)
+
+
+def send_gym_request_submitted_email(
+    *,
+    to_email: str,
+    reviewer_name: str | None,
+    requester_display_name: str,
+    requester_email: str,
+    request_details: dict,
+    review_url: str,
+):
+    subject = f"New gym request pending review: {request_details.get('name') or 'Unnamed gym'}"
+    current_year = date.today().year
+    html = render_template(
+        "email/gym_request_submitted.html",
+        reviewer_name=reviewer_name,
+        requester_display_name=requester_display_name,
+        requester_email=requester_email,
+        request_details=request_details,
+        review_url=review_url,
+        current_year=current_year,
+    )
+    text = "\n".join(
+        [
+            f"A new FitBaseAI gym request was submitted by {requester_display_name} ({requester_email}).",
+            f"Gym: {request_details.get('name') or 'Unknown gym'}",
+            f"Location: {request_details.get('location') or 'Location not provided'}",
+            f"Address: {request_details.get('address') or 'Address not provided'}",
+            f"Automated review: {request_details.get('agent_summary') or 'No automated review summary available.'}",
+            f"Review it here: {review_url}",
+        ]
+    )
+    return send_email(
+        to=to_email,
+        subject=subject,
+        html=html,
+        text=text,
+        Tag="gym-request-submitted",
+        TrackLinks="None",
+    )
+
+
+def send_gym_request_reviewed_email(
+    *,
+    to_email: str,
+    first_name: str | None,
+    request_details: dict,
+    status: str,
+    exercise_library_url: str,
+    review_notes: str | None = None,
+):
+    approved = str(status).strip().lower() == "approved"
+    subject = (
+        f"Your gym request was approved: {request_details.get('name') or 'Gym request'}"
+        if approved
+        else f"Your gym request was not approved: {request_details.get('name') or 'Gym request'}"
+    )
+    current_year = date.today().year
+    html = render_template(
+        "email/gym_request_reviewed.html",
+        first_name=first_name,
+        request_details=request_details,
+        approved=approved,
+        review_notes=review_notes,
+        exercise_library_url=exercise_library_url,
+        current_year=current_year,
+    )
+    text_lines = [
+        f"Gym request: {request_details.get('name') or 'Unknown gym'}",
+        f"Location: {request_details.get('location') or 'Location not provided'}",
+    ]
+    if approved:
+        text_lines.extend(
+            [
+                "Your gym request was approved.",
+                f"You can now select it in Exercise Library: {exercise_library_url}",
+            ]
+        )
+    else:
+        text_lines.append("Your gym request was not approved.")
+    if review_notes:
+        text_lines.extend(["Review notes:", review_notes])
+    return send_email(
+        to=to_email,
+        subject=subject,
+        html=html,
+        text="\n".join(text_lines),
+        Tag="gym-request-reviewed",
+        TrackLinks="None",
+    )

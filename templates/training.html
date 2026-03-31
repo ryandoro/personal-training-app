@@ -5,7 +5,7 @@
 {% endblock %}
 
 {% block content %}
-<div class="container-fluid training-container px-0">
+<div class="container-fluid training-container px-0{% if user and user_role|lower == 'user' and user.subscription_type|lower == 'premium' %} training-container--premium-user{% endif %}">
     {% if not form_completed %}   
         <div class="card p-4 mb-5 rounded">
             <div class="card-body">
@@ -2121,6 +2121,23 @@
                 return `<span class="notes-placeholder-icon" aria-label="${label}" title="${label}"><i class="bi bi-journal-text" aria-hidden="true"></i></span>`;
             }
 
+            function resolveExerciseImageUrl(value) {
+                if (!value) return '';
+                const raw = String(value).trim();
+                if (!raw) return '';
+                if (/^https?:/i.test(raw) || raw.startsWith('/static/')) {
+                    return raw;
+                }
+                if (raw.includes('/')) {
+                    return `/static/${raw.replace(/^\/+/, '')}`;
+                }
+                return `/static/images/${raw}`;
+            }
+
+            function buildMediaPlaceholder(label) {
+                return `<div class="exercise-media-placeholder">${escapeHtml(label)}</div>`;
+            }
+
             function formatHoldDuration(seconds) {
                 const parsed = Number(seconds);
                 if (!Number.isFinite(parsed) || parsed <= 0) {
@@ -2174,35 +2191,64 @@
                 const summaryValue = (isBodyweight || isCardio || isPlank)
                     ? `Bodyweight × ${repsDisplay}`
                     : `${weightDisplay} × ${repsDisplay}`;
+                const demoVideoUrl = exercise.demo_video_url || '';
+                const demoVideoPoster = exercise.demo_video_poster_url || '';
                 const youtubeSection = exercise.youtube_id ? `
-                        <p class="exercise-media-label mb-2">Video Demonstration:</p>
-                        <button type="button"
-                                class="exercise-video-launch mb-4"
-                                data-youtube-id="${exercise.youtube_id}"
-                                data-exercise-name="${safeExerciseName}"
-                                data-bs-toggle="modal"
-                                data-bs-target="#exerciseVideoModal"
-                                aria-label="Watch ${safeExerciseName} demo video">
-                            <span class="exercise-video-launch__thumb-wrap">
-                                <img src="https://i.ytimg.com/vi/${exercise.youtube_id}/hqdefault.jpg"
-                                     alt=""
-                                     class="exercise-video-launch__thumb"
-                                     loading="lazy">
-                                <span class="exercise-video-launch__play" aria-hidden="true">
-                                    <i class="bi bi-play-fill"></i>
+                        <div class="exercise-demo-block">
+                            <p class="exercise-media-label mb-2">Video Demonstration:</p>
+                            <button type="button"
+                                    class="exercise-video-launch"
+                                    data-youtube-id="${exercise.youtube_id}"
+                                    data-exercise-name="${safeExerciseName}"
+                                    data-bs-toggle="modal"
+                                    data-bs-target="#exerciseVideoModal"
+                                    aria-label="Watch ${safeExerciseName} demo video">
+                                <span class="exercise-video-launch__thumb-wrap">
+                                    <img src="https://i.ytimg.com/vi/${exercise.youtube_id}/hqdefault.jpg"
+                                         alt=""
+                                         class="exercise-video-launch__thumb"
+                                         loading="lazy">
+                                    <span class="exercise-video-launch__play" aria-hidden="true">
+                                        <i class="bi bi-play-fill"></i>
+                                    </span>
                                 </span>
-                            </span>
-                        </button>
-                        <div class="exercise-video-wrapper mb-4">
-                            <div class="exercise-video-shell">
-                                <iframe
-                                    class="exercise-video-frame"
-                                    src="https://www.youtube.com/embed/${exercise.youtube_id}?mute=1&playsinline=1"
-                                    title="${safeExerciseName} tutorial"
-                                    allow="autoplay; encrypted-media"
-                                    allowfullscreen>
-                                </iframe>
+                            </button>
+                            <div class="exercise-video-wrapper">
+                                <div class="exercise-video-shell">
+                                    <iframe
+                                        class="exercise-video-frame"
+                                        src="https://www.youtube.com/embed/${exercise.youtube_id}?mute=1&playsinline=1"
+                                        title="${safeExerciseName} tutorial"
+                                        allow="autoplay; encrypted-media"
+                                        allowfullscreen>
+                                    </iframe>
+                                </div>
                             </div>
+                        </div>
+                ` : '';
+                const uploadedVideoSection = demoVideoUrl ? `
+                        <div class="exercise-demo-block">
+                            <p class="exercise-media-label mb-2">Video Demonstration:</p>
+                            <button type="button"
+                                    class="exercise-video-launch exercise-video-launch--uploaded"
+                                    data-video-url="${escapeHtml(demoVideoUrl)}"
+                                    ${demoVideoPoster ? `data-video-poster-url="${escapeHtml(demoVideoPoster)}"` : ''}
+                                    data-exercise-name="${safeExerciseName}"
+                                    data-bs-toggle="modal"
+                                    data-bs-target="#exerciseVideoModal"
+                                    aria-label="Watch ${safeExerciseName} demo video">
+                                <span class="exercise-video-launch__thumb-wrap">
+                                    ${demoVideoPoster ? `
+                                        <img src="${escapeHtml(demoVideoPoster)}"
+                                             alt=""
+                                             class="exercise-video-launch__thumb"
+                                             loading="lazy">
+                                    ` : ''}
+                                    <span class="exercise-video-launch__play" aria-hidden="true">
+                                        <i class="bi bi-play-fill"></i>
+                                    </span>
+                                </span>
+                            </button>
                         </div>
                 ` : '';
 
@@ -2216,34 +2262,51 @@
                     : notesPlaceholderHtml();
                 const encodedNotes = encodeURIComponent(rawNotes);
                 const notesButtonLabel = hasNotes ? 'Edit Notes' : 'Add Notes';
-                const startImageBlock = exercise.image_exercise_start ? `
+                const startImageUrl = exercise.start_image_url || resolveExerciseImageUrl(exercise.image_exercise_start);
+                const endImageUrl = exercise.end_image_url || resolveExerciseImageUrl(exercise.image_exercise_end);
+                const startImageBlock = startImageUrl ? `
                                     <div class="d-flex flex-column align-items-center">
                                         <p class="exercise-media-label mb-2">Start:</p>
-                                        <img src="/static/images/${exercise.image_exercise_start}"
+                                        <img src="${escapeHtml(startImageUrl)}"
                                             alt="Start of ${safeExerciseName}"
                                             class="clickable-img exercise-media-image"
                                             data-group="${safeExerciseName}" data-index="0">
                                     </div>
-                ` : '';
-                const endImageBlock = exercise.image_exercise_end ? `
+                ` : `
+                                    <div class="d-flex flex-column align-items-center">
+                                        <p class="exercise-media-label mb-2">Start:</p>
+                                        ${buildMediaPlaceholder(exercise.start_placeholder_label || 'Start image coming soon')}
+                                    </div>
+                `;
+                const endImageBlock = endImageUrl ? `
                                     <div class="d-flex flex-column align-items-center">
                                         <p class="exercise-media-label mb-2">End:</p>
-                                        <img src="/static/images/${exercise.image_exercise_end}"
+                                        <img src="${escapeHtml(endImageUrl)}"
                                             alt="End of ${safeExerciseName}"
                                             class="clickable-img exercise-media-image"
                                             data-group="${safeExerciseName}" data-index="1">
                                     </div>
-                ` : '';
+                ` : `
+                                    <div class="d-flex flex-column align-items-center">
+                                        <p class="exercise-media-label mb-2">End:</p>
+                                        ${buildMediaPlaceholder(exercise.end_placeholder_label || 'End image coming soon')}
+                                    </div>
+                `;
                 const mediaRow = IS_FREE_USER
                     ? ''
-                    : (startImageBlock || endImageBlock)
-                        ? `
-                                <div class="exercise-media-row d-flex justify-content-center flex-nowrap mb-3 px-2">
-                                    ${startImageBlock}${endImageBlock}
-                                </div>
-                          `
-                        : '';
-                const videoSection = IS_FREE_USER ? '' : youtubeSection;
+                    : `
+                            <div class="exercise-media-row d-flex justify-content-center flex-nowrap mb-3 px-2">
+                                ${startImageBlock}${endImageBlock}
+                            </div>
+                      `;
+                const videoSection = IS_FREE_USER
+                    ? ''
+                    : (uploadedVideoSection || youtubeSection || `
+                        <div class="exercise-demo-block">
+                            <p class="exercise-media-label mb-2">Video Demonstration:</p>
+                            <div class="exercise-video-placeholder">${escapeHtml(exercise.video_placeholder_label || 'Video coming soon')}</div>
+                        </div>
+                    `);
 
                 const subcategoryAttr = escapeHtml(subcategoryName || '');
                 const showCardControls = canCustomizeWorkout();
@@ -2329,8 +2392,10 @@
                 const detailsSection = `
                                 <div class="exercise-details">
                                     <div class="exercise-media-strip">
-                                        ${mediaRow}
-                                        ${videoSection}
+                                        <div class="exercise-media-visuals">
+                                            ${mediaRow}
+                                            ${videoSection}
+                                        </div>
                                         ${IS_FREE_USER ? '' : `
                                             <div class="d-flex flex-wrap justify-content-center gap-2 max-action-buttons">
                                                 <button class="btn btn-outline-primary btn-sm max-action-btn toggle-description"
@@ -2961,6 +3026,11 @@
                                     allow="autoplay; encrypted-media; picture-in-picture"
                                     allowfullscreen
                                     loading="lazy"></iframe>
+                            <video id="exerciseVideoModalVideo"
+                                   class="exercise-video-modal__frame d-none"
+                                   controls
+                                   playsinline
+                                   preload="metadata"></video>
                         </div>
                     </div>
                 </div>
@@ -3009,7 +3079,9 @@
             initialized: false,
             modal: null,
             frame: null,
-            title: null
+            video: null,
+            title: null,
+            activeMediaType: null
         };
 
         function buildExerciseVideoEmbedUrl(youtubeId) {
@@ -3022,8 +3094,9 @@
             const state = exerciseVideoModalState;
             state.modal = document.getElementById('exerciseVideoModal');
             state.frame = document.getElementById('exerciseVideoModalFrame');
+            state.video = document.getElementById('exerciseVideoModalVideo');
             state.title = document.getElementById('exerciseVideoModalTitle');
-            if (!state.modal || !state.frame) return;
+            if (!state.modal || !state.frame || !state.video) return;
             if (state.initialized) return;
             state.initialized = true;
 
@@ -3031,15 +3104,63 @@
                 const trigger = event.target.closest('.exercise-video-launch');
                 if (!trigger) return;
                 const youtubeId = trigger.dataset.youtubeId || '';
+                const videoUrl = trigger.dataset.videoUrl || '';
+                const posterUrl = trigger.dataset.videoPosterUrl || '';
                 const exerciseName = (trigger.dataset.exerciseName || '').trim();
-                state.frame.src = buildExerciseVideoEmbedUrl(youtubeId);
+                if (youtubeId) {
+                    state.activeMediaType = 'youtube';
+                    state.frame.classList.remove('d-none');
+                    state.video.classList.add('d-none');
+                    state.video.pause();
+                    state.video.removeAttribute('src');
+                    state.video.removeAttribute('poster');
+                    state.video.load();
+                    state.frame.src = buildExerciseVideoEmbedUrl(youtubeId);
+                } else if (videoUrl) {
+                    state.activeMediaType = 'video';
+                    state.frame.classList.add('d-none');
+                    state.frame.src = '';
+                    state.video.classList.remove('d-none');
+                    state.video.src = videoUrl;
+                    if (posterUrl) {
+                        state.video.poster = posterUrl;
+                    } else {
+                        state.video.removeAttribute('poster');
+                    }
+                    state.video.load();
+                } else {
+                    state.activeMediaType = null;
+                    state.frame.src = '';
+                    state.frame.classList.add('d-none');
+                    state.video.pause();
+                    state.video.removeAttribute('src');
+                    state.video.removeAttribute('poster');
+                    state.video.classList.add('d-none');
+                    state.video.load();
+                }
                 if (state.title) {
                     state.title.textContent = exerciseName ? `${exerciseName} Demo` : 'Exercise Demo';
                 }
             });
 
+            state.modal.addEventListener('shown.bs.modal', () => {
+                if (state.activeMediaType === 'video' && state.video) {
+                    const playAttempt = state.video.play();
+                    if (playAttempt && typeof playAttempt.catch === 'function') {
+                        playAttempt.catch(() => {});
+                    }
+                }
+            });
+
             state.modal.addEventListener('hidden.bs.modal', () => {
                 state.frame.src = '';
+                state.frame.classList.remove('d-none');
+                state.video.pause();
+                state.video.removeAttribute('src');
+                state.video.removeAttribute('poster');
+                state.video.classList.add('d-none');
+                state.video.load();
+                state.activeMediaType = null;
                 if (state.title) {
                     state.title.textContent = 'Exercise Demo';
                 }

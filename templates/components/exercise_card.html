@@ -51,34 +51,41 @@
 {% endif %}
 {% set notes_text = exercise.notes or '' %}
 {% set has_notes = notes_text|trim %}
-{% set start_raw = exercise.image_exercise_start %}
-{% if start_raw %}
-    {% if start_raw[:4]|lower == 'http' %}
-        {% set start_src = start_raw %}
-    {% elif start_raw.startswith('/static/') %}
-        {% set start_src = start_raw %}
-    {% elif '/' in start_raw %}
-        {% set start_src = url_for('static', filename=start_raw.lstrip('/')) %}
-    {% else %}
-        {% set start_src = url_for('static', filename='images/' ~ start_raw) %}
+{% set start_src = exercise.start_image_url if exercise.start_image_url is defined and exercise.start_image_url else None %}
+{% if not start_src %}
+    {% set start_raw = exercise.image_exercise_start %}
+    {% if start_raw %}
+        {% if start_raw[:4]|lower == 'http' %}
+            {% set start_src = start_raw %}
+        {% elif start_raw.startswith('/static/') %}
+            {% set start_src = start_raw %}
+        {% elif '/' in start_raw %}
+            {% set start_src = url_for('static', filename=start_raw.lstrip('/')) %}
+        {% else %}
+            {% set start_src = url_for('static', filename='images/' ~ start_raw) %}
+        {% endif %}
     {% endif %}
-{% else %}
-    {% set start_src = None %}
 {% endif %}
-{% set end_raw = exercise.image_exercise_end %}
-{% if end_raw %}
-    {% if end_raw[:4]|lower == 'http' %}
-        {% set end_src = end_raw %}
-    {% elif end_raw.startswith('/static/') %}
-        {% set end_src = end_raw %}
-    {% elif '/' in end_raw %}
-        {% set end_src = url_for('static', filename=end_raw.lstrip('/')) %}
-    {% else %}
-        {% set end_src = url_for('static', filename='images/' ~ end_raw) %}
+{% set end_src = exercise.end_image_url if exercise.end_image_url is defined and exercise.end_image_url else None %}
+{% if not end_src %}
+    {% set end_raw = exercise.image_exercise_end %}
+    {% if end_raw %}
+        {% if end_raw[:4]|lower == 'http' %}
+            {% set end_src = end_raw %}
+        {% elif end_raw.startswith('/static/') %}
+            {% set end_src = end_raw %}
+        {% elif '/' in end_raw %}
+            {% set end_src = url_for('static', filename=end_raw.lstrip('/')) %}
+        {% else %}
+            {% set end_src = url_for('static', filename='images/' ~ end_raw) %}
+        {% endif %}
     {% endif %}
-{% else %}
-    {% set end_src = None %}
 {% endif %}
+{% set demo_video_url = exercise.demo_video_url if exercise.demo_video_url is defined and exercise.demo_video_url else None %}
+{% set demo_video_poster_url = exercise.demo_video_poster_url if exercise.demo_video_poster_url is defined and exercise.demo_video_poster_url else (start_src or end_src) %}
+{% set show_video_placeholder = exercise.show_video_placeholder if exercise.show_video_placeholder is defined else (not demo_video_url and not exercise.youtube_id) %}
+{% set show_start_placeholder = exercise.show_start_placeholder if exercise.show_start_placeholder is defined else (not start_src) %}
+{% set show_end_placeholder = exercise.show_end_placeholder if exercise.show_end_placeholder is defined else (not end_src) %}
 {% set exercise_key = exercise.workout_id or (exercise_name ~ '-' ~ exercise_loop_index) %}
 {% set exercise_dom_id = 'exercise-body-' ~ (exercise_key|string)|replace(' ', '-') %}
 {% set desc_dom_id = 'desc-' ~ (exercise.workout_id or exercise_key) %}
@@ -156,59 +163,102 @@
             </div>
             <div class="exercise-details">
                 <div class="exercise-media-strip">
-                    {% if start_src or end_src %}
-                        <div class="exercise-media-row d-flex justify-content-center flex-nowrap mb-3 px-2">
-                            {% if start_src %}
-                                <div class="d-flex flex-column align-items-center">
-                                    <p class="exercise-media-label mb-2">Start:</p>
-                                    <img src="{{ start_src }}"
-                                         alt="{{ exercise_name }} start"
-                                         class="clickable-img exercise-media-image"
-                                         data-group="{{ exercise_name|replace(' ', '-') }}-{{ exercise_loop_index }}"
-                                         data-index="0">
-                                </div>
-                            {% endif %}
-                            {% if end_src %}
-                                <div class="d-flex flex-column align-items-center">
-                                    <p class="exercise-media-label mb-2">End:</p>
-                                    <img src="{{ end_src }}"
-                                         alt="{{ exercise_name }} end"
-                                         class="clickable-img exercise-media-image"
-                                         data-group="{{ exercise_name|replace(' ', '-') }}-{{ exercise_loop_index }}"
-                                         data-index="1">
-                                </div>
-                            {% endif %}
-                        </div>
-                    {% endif %}
-                    {% if exercise.youtube_id %}
-                        <p class="exercise-media-label mb-2">Video Demonstration:</p>
-                        <button type="button"
-                                class="exercise-video-launch mb-4"
-                                data-youtube-id="{{ exercise.youtube_id }}"
-                                data-exercise-name="{{ exercise_name }}"
-                                data-bs-toggle="modal"
-                                data-bs-target="#exerciseVideoModal"
-                                aria-label="Watch {{ exercise_name }} demo video">
-                            <span class="exercise-video-launch__thumb-wrap">
-                                <img src="https://i.ytimg.com/vi/{{ exercise.youtube_id }}/hqdefault.jpg"
-                                     alt=""
-                                     class="exercise-video-launch__thumb"
-                                     loading="lazy">
-                                <span class="exercise-video-launch__play" aria-hidden="true">
-                                    <i class="bi bi-play-fill"></i>
-                                </span>
-                            </span>
-                        </button>
-                        <div class="exercise-video-wrapper mb-4">
-                            <div class="exercise-video-shell">
-                                <iframe class="exercise-video-frame"
-                                        src="https://www.youtube.com/embed/{{ exercise.youtube_id }}?mute=1&playsinline=1"
-                                        title="{{ exercise_name }} tutorial"
-                                        allow="autoplay; encrypted-media"
-                                        allowfullscreen></iframe>
+                    <div class="exercise-media-visuals">
+                        {% if start_src or end_src or show_start_placeholder or show_end_placeholder %}
+                            <div class="exercise-media-row d-flex justify-content-center flex-nowrap mb-3 px-2">
+                                {% if start_src %}
+                                    <div class="d-flex flex-column align-items-center">
+                                        <p class="exercise-media-label mb-2">Start:</p>
+                                        <img src="{{ start_src }}"
+                                             alt="{{ exercise_name }} start"
+                                             class="clickable-img exercise-media-image"
+                                             data-group="{{ exercise_name|replace(' ', '-') }}-{{ exercise_loop_index }}"
+                                             data-index="0">
+                                    </div>
+                                {% elif show_start_placeholder %}
+                                    <div class="d-flex flex-column align-items-center">
+                                        <p class="exercise-media-label mb-2">Start:</p>
+                                        <div class="exercise-media-placeholder">{{ exercise.start_placeholder_label if exercise.start_placeholder_label is defined else 'Start image coming soon' }}</div>
+                                    </div>
+                                {% endif %}
+                                {% if end_src %}
+                                    <div class="d-flex flex-column align-items-center">
+                                        <p class="exercise-media-label mb-2">End:</p>
+                                        <img src="{{ end_src }}"
+                                             alt="{{ exercise_name }} end"
+                                             class="clickable-img exercise-media-image"
+                                             data-group="{{ exercise_name|replace(' ', '-') }}-{{ exercise_loop_index }}"
+                                             data-index="1">
+                                    </div>
+                                {% elif show_end_placeholder %}
+                                    <div class="d-flex flex-column align-items-center">
+                                        <p class="exercise-media-label mb-2">End:</p>
+                                        <div class="exercise-media-placeholder">{{ exercise.end_placeholder_label if exercise.end_placeholder_label is defined else 'End image coming soon' }}</div>
+                                    </div>
+                                {% endif %}
                             </div>
-                        </div>
-                    {% endif %}
+                        {% endif %}
+                        {% if demo_video_url %}
+                            <div class="exercise-demo-block">
+                                <p class="exercise-media-label mb-2">Video Demonstration:</p>
+                                <button type="button"
+                                        class="exercise-video-launch exercise-video-launch--uploaded"
+                                        data-video-url="{{ demo_video_url }}"
+                                        {% if demo_video_poster_url %}data-video-poster-url="{{ demo_video_poster_url }}"{% endif %}
+                                        data-exercise-name="{{ exercise_name }}"
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#exerciseVideoModal"
+                                        aria-label="Watch {{ exercise_name }} demo video">
+                                    <span class="exercise-video-launch__thumb-wrap">
+                                        {% if demo_video_poster_url %}
+                                            <img src="{{ demo_video_poster_url }}"
+                                                 alt=""
+                                                 class="exercise-video-launch__thumb"
+                                                 loading="lazy">
+                                        {% endif %}
+                                        <span class="exercise-video-launch__play" aria-hidden="true">
+                                            <i class="bi bi-play-fill"></i>
+                                        </span>
+                                    </span>
+                                </button>
+                            </div>
+                        {% elif exercise.youtube_id %}
+                            <div class="exercise-demo-block">
+                                <p class="exercise-media-label mb-2">Video Demonstration:</p>
+                                <button type="button"
+                                        class="exercise-video-launch"
+                                        data-youtube-id="{{ exercise.youtube_id }}"
+                                        data-exercise-name="{{ exercise_name }}"
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#exerciseVideoModal"
+                                        aria-label="Watch {{ exercise_name }} demo video">
+                                    <span class="exercise-video-launch__thumb-wrap">
+                                        <img src="https://i.ytimg.com/vi/{{ exercise.youtube_id }}/hqdefault.jpg"
+                                             alt=""
+                                             class="exercise-video-launch__thumb"
+                                             loading="lazy">
+                                        <span class="exercise-video-launch__play" aria-hidden="true">
+                                            <i class="bi bi-play-fill"></i>
+                                        </span>
+                                    </span>
+                                </button>
+                                <div class="exercise-video-wrapper">
+                                    <div class="exercise-video-shell">
+                                        <iframe class="exercise-video-frame"
+                                                src="https://www.youtube.com/embed/{{ exercise.youtube_id }}?mute=1&playsinline=1"
+                                                title="{{ exercise_name }} tutorial"
+                                                allow="autoplay; encrypted-media"
+                                                allowfullscreen></iframe>
+                                    </div>
+                                </div>
+                            </div>
+                        {% elif show_video_placeholder %}
+                            <div class="exercise-demo-block">
+                                <p class="exercise-media-label mb-2">Video Demonstration:</p>
+                                <div class="exercise-video-placeholder">{{ exercise.video_placeholder_label if exercise.video_placeholder_label is defined else 'Video coming soon' }}</div>
+                            </div>
+                        {% endif %}
+                    </div>
                     <div class="d-flex flex-wrap justify-content-center gap-2 max-action-buttons">
                         <button class="btn btn-outline-primary btn-sm max-action-btn toggle-description mt-2 mb-2"
                                 type="button"

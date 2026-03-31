@@ -77,33 +77,35 @@
                             {% endif %}
                         {% endif %}
                         {% set media_group = 'lookup-media-' ~ (workout_id or 'exercise') ~ '-' ~ loop.index0 %}
-                        {% set start_raw = workout.image_exercise_start %}
-                        {% if start_raw %}
-                            {% if start_raw[:4]|lower == 'http' %}
-                                {% set start_src = start_raw %}
-                            {% elif start_raw.startswith('/static/') %}
-                                {% set start_src = start_raw %}
-                            {% elif '/' in start_raw %}
-                                {% set start_src = url_for('static', filename=start_raw.lstrip('/')) %}
-                            {% else %}
-                                {% set start_src = url_for('static', filename='images/' ~ start_raw) %}
+                        {% set start_src = workout.start_image_url or None %}
+                        {% if not start_src %}
+                            {% set start_raw = workout.image_exercise_start %}
+                            {% if start_raw %}
+                                {% if start_raw[:4]|lower == 'http' %}
+                                    {% set start_src = start_raw %}
+                                {% elif start_raw.startswith('/static/') %}
+                                    {% set start_src = start_raw %}
+                                {% elif '/' in start_raw %}
+                                    {% set start_src = url_for('static', filename=start_raw.lstrip('/')) %}
+                                {% else %}
+                                    {% set start_src = url_for('static', filename='images/' ~ start_raw) %}
+                                {% endif %}
                             {% endif %}
-                        {% else %}
-                            {% set start_src = None %}
                         {% endif %}
-                        {% set end_raw = workout.image_exercise_end %}
-                        {% if end_raw %}
-                            {% if end_raw[:4]|lower == 'http' %}
-                                {% set end_src = end_raw %}
-                            {% elif end_raw.startswith('/static/') %}
-                                {% set end_src = end_raw %}
-                            {% elif '/' in end_raw %}
-                                {% set end_src = url_for('static', filename=end_raw.lstrip('/')) %}
-                            {% else %}
-                                {% set end_src = url_for('static', filename='images/' ~ end_raw) %}
+                        {% set end_src = workout.end_image_url or None %}
+                        {% if not end_src %}
+                            {% set end_raw = workout.image_exercise_end %}
+                            {% if end_raw %}
+                                {% if end_raw[:4]|lower == 'http' %}
+                                    {% set end_src = end_raw %}
+                                {% elif end_raw.startswith('/static/') %}
+                                    {% set end_src = end_raw %}
+                                {% elif '/' in end_raw %}
+                                    {% set end_src = url_for('static', filename=end_raw.lstrip('/')) %}
+                                {% else %}
+                                    {% set end_src = url_for('static', filename='images/' ~ end_raw) %}
+                                {% endif %}
                             {% endif %}
-                        {% else %}
-                            {% set end_src = None %}
                         {% endif %}
                         <div class="col">
                             <div class="card h-100 lookup-result-card"
@@ -115,31 +117,42 @@
                                         <h5 class="card-title text-primary fw-bold mb-0">{{ workout_name }}</h5>
                                     </div>
                                     {% if not is_free_user %}
-                                        {% if start_src or end_src %}
-                                            <div class="lookup-card-media exercise-media-row d-flex flex-nowrap justify-content-center gap-3 mt-3 w-100">
-                                                {% if start_src %}
-                                                    <div class="exercise-media-figure text-center">
-                                                        <p class="exercise-media-label mb-2 text-uppercase small fw-semibold">Start</p>
-                                                        <img src="{{ start_src }}"
-                                                             alt="{{ workout_name }} start position"
-                                                             loading="lazy"
-                                                             class="clickable-img exercise-media-image"
-                                                             data-group="{{ media_group }}"
-                                                             data-index="0" />
-                                                    </div>
-                                                {% endif %}
-                                                {% if end_src %}
-                                                    <div class="exercise-media-figure text-center">
-                                                        <p class="exercise-media-label mb-2 text-uppercase small fw-semibold">End</p>
-                                                        <img src="{{ end_src }}"
-                                                             alt="{{ workout_name }} end position"
-                                                             loading="lazy"
-                                                             class="clickable-img exercise-media-image"
-                                                             data-group="{{ media_group }}"
-                                                             data-index="1" />
-                                                    </div>
-                                                {% endif %}
-                                            </div>
+                                        <div class="lookup-card-media exercise-media-row d-flex flex-nowrap justify-content-center gap-3 mt-3 w-100">
+                                            {% if start_src %}
+                                                <div class="exercise-media-figure text-center">
+                                                    <p class="exercise-media-label mb-2 text-uppercase small fw-semibold">Start</p>
+                                                    <img src="{{ start_src }}"
+                                                         alt="{{ workout_name }} start position"
+                                                         loading="lazy"
+                                                         class="clickable-img exercise-media-image"
+                                                         data-group="{{ media_group }}"
+                                                         data-index="0" />
+                                                </div>
+                                            {% else %}
+                                                <div class="exercise-media-figure text-center">
+                                                    <p class="exercise-media-label mb-2 text-uppercase small fw-semibold">Start</p>
+                                                    <div class="exercise-media-placeholder">{{ workout.start_placeholder_label or 'Start image coming soon' }}</div>
+                                                </div>
+                                            {% endif %}
+                                            {% if end_src %}
+                                                <div class="exercise-media-figure text-center">
+                                                    <p class="exercise-media-label mb-2 text-uppercase small fw-semibold">End</p>
+                                                    <img src="{{ end_src }}"
+                                                         alt="{{ workout_name }} end position"
+                                                         loading="lazy"
+                                                         class="clickable-img exercise-media-image"
+                                                         data-group="{{ media_group }}"
+                                                         data-index="1" />
+                                                </div>
+                                            {% else %}
+                                                <div class="exercise-media-figure text-center">
+                                                    <p class="exercise-media-label mb-2 text-uppercase small fw-semibold">End</p>
+                                                    <div class="exercise-media-placeholder">{{ workout.end_placeholder_label or 'End image coming soon' }}</div>
+                                                </div>
+                                            {% endif %}
+                                        </div>
+                                        {% if not workout.demo_video_url and not workout.youtube_id %}
+                                            <div class="exercise-video-placeholder exercise-video-placeholder--compact mt-3">{{ workout.video_placeholder_label or 'Video coming soon' }}</div>
                                         {% endif %}
                                         <div class="personal-best max-summary text-center"
                                              data-id="{{ workout_id }}"

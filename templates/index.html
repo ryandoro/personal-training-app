@@ -160,13 +160,35 @@
     </div>
 </div> 
 
+{% if fitbaseai_home_orb_visible %}
 <div class="orb-container text-center">
-    <div class="orb-wrapper">
-        <img id="fitbase-orb"
-            src="{{ url_for('static', filename='images/fitbase_orb1.PNG') }}"
-            alt="FitBaseAI Energy Core">
+    <div class="orb-launch-stage">
+        {% if fitbaseai_enabled %}
+        <button type="button" class="orb-wrapper orb-wrapper--launch" data-fitbase-launcher aria-label="Open FitBaseAI">
+            <img id="fitbase-orb"
+                src="{{ url_for('static', filename='images/fitbase_orb1.PNG') }}"
+                alt="Launch FitBaseAI">
+        </button>
+        {% else %}
+        <div class="orb-wrapper orb-wrapper--launch" aria-hidden="true">
+            <img id="fitbase-orb"
+                src="{{ url_for('static', filename='images/fitbase_orb1.PNG') }}"
+                alt="FitBaseAI orb">
+        </div>
+        {% endif %}
+        {% if fitbaseai_enabled %}
+        <div class="orb-launch-copy mb-4" aria-hidden="true">
+            <span class="orb-launch-copy__dot orb-launch-copy__dot--sm"></span>
+            <span class="orb-launch-copy__dot orb-launch-copy__dot--md"></span>
+            <span class="orb-launch-copy__dot orb-launch-copy__dot--lg"></span>
+            <div class="orb-launch-bubble">
+                <span class="orb-launch-bubble__text">Hi, I'm FitBaseAI. Ask me anything.</span>
+            </div>
+        </div>
+        {% endif %}
     </div>
-</div> 
+</div>
+{% endif %}
 
 <!-- Update Goals Modal -->
 <div class="modal fade" id="updateGoalsModal" tabindex="-1" aria-labelledby="updateGoalsModalLabel" aria-hidden="true">
@@ -231,6 +253,9 @@
             const launchButton = document.getElementById('launch-training');
             const igniteButtons = document.querySelectorAll('.btn-ignite');
             const wrapper = document.querySelector('.orb-wrapper');
+            if (!orb) {
+                return;
+            }
 
             // ✅ Handle touch + click (mobile-safe)
             const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;

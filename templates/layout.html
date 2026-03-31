@@ -70,10 +70,13 @@
                             </li>
                             {% if session.get('role') in ['trainer', 'admin'] %}
                                 <li class="nav-item">
-                                    <a class="nav-link" href="{{ url_for('trainer_dashboard') }}">Trainer Schedule</a>
+                                    <a class="nav-link" href="{{ url_for('trainer_dashboard') }}">Trainer Dashboard</a>
                                 </li>
                                 <li class="nav-item">
                                     <a class="nav-link" href="{{ url_for('trainer_clients') }}">Client Roster</a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link" href="{{ url_for('trainer_gym_catalog') }}">Exercise Library</a>
                                 </li>
                                 <li class="nav-item">
                                     <a class="nav-link" href="{{ url_for('trainer_self_schedule_view') }}">Workout Log</a>
@@ -170,6 +173,73 @@
         </div>
     </main>
 
+    {% if fitbaseai_enabled %}
+        <button type="button"
+                class="fitbaseai-fab"
+                data-fitbase-launcher
+                aria-label="Open FitBaseAI">
+            <span class="fitbaseai-fab__orb" aria-hidden="true">
+                <img class="fitbaseai-fab__orb-image"
+                     src="{{ url_for('static', filename='images/fitbase_orb1.PNG') }}"
+                     alt="">
+            </span>
+            <span class="fitbaseai-fab__label">FitBaseAI</span>
+        </button>
+
+        <section class="fitbaseai-shell" data-fitbase-shell hidden aria-hidden="true">
+            <div class="fitbaseai-shell__backdrop" data-fitbase-close></div>
+            <aside class="fitbaseai-panel" data-fitbase-panel role="dialog" aria-label="FitBaseAI">
+                <div class="fitbaseai-panel__resize-handle" data-fitbase-resize-handle aria-hidden="true">
+                    <span class="fitbaseai-panel__resize-grip"></span>
+                </div>
+                <header class="fitbaseai-panel__header">
+                    <div>
+                        <p class="fitbaseai-panel__eyebrow mb-0">FitBaseAI</p>
+                    </div>
+                    <div class="fitbaseai-panel__header-actions">
+                        <button type="button"
+                                class="fitbaseai-panel__clear"
+                                data-fitbase-clear-history
+                                aria-label="Clear FitBaseAI history"
+                                title="Clear FitBaseAI history">
+                            Clear
+                        </button>
+                        <button type="button" class="fitbaseai-panel__close" data-fitbase-close aria-label="Close FitBaseAI">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
+                    </div>
+                </header>
+
+                <div class="fitbaseai-panel__messages" data-fitbase-messages>
+                    <article class="fitbaseai-message fitbaseai-message--assistant">
+                        <div class="fitbaseai-message__label">FitBaseAI</div>
+                        <div class="fitbaseai-message__body">Ask about your training, schedule, clients, or FitBaseAI metrics. Tasks must be confirmed before FitBaseAI can complete them.</div>
+                    </article>
+                </div>
+
+                <div class="fitbaseai-panel__status" data-fitbase-status aria-live="polite"></div>
+
+                <form class="fitbaseai-panel__composer" data-fitbase-form>
+                    <label for="fitbaseai-input" class="visually-hidden">Message FitBaseAI</label>
+                    <div class="fitbaseai-panel__composer-row">
+                        <textarea id="fitbaseai-input"
+                                  class="fitbaseai-panel__input"
+                                  data-fitbase-input
+                                  rows="3"
+                                  maxlength="2000"
+                                  placeholder="Ask FitBaseAI a question or give it a task."></textarea>
+                        <div class="fitbaseai-panel__actions">
+                            <button type="submit" class="btn btn-brand fitbaseai-panel__send" data-fitbase-send aria-label="Send message" title="Send">
+                                <i class="bi bi-send-fill" aria-hidden="true"></i>
+                                <span class="visually-hidden">Send</span>
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </aside>
+        </section>
+    {% endif %}
+
     <!-- Footer -->
     <footer style="width: 100%; background-color: #393634; box-shadow: inset 0 1px 3px rgba(0,0,0,0.4); padding: 1.25rem 0;">
         <div class="footer text-center" style="color: #6c757d;">
@@ -194,6 +264,23 @@
     <script id="flashed-messages" type="application/json">
         {{ get_flashed_messages(with_categories=true)|tojson }}
     </script>    
+    {% if fitbaseai_enabled %}
+    <script id="fitbase-agent-config" type="application/json">
+        {{ {
+            'userId': session.get('user_id'),
+            'role': session.get('role'),
+            'chatUrl': url_for('agent_chat'),
+            'clearHistoryUrl': url_for('agent_history_clear'),
+            'latestThreadUrl': url_for('agent_thread_latest'),
+            'threadUrlTemplate': url_for('agent_thread', thread_id='__THREAD_ID__'),
+            'exerciseHistoryUrl': url_for('exercise_history_data'),
+            'confirmUrlTemplate': url_for('agent_action_confirm', action_id='__ACTION_ID__'),
+            'cancelUrlTemplate': url_for('agent_action_cancel', action_id='__ACTION_ID__'),
+            'manuscriptUploadUrl': url_for('admin_agent_manuscript_upload') if is_admin else None,
+            'researchSyncUrl': url_for('admin_agent_research_sync') if is_admin else None,
+        }|tojson }}
+    </script>
+    {% endif %}
     <script>
         function copyInviteLink(text, button) {
             const setStatus = (msg) => {
@@ -310,6 +397,10 @@
 
             bindInlineCopyButtons();
         });
-    </script>           
+    </script>
+    {% if fitbaseai_enabled %}
+    <script src="{{ url_for('static', filename='js/agent.js') }}"></script>
+    {% endif %}
+    {% block extra_scripts %}{% endblock %}
 </body>
 </html>

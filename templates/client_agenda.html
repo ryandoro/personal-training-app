@@ -186,9 +186,11 @@
                                         </th>
                                     {% endif %}
                                     <th>Status</th>
+                                    <th>Workout</th>
                                     <th>Date</th>
                                     <th>Start Time</th>
                                     <th>End Time</th>
+                                    <th class="text-end">Details</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -218,6 +220,12 @@
                                                     </span>
                                                 </span>
                                             </td>
+                                            <td data-label="Workout">
+                                                <div class="agenda-workout-cell">
+                                                    <div class="agenda-workout-title">{{ event.workout_label }}</div>
+                                                    <div class="agenda-workout-meta">{{ event.source_label }}</div>
+                                                </div>
+                                            </td>
                                             <td class="agenda-date"
                                                 data-label="Date"
                                                 data-date-iso="{{ event.start_time_iso or '' }}">{{ event.date }}</td>
@@ -227,11 +235,22 @@
                                             <td class="agenda-time agenda-time--end"
                                                 data-label="End Time"
                                                 data-time-iso="{{ event.end_time_iso or '' }}">{{ event.end_time }}</td>
+                                            <td data-label="Details" class="text-end">
+                                                {% if event.session_url %}
+                                                    <a href="{{ event.session_url }}" class="btn btn-sm btn-outline-primary agenda-details-button">
+                                                        <i class="bi bi-activity me-1"></i>Details
+                                                    </a>
+                                                {% elif event.status == 'booked' %}
+                                                    <span class="text-muted small agenda-details-placeholder">After completion</span>
+                                                {% else %}
+                                                    <span class="text-muted small agenda-details-placeholder">No details stored</span>
+                                                {% endif %}
+                                            </td>
                                         </tr>
                                     {% endfor %}
                                 {% else %}
                                     <tr>
-                                        <td colspan="{{ 5 if not view_only else 4 }}" class="text-muted py-4">No sessions match this view yet.</td>
+                                        <td colspan="{{ 7 if not view_only else 6 }}" class="text-muted py-4">No sessions match this view yet.</td>
                                     </tr>
                                 {% endif %}
                             </tbody>

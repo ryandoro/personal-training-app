@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en" style="margin:0; padding:0;">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>New Gym Request</title>
+  </head>
+  <body style="margin:0; padding:0; background:#F5F7FB; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,'Helvetica Neue',sans-serif; color:#111827; line-height:1.6;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#F5F7FB;">
+      <tr>
+        <td align="center" style="padding:32px 16px;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:620px; background:#ffffff; border-radius:16px; overflow:hidden;">
+            <tr>
+              <td align="center" style="background:#1EA4E6; padding:24px;">
+                <img
+                  src="https://img1.wsimg.com/isteam/ip/f37d1f75-213e-42f6-afbc-266230bbcfba/fitbaseai_compressed_1.jpg/:/rs=w:1440,h:1440"
+                  alt="FitBaseAI"
+                  width="160"
+                  height="160"
+                  style="display:block; border:0; border-radius:12px;"
+                />
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:28px 24px 8px 24px;">
+                <h1 style="margin:0 0 8px 0; font-size:22px; font-weight:700; color:#111827;">New gym request pending review</h1>
+                <p style="margin:0; font-size:16px; color:#374151;">
+                  {{ requester_display_name }} ({{ requester_email }}) requested a new gym on <strong>FitBaseAI</strong>.
+                </p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:16px 24px 0 24px;">
+                <div style="background:#F8FBFF; border:1px solid #D5EAF8; border-radius:12px; padding:16px;">
+                  <p style="margin:0 0 6px 0; font-size:14px; color:#64748B; text-transform:uppercase; letter-spacing:0.08em; font-weight:700;">Requested gym</p>
+                  <p style="margin:0; font-size:18px; font-weight:700; color:#111827;">{{ request_details.name }}</p>
+                  <p style="margin:8px 0 0 0; font-size:14px; color:#4B5563;">{{ request_details.location }}</p>
+                  {% if request_details.address %}
+                    <p style="margin:4px 0 0 0; font-size:14px; color:#4B5563;">{{ request_details.address }}</p>
+                  {% endif %}
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:16px 24px 0 24px;">
+                <div style="background:#FFF8F2; border:1px solid #F8D3AE; border-radius:12px; padding:14px 16px;">
+                  <p style="margin:0 0 4px 0; font-size:13px; font-weight:700; color:#9A3412; text-transform:uppercase; letter-spacing:0.08em;">Automated review</p>
+                  <p style="margin:0; font-size:14px; color:#7C2D12;">
+                    {{ request_details.agent_summary or 'No automated review summary available.' }}
+                    {% if request_details.agent_confidence is not none %}
+                      (Confidence: {{ request_details.agent_confidence }})
+                    {% endif %}
+                  </p>
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <td align="center" style="padding:24px;">
+                <a href="{{ review_url }}" style="display:inline-block; background:#1EA4E6; color:#ffffff; text-decoration:none; font-weight:600; font-size:16px; padding:14px 22px; border-radius:10px;">
+                  Review Gym Request
+                </a>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:0 24px 28px 24px;">
+                <p style="margin:0; font-size:12px; color:#6B7280; word-break:break-word;">
+                  If the button doesn’t work, open the admin review queue here:<br>
+                  <a href="{{ review_url }}" style="color:#1EA4E6; text-decoration:underline;">{{ review_url }}</a>
+                </p>
+              </td>
+            </tr>
+          </table>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:620px;">
+            <tr>
+              <td align="center" style="padding:16px; color:#9CA3AF; font-size:12px;">
+                © {{ current_year }} FitBaseAI • fitbaseai.com
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>

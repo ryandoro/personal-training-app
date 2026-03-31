@@ -177,6 +177,63 @@
         const searchValue = new URLSearchParams(window.location.search).get('search') || '';
         const searchSection = document.getElementById('trainer-search-section');
         const searchInput = document.getElementById('trainer-dashboard-search');
+        const trainerSessionsCompletedEls = document.querySelectorAll('.trainer-sessions-completed-value');
+        const trainerSessionsCompletedAllTimeEls = document.querySelectorAll('.trainer-sessions-completed-alltime-value');
+
+        function setTrainerSessionTotals(delta) {
+            const numericDelta = Number(delta || 0);
+            if (!numericDelta) return;
+            trainerSessionsCompletedEls.forEach((el) => {
+                const current = Number(el.textContent || '0');
+                if (Number.isFinite(current)) {
+                    el.textContent = Math.max(current + numericDelta, 0);
+                }
+            });
+            trainerSessionsCompletedAllTimeEls.forEach((el) => {
+                const current = Number(el.textContent || '0');
+                if (Number.isFinite(current)) {
+                    el.textContent = Math.max(current + numericDelta, 0);
+                }
+            });
+        }
+
+        function updateClientRow(clientId, counts) {
+            if (!clientId || !counts) return;
+            const row = document.querySelector(`tr[data-client-id="${clientId}"]`);
+            if (!row) return;
+            const leftCell = row.querySelector('.sessions-left-cell');
+            const bookedCell = row.querySelector('.sessions-booked-cell');
+            const completedCell = row.querySelector('.sessions-completed-cell');
+            const workoutsCell = row.querySelector('.workouts-completed-cell');
+
+            if (leftCell) {
+                const total = counts.sessions_remaining;
+                const left = counts.sessions_left;
+                if (total === null || typeof total === 'undefined' || total === '') {
+                    leftCell.textContent = '∞';
+                } else {
+                    leftCell.textContent = `${Math.max(Number(left) || 0, 0)} / ${total}`;
+                }
+            }
+            if (bookedCell && typeof counts.sessions_booked !== 'undefined') {
+                bookedCell.textContent = counts.sessions_booked;
+            }
+            if (completedCell && typeof counts.sessions_completed !== 'undefined') {
+                completedCell.textContent = counts.sessions_completed;
+            }
+            if (workoutsCell && typeof counts.workouts_completed !== 'undefined' && counts.workouts_completed !== null) {
+                workoutsCell.textContent = counts.workouts_completed;
+            }
+        }
+
+        window.addEventListener('fitbaseai:action-completed', (event) => {
+            const actionResult = event.detail || {};
+            const clientId = Number(actionResult.client_id || actionResult.result?.client_id || 0);
+            if (clientId && actionResult.client_counts) {
+                updateClientRow(clientId, actionResult.client_counts);
+            }
+            setTrainerSessionTotals(actionResult.trainer_completed_delta || 0);
+        });
 
         if (!searchValue.trim()) return;
 

@@ -1,0 +1,1702 @@
+{% extends "layout.html" %}
+
+{% macro render_level_label(level) -%}
+    {%- if level|string == '1' -%}
+        Beginner
+    {%- elif level|string == '2' -%}
+        Intermediate
+    {%- elif level|string == '3' -%}
+        Advanced
+    {%- else -%}
+        {{ level }}
+    {%- endif -%}
+{%- endmacro %}
+
+{% macro render_subcategory_options(subcategory_choices, selected_value='', include_default=False, default_label='Defaults to selected category') -%}
+    {%- set normalized_selected = (selected_value or '').strip().upper() -%}
+    {%- if include_default -%}
+        <option value="" {% if not normalized_selected %}selected{% endif %}>{{ default_label }}</option>
+    {%- endif -%}
+    {%- if normalized_selected and normalized_selected not in subcategory_choice_values -%}
+        <option value="{{ normalized_selected }}" selected>{{ selected_value }}</option>
+    {%- endif -%}
+    {%- for choice in subcategory_choices -%}
+        <option value="{{ choice.value }}" {% if normalized_selected == choice.value %}selected{% endif %}>{{ choice.label }}</option>
+    {%- endfor -%}
+{%- endmacro %}
+
+{% macro render_media_editor(editor_id, exercise=None, readonly=False) %}
+    {% set scope_value = exercise.media_scope if exercise and exercise.media_scope else media_scope_private %}
+    {% set start_preview = exercise.start_image_url if exercise and exercise.start_image_url else None %}
+    {% set end_preview = exercise.end_image_url if exercise and exercise.end_image_url else None %}
+    {% set demo_video_url = exercise.demo_video_url if exercise and exercise.demo_video_url else None %}
+    {% set demo_video_poster = exercise.demo_video_poster_url if exercise and exercise.demo_video_poster_url else '' %}
+    {% set legacy_video = exercise.youtube_id if exercise and exercise.youtube_id else '' %}
+    {% set legacy_start = exercise.image_exercise_start if exercise and exercise.image_exercise_start else '' %}
+    {% set legacy_end = exercise.image_exercise_end if exercise and exercise.image_exercise_end else '' %}
+    <div class="catalog-media-editor js-media-editor"
+         data-editor-id="{{ editor_id }}"
+         data-gym-id="{{ selected_gym.id if selected_gym else '' }}"
+         data-readonly="{{ 'true' if readonly else 'false' }}"
+         data-upload-enabled="{{ 'true' if media_upload_enabled else 'false' }}"
+         data-sign-url="{{ url_for('trainer_gym_catalog_upload_signature') }}"
+         data-max-video-bytes="{{ max_video_bytes }}"
+         data-max-image-bytes="{{ max_image_bytes }}"
+         data-max-video-duration="{{ max_video_duration_seconds }}">
+        <input type="hidden" name="youtube" value="{{ legacy_video }}" class="js-legacy-youtube">
+        <input type="hidden" name="image_start" value="{{ legacy_start }}" class="js-legacy-start-image">
+        <input type="hidden" name="image_end" value="{{ legacy_end }}" class="js-legacy-end-image">
+        <input type="hidden" name="video_asset_payload" value="" class="js-video-asset-payload">
+        <input type="hidden" name="start_image_asset_payload" value="" class="js-start-image-asset-payload">
+        <input type="hidden" name="end_image_asset_payload" value="" class="js-end-image-asset-payload">
+        <input type="hidden" name="remove_video" value="0" class="js-remove-video-flag">
+        <input type="hidden" name="remove_start_image" value="0" class="js-remove-start-image-flag">
+        <input type="hidden" name="remove_end_image" value="0" class="js-remove-end-image-flag">
+        <input type="hidden" name="start_frame_seconds" value="{{ exercise.start_frame_seconds if exercise and exercise.start_frame_seconds is not none else '' }}" class="js-start-frame-seconds">
+        <input type="hidden" name="end_frame_seconds" value="{{ exercise.end_frame_seconds if exercise and exercise.end_frame_seconds is not none else '' }}" class="js-end-frame-seconds">
+
+        {% if not media_upload_enabled %}
+            <div class="alert alert-warning small mb-3">
+                Cloudinary uploads are not configured yet. Add `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET` to enable phone uploads.
+            </div>
+        {% endif %}
+
+        <div class="catalog-media-layout">
+            <div class="catalog-media-sidebar">
+                <div class="catalog-form-section__header catalog-media-sidebar__header">
+                    <p class="catalog-form-section__eyebrow">Media</p>
+                </div>
+                <div class="catalog-media-toolbar__select">
+                    <label class="form-label fw-semibold mb-1">Media Visibility</label>
+                    <select name="media_scope" class="form-select" {% if readonly %}disabled{% endif %}>
+                        <option value="{{ media_scope_private }}" {% if scope_value == media_scope_private %}selected{% endif %}>Private To Me</option>
+                        <option value="{{ media_scope_gym_shared }}" {% if scope_value == media_scope_gym_shared %}selected{% endif %}>Share With Gym</option>
+                    </select>
+                </div>
+                <div class="catalog-media-meta">
+                    <p class="catalog-media-guidance mb-0"><span class="catalog-media-guidance__label">Media Upload Requirements:</span> Portrait only. Video: {{ max_video_duration_seconds }} sec / 100MB max. Images: 10MB max.</p>
+                    {% if readonly %}
+                        <p class="catalog-media-guidance catalog-media-guidance--readonly mt-2 mb-0">Default FitBaseAI library details and media are view only for your account.</p>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="catalog-media-grid">
+                <section class="catalog-media-card">
+                <div class="catalog-media-card__head">
+                    <div>
+                        <h6>Demo Video</h6>
+                    </div>
+                    {% if not readonly %}
+                        <button type="button"
+                                class="btn btn-outline-secondary btn-sm catalog-media-card__upload js-trigger-upload js-video-upload-label"
+                                data-target-input="video"
+                                {% if not media_upload_enabled %}disabled{% endif %}>{{ 'Replace Video' if demo_video_url or legacy_video else 'Upload Video' }}</button>
+                    {% endif %}
+                </div>
+                <input type="file"
+                       accept="video/*"
+                       class="d-none js-video-input"
+                       tabindex="-1"
+                       {% if readonly or not media_upload_enabled %}disabled{% endif %}>
+                <div class="catalog-media-tile catalog-media-tile--video js-upload-surface"
+                     data-target-input="video"
+                     role="{% if not readonly and media_upload_enabled %}button{% else %}presentation{% endif %}"
+                     tabindex="{% if not readonly and media_upload_enabled %}0{% else %}-1{% endif %}"
+                     aria-label="{% if not readonly %}Upload demo video{% endif %}"
+                     aria-disabled="{{ 'false' if not readonly and media_upload_enabled else 'true' }}">
+                    <div class="catalog-video-placeholder js-video-placeholder {% if demo_video_url %}d-none{% endif %}">
+                        <div class="catalog-media-empty-state">
+                            <i class="bi bi-camera-video catalog-media-empty-state__icon" aria-hidden="true"></i>
+                            <span class="catalog-media-empty-state__title js-video-placeholder-title">
+                                {% if legacy_video %}
+                                    Legacy YouTube demo active
+                                {% else %}
+                                    {{ exercise.video_placeholder_label if exercise and exercise.video_placeholder_label else 'Video coming soon' }}
+                                {% endif %}
+                            </span>
+                            <span class="catalog-media-empty-state__hint js-video-placeholder-hint">
+                                {% if legacy_video %}
+                                    Tap to replace
+                                {% else %}
+                                    Tap to upload
+                                {% endif %}
+                            </span>
+                        </div>
+                    </div>
+                    <video class="catalog-video-preview js-video-preview {% if not demo_video_url %}d-none{% endif %}"
+                           controls
+                           playsinline
+                           preload="metadata"
+                           {% if demo_video_poster %}poster="{{ demo_video_poster }}"{% endif %}>
+                        {% if demo_video_url %}
+                            <source src="{{ demo_video_url }}">
+                        {% endif %}
+                    </video>
+                </div>
+                <div class="catalog-media-card__status js-video-status {% if not demo_video_url and not legacy_video %}d-none{% endif %}">
+                    {% if demo_video_url %}
+                        Current uploaded demo is active.
+                    {% elif legacy_video %}
+                        Legacy YouTube demo is active.
+                    {% endif %}
+                </div>
+                <div class="catalog-legacy-note js-legacy-video-note {% if not legacy_video or demo_video_url %}d-none{% endif %}">
+                    Legacy YouTube demo attached. Upload a replacement or remove the legacy demo.
+                </div>
+                {% if legacy_video and not demo_video_url %}
+                    <a href="https://www.youtube.com/watch?v={{ legacy_video }}"
+                       class="catalog-media-inline-link js-legacy-video-link"
+                       target="_blank"
+                       rel="noreferrer">Open current demo</a>
+                {% else %}
+                    <a href="#"
+                       class="catalog-media-inline-link js-legacy-video-link d-none"
+                       target="_blank"
+                       rel="noreferrer">Open current demo</a>
+                {% endif %}
+                {% if not readonly %}
+                    <div class="catalog-media-actions catalog-media-actions--video js-video-actions">
+                        <button type="button" class="btn btn-outline-primary btn-sm js-capture-start {% if not demo_video_url %}d-none{% endif %}" {% if not demo_video_url %}disabled{% endif %}>Set Start Frame</button>
+                        <button type="button" class="btn btn-outline-primary btn-sm js-capture-end {% if not demo_video_url %}d-none{% endif %}" {% if not demo_video_url %}disabled{% endif %}>Set End Frame</button>
+                        <button type="button" class="btn btn-outline-danger btn-sm js-remove-video {% if not demo_video_url and not legacy_video %}d-none{% endif %}">Remove Video</button>
+                    </div>
+                {% endif %}
+                </section>
+
+                <section class="catalog-media-card">
+                <div class="catalog-media-card__head">
+                    <div>
+                        <h6>Start Image</h6>
+                    </div>
+                    {% if not readonly %}
+                        <button type="button"
+                                class="btn btn-outline-secondary btn-sm catalog-media-card__upload js-trigger-upload js-start-upload-label"
+                                data-target-input="start"
+                                {% if not media_upload_enabled %}disabled{% endif %}>{{ 'Replace Image' if start_preview or legacy_start else 'Upload Image' }}</button>
+                    {% endif %}
+                </div>
+                <input type="file"
+                       accept="image/*"
+                       class="d-none js-start-image-input"
+                       tabindex="-1"
+                       {% if readonly or not media_upload_enabled %}disabled{% endif %}>
+                <div class="catalog-media-tile catalog-media-tile--image js-upload-surface"
+                     data-target-input="start"
+                     role="{% if not readonly and media_upload_enabled %}button{% else %}presentation{% endif %}"
+                     tabindex="{% if not readonly and media_upload_enabled %}0{% else %}-1{% endif %}"
+                     aria-label="{% if not readonly %}Upload start image{% endif %}"
+                     aria-disabled="{{ 'false' if not readonly and media_upload_enabled else 'true' }}">
+                    <div class="catalog-image-placeholder js-start-image-placeholder {% if start_preview %}d-none{% endif %}">
+                        <div class="catalog-media-empty-state">
+                            <i class="bi bi-image catalog-media-empty-state__icon" aria-hidden="true"></i>
+                            <span class="catalog-media-empty-state__title">{{ exercise.start_placeholder_label if exercise and exercise.start_placeholder_label else 'Start image coming soon' }}</span>
+                            <span class="catalog-media-empty-state__hint">Tap to upload</span>
+                        </div>
+                    </div>
+                    <img src="{{ start_preview or '' }}"
+                         alt="Start position preview"
+                         class="catalog-image-preview js-start-image-preview {% if not start_preview %}d-none{% endif %}">
+                </div>
+                {% if not readonly %}
+                    <div class="catalog-media-actions catalog-media-actions--image js-start-actions">
+                        <button type="button" class="btn btn-outline-danger btn-sm js-remove-start-image {% if not start_preview and not legacy_start %}d-none{% endif %}">Remove Start Image</button>
+                    </div>
+                {% endif %}
+                </section>
+
+                <section class="catalog-media-card">
+                <div class="catalog-media-card__head">
+                    <div>
+                        <h6>End Image</h6>
+                    </div>
+                    {% if not readonly %}
+                        <button type="button"
+                                class="btn btn-outline-secondary btn-sm catalog-media-card__upload js-trigger-upload js-end-upload-label"
+                                data-target-input="end"
+                                {% if not media_upload_enabled %}disabled{% endif %}>{{ 'Replace Image' if end_preview or legacy_end else 'Upload Image' }}</button>
+                    {% endif %}
+                </div>
+                <input type="file"
+                       accept="image/*"
+                       class="d-none js-end-image-input"
+                       tabindex="-1"
+                       {% if readonly or not media_upload_enabled %}disabled{% endif %}>
+                <div class="catalog-media-tile catalog-media-tile--image js-upload-surface"
+                     data-target-input="end"
+                     role="{% if not readonly and media_upload_enabled %}button{% else %}presentation{% endif %}"
+                     tabindex="{% if not readonly and media_upload_enabled %}0{% else %}-1{% endif %}"
+                     aria-label="{% if not readonly %}Upload end image{% endif %}"
+                     aria-disabled="{{ 'false' if not readonly and media_upload_enabled else 'true' }}">
+                    <div class="catalog-image-placeholder js-end-image-placeholder {% if end_preview %}d-none{% endif %}">
+                        <div class="catalog-media-empty-state">
+                            <i class="bi bi-image-alt catalog-media-empty-state__icon" aria-hidden="true"></i>
+                            <span class="catalog-media-empty-state__title">{{ exercise.end_placeholder_label if exercise and exercise.end_placeholder_label else 'End image coming soon' }}</span>
+                            <span class="catalog-media-empty-state__hint">Tap to upload</span>
+                        </div>
+                    </div>
+                    <img src="{{ end_preview or '' }}"
+                         alt="End position preview"
+                         class="catalog-image-preview js-end-image-preview {% if not end_preview %}d-none{% endif %}">
+                </div>
+                {% if not readonly %}
+                    <div class="catalog-media-actions catalog-media-actions--image js-end-actions">
+                        <button type="button" class="btn btn-outline-danger btn-sm js-remove-end-image {% if not end_preview and not legacy_end %}d-none{% endif %}">Remove End Image</button>
+                    </div>
+                {% endif %}
+                </section>
+            </div>
+        </div>
+    </div>
+{% endmacro %}
+
+{% block title %}
+    Exercise Library
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-0 px-sm-3 px-lg-5 mb-5 catalog-library-page"
+     data-open-exercise-library-modal="{{ 'true' if open_exercise_library_modal else 'false' }}">
+    {% set trainer_display_name = ((trainer.name or '') ~ ' ' ~ (trainer.last_name or '')) | trim %}
+    {% if not trainer_display_name %}
+        {% set trainer_display_name = trainer.username %}
+    {% endif %}
+    <div class="card w-100 border-0 trainer-dashboard-card catalog-library-hero-card mx-auto mb-4">
+        <div class="catalog-library-hero trainer-dashboard-hero text-white text-center">
+            <div class="trainer-dashboard-hero__content">
+                <div class="dashboard-snapshot__icon dashboard-snapshot__icon--hero mb-3" aria-hidden="true">
+                    <i class="bi bi-journal-richtext"></i>
+                </div>
+                <h2 class="trainer-dashboard-hero__title mb-3">Exercise Library</h2>
+                <p class="trainer-dashboard-hero__subtitle mb-3">
+                    Choose your exercise library, select your gym, and manage your exercise media.
+                </p>
+                <div class="dashboard-snapshot dashboard-snapshot--inline catalog-library-snapshot" aria-label="Exercise library snapshot">
+                    <div class="dashboard-snapshot__body">
+                        <p class="dashboard-snapshot__label mb-1">Library Snapshot</p>
+                        {% if selected_gym %}
+                            <span class="btn btn-sm btn-outline-light trainer-agenda-btn d-inline-flex align-items-center px-2 py-1 fw-semibold catalog-library-hero__pill catalog-library-snapshot__pill">
+                                <i class="bi bi-geo-alt me-1"></i>
+                                <span>{{ selected_gym.name }}</span>
+                            </span>
+                        {% else %}
+                            <p class="dashboard-snapshot__value mb-1">No gym selected</p>
+                        {% endif %}
+                        <p class="dashboard-snapshot__meta mb-0">
+                            {{ gym_exercises|length }} Exercises
+                        </p>
+                    </div>
+                </div>
+                <div class="trainer-dashboard-hero__meta trainer-hero-inline mb-0 d-flex align-items-center justify-content-center gap-2 flex-wrap">
+                    <span class="fw-semibold d-inline-flex align-items-center gap-2">
+                        <i class="bi bi-person-badge"></i>
+                        Signed in as {{ trainer_display_name }}
+                    </span>
+                </div>
+                <div class="catalog-library-hero__actions d-flex align-items-center justify-content-center gap-2 flex-wrap">
+                    <button type="button"
+                            class="btn btn-sm btn-outline-light trainer-agenda-btn d-inline-flex align-items-center px-3 py-2 fw-semibold catalog-library-hero__action-btn"
+                            data-bs-toggle="modal"
+                            data-bs-target="#exerciseLibraryModal"
+                            data-library-modal-view="library">
+                        <i class="bi bi-journal-text me-1"></i>
+                        <span>Change Exercise Library</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% if show_exercise_library_onboarding %}
+        <div class="catalog-library-onboarding" role="status" aria-live="polite">
+            <div class="catalog-library-onboarding__copy">
+                <p class="catalog-library-onboarding__eyebrow">Getting Started</p>
+                <h3 class="catalog-library-onboarding__title">Choose your exercise library before you start managing workouts.</h3>
+                <p class="catalog-library-onboarding__text mb-0">Review the default FitBaseAI library or switch to a gym-specific library so future workout generation uses the right exercise pool.</p>
+            </div>
+            <button type="button"
+                    class="btn btn-primary catalog-library-onboarding__action"
+                    data-bs-toggle="modal"
+                    data-bs-target="#exerciseLibraryModal"
+                    data-library-modal-view="library">
+                Set Up Exercise Library
+            </button>
+        </div>
+    {% endif %}
+
+    {% if pending_gym_requests %}
+        <section class="catalog-pending-requests" role="status" aria-live="polite" aria-label="Pending gym requests">
+            <div class="catalog-pending-requests__header">
+                <div class="catalog-pending-requests__heading">
+                    <p class="catalog-pending-requests__eyebrow">Gym Verification</p>
+                    <h3 class="catalog-pending-requests__title">Pending gym requests</h3>
+                    <p class="catalog-pending-requests__text mb-0">{{ gym_request_review_pending_text }}</p>
+                </div>
+                <span class="catalog-pending-requests__count">
+                    {{ pending_gym_requests|length }} pending
+                </span>
+            </div>
+            <div class="catalog-pending-requests__list">
+                {% for gym_request in pending_gym_requests %}
+                    <article class="catalog-pending-request-item">
+                        <div class="catalog-pending-request-item__main">
+                            <div class="catalog-pending-request-item__status-row">
+                                <span class="catalog-pending-request-item__badge">Pending Review</span>
+                                {% if gym_request.created_at %}
+                                    <span class="catalog-pending-request-item__date">
+                                        Submitted {{ gym_request.created_at.strftime('%b %-d, %Y') }}
+                                    </span>
+                                {% endif %}
+                            </div>
+                            <h4 class="catalog-pending-request-item__name">{{ gym_request.submitted_name }}</h4>
+                            {% if gym_request.submitted_city or gym_request.submitted_state or gym_request.submitted_country %}
+                                <p class="catalog-pending-request-item__location mb-0">
+                                    {{ gym_request.submitted_city or 'City missing' }},
+                                    {{ gym_request.submitted_state or 'State missing' }},
+                                    {{ gym_request.submitted_country or 'Country missing' }}
+                                </p>
+                            {% endif %}
+                        </div>
+                        {% if gym_request.agent_summary %}
+                            <div class="catalog-pending-request-item__review">
+                                <p class="catalog-pending-request-item__review-label mb-1">Automated review</p>
+                                <p class="catalog-pending-request-item__review-text mb-0">{{ gym_request.agent_summary }}</p>
+                            </div>
+                        {% endif %}
+                    </article>
+                {% endfor %}
+            </div>
+        </section>
+    {% endif %}
+
+    <div class="modal fade catalog-library-modal" id="exerciseLibraryModal" tabindex="-1" aria-labelledby="exerciseLibraryModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg">
+            <div class="modal-content">
+                <div class="modal-header border-0 pb-0">
+                    <div class="catalog-library-panel__header mb-0">
+                        <p class="catalog-library-panel__eyebrow">{{ 'Getting Started' if show_exercise_library_onboarding else 'Library Setup' }}</p>
+                        <h3 class="catalog-library-panel__title" id="exerciseLibraryModalLabel">{{ 'Set Up Exercise Library' if show_exercise_library_onboarding else 'Exercise Library Setup' }}</h3>
+                        <p class="catalog-library-panel__text">
+                            {% if show_exercise_library_onboarding %}
+                                Choose the FitBaseAI default library or a gym-specific library before you start managing exercises. If your gym is not listed, submit it for review here and it can be approved into the verified gym catalog.
+                            {% else %}
+                                Choose where workouts should come from, select the verified gym library you want to manage, or submit a new gym request.
+                            {% endif %}
+                        </p>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body pt-3">
+                    <form method="post" class="catalog-library-panel__form catalog-library-panel__form--library mb-0">
+                        <input type="hidden" name="action" value="set_catalog_mode">
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold" for="catalog-mode">Library Source</label>
+                            <select id="catalog-mode" name="catalog_mode" class="form-select">
+                                <option value="default" {% if library_setup_mode == 'default' %}selected{% endif %}>Use FitBaseAI Default Exercise Library (Western Racquet and Fitness Club)</option>
+                                <option value="gym" {% if library_setup_mode == 'gym' %}selected{% endif %}>Use A Different Gym Exercise Library</option>
+                            </select>
+                        </div>
+                        <div class="catalog-library-panel__gym-fields js-catalog-library-gym-fields" {% if library_setup_mode != 'gym' %}hidden{% endif %}>
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold" for="catalog-gym-id">Gym</label>
+                                <select id="catalog-gym-id" name="gym_id" class="form-select">
+                                    <option value="">Select a gym</option>
+                                    {% for gym in alternate_gyms %}
+                                        <option value="{{ gym.id }}"
+                                                {% if selected_alternate_gym and selected_alternate_gym.id == gym.id %}selected{% endif %}>
+                                            {{ gym.name }}
+                                            {% if gym.city or gym.state %}
+                                                ({{ gym.city or 'City' }}, {{ gym.state or 'State' }})
+                                            {% endif %}
+                                            - {{ gym.exercise_count or 0 }} exercises
+                                        </option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="catalog-library-panel__create-prompt js-catalog-library-create-prompt">
+                                <div class="catalog-library-panel__create-copy">
+                                    <p class="catalog-library-panel__prompt-title mb-1">Your gym is not listed?</p>
+                                    <p class="catalog-library-panel__prompt-text mb-0">Request a new gym for review. Approved gyms become selectable for all trainers.</p>
+                                </div>
+                                <button type="button"
+                                        class="btn btn-outline-secondary catalog-library-panel__create-trigger js-catalog-open-create-gym">
+                                    <i class="bi bi-building-add me-1"></i>
+                                    <span>Request New Gym</span>
+                                </button>
+                            </div>
+                        </div>
+                        <p class="catalog-library-panel__note mb-0">Exercise counts reflect workouts currently assigned to each gym.</p>
+                        <div class="catalog-library-panel__actions">
+                            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                            <button type="submit" class="btn btn-primary">Save Exercise Library</button>
+                        </div>
+                    </form>
+                    <div class="catalog-library-panel__divider js-catalog-library-create-divider" hidden>
+                        <span>Request a New Gym</span>
+                    </div>
+                    <form method="post" class="catalog-library-panel__form catalog-library-panel__form--create js-catalog-library-create-form mb-0" hidden>
+                        <input type="hidden" name="action" value="request_gym">
+                        <div class="catalog-library-panel__create-header">
+                            <div>
+                                <p class="catalog-library-panel__prompt-title mb-1">Request a gym profile</p>
+                                <p class="catalog-library-panel__prompt-text mb-1">{{ gym_request_review_window_text }}</p>
+                                <p class="catalog-library-panel__prompt-text mb-0">Your request will stay listed here as pending until it is approved and becomes selectable in the exercise library.</p>
+                            </div>
+                            <button type="button"
+                                    class="btn btn-link catalog-library-panel__create-close js-catalog-close-create-gym">
+                                Back to Gym Selection
+                            </button>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold" for="gym-name">Gym Name</label>
+                            <input id="gym-name" name="gym_name" type="text" class="form-control" placeholder="Example: Western Racquet and Fitness Club" required>
+                        </div>
+                        <div class="row g-3 mb-3">
+                            <div class="col-12 col-md-6">
+                                <label class="form-label fw-semibold" for="gym-city">City</label>
+                                <input id="gym-city" name="gym_city" type="text" class="form-control" placeholder="Green Bay" required>
+                            </div>
+                            <div class="col-12 col-md-6">
+                                <label class="form-label fw-semibold" for="gym-state">State/Region</label>
+                                <input id="gym-state" name="gym_state" type="text" class="form-control" placeholder="Wisconsin" required>
+                            </div>
+                        </div>
+                        <div class="row g-3 mb-3">
+                            <div class="col-12 col-md-6">
+                                <label class="form-label fw-semibold" for="gym-country">Country</label>
+                                <input id="gym-country" name="gym_country" type="text" class="form-control" placeholder="United States" required>
+                            </div>
+                            <div class="col-12 col-md-6">
+                                <label class="form-label fw-semibold" for="gym-address1">Address Line 1</label>
+                                <input id="gym-address1" name="gym_address_line1" type="text" class="form-control" placeholder="Street address" required>
+                            </div>
+                        </div>
+                        <div class="row g-3 mb-3">
+                            <div class="col-12 col-md-6">
+                                <label class="form-label fw-semibold" for="gym-postal-code">Postal Code / ZIP</label>
+                                <input id="gym-postal-code" name="gym_postal_code" type="text" class="form-control" placeholder="54304" required>
+                            </div>
+                            <div class="col-12 col-md-6">
+                                <label class="form-label fw-semibold" for="gym-address2">Address Line 2 <span class="text-muted fw-normal">(Optional)</span></label>
+                                <input id="gym-address2" name="gym_address_line2" type="text" class="form-control" placeholder="Suite, unit, or additional details">
+                            </div>
+                        </div>
+                        <div class="catalog-library-panel__actions">
+                            <button type="button" class="btn btn-outline-secondary js-catalog-close-create-gym">Back</button>
+                            <button type="submit" class="btn btn-primary">Submit Gym Request</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mt-4 catalog-exercises-card">
+        <div class="card-header catalog-exercises-card__header">
+            <div class="catalog-exercises-card__heading">
+                <p class="catalog-exercises-card__eyebrow">Manage Exercises</p>
+                <h5 class="mb-0">Gym Exercises</h5>
+                {% if selected_gym %}
+                    <p class="catalog-exercises-card__subtext">{{ gym_exercises|length }} exercises in this library</p>
+                {% else %}
+                    <p class="catalog-exercises-card__subtext">Select a verified gym or submit a gym request to begin managing exercises.</p>
+                {% endif %}
+            </div>
+            {% if selected_gym %}
+                <span class="catalog-exercises-card__gym-badge">{{ selected_gym.name }}</span>
+            {% else %}
+                <span class="catalog-exercises-card__gym-badge catalog-exercises-card__gym-badge--muted">No gym selected</span>
+            {% endif %}
+        </div>
+        <div class="card-body">
+            {% if not selected_gym %}
+                <p class="mb-0 text-muted">Select a verified gym or wait for your gym request to be approved before managing exercises.</p>
+            {% else %}
+                {% if selected_library_is_default and not can_edit_selected_library %}
+                    <div class="catalog-library-readonly-note" role="status" aria-live="polite">
+                        <p class="catalog-library-readonly-note__title">The default FitBaseAI exercise library is view only.</p>
+                        <p class="catalog-library-readonly-note__text mb-0">You can browse the WRFC exercise list and its media, but only the platform superadmin can edit, delete, or add exercises here. To customize your own library, switch to a different gym or create one in Exercise Library setup.</p>
+                    </div>
+                {% else %}
+                    <details class="catalog-exercise-shell js-catalog-add-panel">
+                        <summary class="catalog-exercise-shell__summary">
+                            <span class="catalog-exercise-shell__summary-copy">
+                                <span class="catalog-exercise-shell__summary-title">Add Exercise To {{ selected_gym.name }}</span>
+                                <span class="catalog-exercise-shell__summary-text">Start with the exercise details. Upload media now or later.</span>
+                            </span>
+                            <span class="catalog-exercise-shell__summary-icon" aria-hidden="true">
+                                <i class="bi bi-chevron-down"></i>
+                            </span>
+                        </summary>
+                        <div class="card-body">
+                            <form method="post" class="js-catalog-workout-form catalog-exercise-form">
+                                <input type="hidden" name="action" value="add_exercise">
+                                <div class="catalog-form-section">
+                                    <div class="catalog-form-section__header">
+                                        <p class="catalog-form-section__eyebrow">Exercise Details</p>
+                                    </div>
+                                    <div class="row g-3">
+                                        <div class="col-12">
+                                            <label class="form-label fw-semibold">Exercise Name</label>
+                                            <input name="name" type="text" class="form-control" placeholder="Example: Seated Chest Press" required>
+                                        </div>
+                                        <div class="col-12 col-lg-4">
+                                            <label class="form-label fw-semibold">Category</label>
+                                            <select name="category" class="form-select" required>
+                                                <option value="" selected disabled>Select Category</option>
+                                                {% for category in workout_categories %}
+                                                    <option value="{{ category }}">{{ category }}</option>
+                                                {% endfor %}
+                                            </select>
+                                        </div>
+                                        <div class="col-12 col-lg-4">
+                                            <label class="form-label fw-semibold">Level</label>
+                                            <select name="level" class="form-select" required>
+                                                <option value="" selected disabled>Select Level</option>
+                                                <option value="1">Beginner</option>
+                                                <option value="2">Intermediate</option>
+                                                <option value="3">Advanced</option>
+                                            </select>
+                                        </div>
+                                        <div class="col-12 col-lg-4">
+                                            <label class="form-label fw-semibold">Movement Type</label>
+                                            <select name="movement_type" class="form-select" required>
+                                                <option value="" selected disabled>Select Movement Type</option>
+                                                {% for movement_type in movement_type_choices %}
+                                                    <option value="{{ movement_type }}">{{ movement_type|title }}</option>
+                                                {% endfor %}
+                                            </select>
+                                        </div>
+                                        <div class="col-12 col-lg-5">
+                                            <label class="form-label fw-semibold">Subcategory (optional)</label>
+                                            <select name="subcategory" class="form-select">
+                                                {{ render_subcategory_options(subcategory_choices, '', True, 'Select Subcategory') }}
+                                            </select>
+                                        </div>
+                                        <div class="col-12 col-lg-7">
+                                            <label class="form-label fw-semibold">Description</label>
+                                            <textarea name="description" class="form-control" rows="3" placeholder="Briefly describe the setup, movement, and coaching cues." required></textarea>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="catalog-form-section catalog-form-section--media">
+                                    {{ render_media_editor('add') }}
+                                </div>
+
+                                <div class="catalog-form-actions">
+                                    <button type="button" class="btn btn-outline-secondary js-collapse-add-panel-btn">Cancel</button>
+                                    <button type="submit" class="btn btn-primary">Add Exercise</button>
+                                </div>
+                            </form>
+                        </div>
+                    </details>
+                {% endif %}
+
+                {% if gym_exercises %}
+                    <div class="catalog-exercise-tools js-catalog-exercise-tools" data-total-count="{{ gym_exercises|length }}">
+                        <div class="catalog-exercise-tools__grid">
+                            <div class="catalog-exercise-tools__field catalog-exercise-tools__field--search">
+                                <label class="form-label fw-semibold mb-1" for="catalog-exercise-search">Search</label>
+                                <div class="catalog-exercise-tools__search-wrap">
+                                    <i class="bi bi-search" aria-hidden="true"></i>
+                                    <input id="catalog-exercise-search"
+                                           type="search"
+                                           class="form-control js-catalog-filter-search"
+                                           placeholder="Search exercise name, category, level, or movement type">
+                                </div>
+                            </div>
+                            <div class="catalog-exercise-tools__field">
+                                <label class="form-label fw-semibold mb-1" for="catalog-exercise-sort">Sort By</label>
+                                <select id="catalog-exercise-sort" class="form-select js-catalog-filter-sort">
+                                    <option value="default" selected>Library Order</option>
+                                    <option value="name-asc">Alphabetical (A-Z)</option>
+                                    <option value="name-desc">Alphabetical (Z-A)</option>
+                                    <option value="category">Category</option>
+                                    <option value="level">Level</option>
+                                </select>
+                            </div>
+                            <div class="catalog-exercise-tools__field">
+                                <label class="form-label fw-semibold mb-1" for="catalog-exercise-category-filter">Category</label>
+                                <select id="catalog-exercise-category-filter" class="form-select js-catalog-filter-category">
+                                    <option value="">All Categories</option>
+                                    {% for category in workout_categories %}
+                                        <option value="{{ category }}">{{ category }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="catalog-exercise-tools__field">
+                                <label class="form-label fw-semibold mb-1" for="catalog-exercise-level-filter">Level</label>
+                                <select id="catalog-exercise-level-filter" class="form-select js-catalog-filter-level">
+                                    <option value="">All Levels</option>
+                                    <option value="1">Beginner</option>
+                                    <option value="2">Intermediate</option>
+                                    <option value="3">Advanced</option>
+                                </select>
+                            </div>
+                            <div class="catalog-exercise-tools__field">
+                                <label class="form-label fw-semibold mb-1" for="catalog-exercise-movement-filter">Movement Type</label>
+                                <select id="catalog-exercise-movement-filter" class="form-select js-catalog-filter-movement">
+                                    <option value="">All Movement Types</option>
+                                    {% for movement_type in movement_type_choices %}
+                                        <option value="{{ movement_type }}">{{ movement_type|title }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="catalog-exercise-tools__field">
+                                <label class="form-label fw-semibold mb-1" for="catalog-exercise-media-filter">Media Status</label>
+                                <select id="catalog-exercise-media-filter" class="form-select js-catalog-filter-media">
+                                    <option value="">All Media Statuses</option>
+                                    <option value="has-media">Has Media</option>
+                                    <option value="needs-media">Needs Media</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="catalog-exercise-tools__footer">
+                            <p class="catalog-exercise-tools__results">
+                                Showing <span class="js-catalog-visible-count">{{ gym_exercises|length }}</span> of {{ gym_exercises|length }} exercises
+                            </p>
+                            <button type="button" class="btn btn-outline-secondary btn-sm js-catalog-filter-reset">Clear Filters</button>
+                        </div>
+                    </div>
+                    <div class="catalog-exercise-list">
+                        {% for exercise in gym_exercises %}
+                            {% set exercise_level_label = render_level_label(exercise.level) %}
+                            {% set exercise_has_media = exercise.demo_video_url or exercise.youtube_id or exercise.start_image_url or exercise.image_exercise_start or exercise.end_image_url or exercise.image_exercise_end %}
+                            {% set exercise_search_text = [
+                                exercise.name,
+                                exercise.category,
+                                exercise_level_label,
+                                exercise.movement_type or '',
+                                exercise.subcategory or '',
+                                exercise.description or '',
+                                'private media' if exercise.media_scope == media_scope_private else '',
+                                'gym shared media' if exercise.media_scope == media_scope_gym_shared else ''
+                            ] | join(' ') | lower %}
+                            <details class="catalog-exercise-detail js-catalog-exercise-item"
+                                     data-original-index="{{ loop.index0 }}"
+                                     data-name="{{ exercise.name|lower }}"
+                                     data-category="{{ exercise.category }}"
+                                     data-level="{{ exercise.level }}"
+                                     data-level-label="{{ exercise_level_label|lower }}"
+                                     data-movement-type="{{ (exercise.movement_type or 'accessory')|lower }}"
+                                     data-media-status="{{ 'has-media' if exercise_has_media else 'needs-media' }}"
+                                     data-search="{{ exercise_search_text }}">
+                                <summary class="catalog-exercise-detail__summary">
+                                    <span class="catalog-exercise-detail__summary-copy">
+                                        <span class="catalog-exercise-detail__name">{{ exercise.name }}</span>
+                                        <span class="text-muted catalog-exercise-detail__meta">({{ exercise.category }}, {{ exercise_level_label }})</span>
+                                    </span>
+                                    {% if exercise.media_scope == media_scope_private %}
+                                        <span class="catalog-status-pill catalog-status-pill--private catalog-exercise-detail__status-pill">Private Media</span>
+                                    {% elif exercise.media_scope == media_scope_gym_shared %}
+                                        <span class="catalog-status-pill catalog-status-pill--shared catalog-exercise-detail__status-pill">Gym Shared Media</span>
+                                    {% endif %}
+                                    <span class="catalog-exercise-detail__summary-icon" aria-hidden="true">
+                                        <i class="bi bi-chevron-down"></i>
+                                    </span>
+                                </summary>
+                                <form method="post"
+                                      id="catalog-update-exercise-{{ exercise.id }}"
+                                      class="js-catalog-workout-form catalog-exercise-form catalog-exercise-detail__form{% if not can_edit_selected_library %} catalog-exercise-form--readonly{% endif %}">
+                                    <input type="hidden" name="action" value="update_exercise">
+                                    <input type="hidden" name="workout_id" value="{{ exercise.id }}">
+                                    <div class="catalog-form-section">
+                                        <div class="catalog-form-section__header">
+                                            <p class="catalog-form-section__eyebrow">Exercise Details</p>
+                                        </div>
+                                        <div class="row g-3">
+                                            <div class="col-12 col-md-6">
+                                                <label class="form-label fw-semibold">Exercise Name</label>
+                                                <input name="name" type="text" class="form-control" value="{{ exercise.name }}" {% if not can_edit_selected_library %}readonly{% endif %} required>
+                                            </div>
+                                            <div class="col-6 col-md-3">
+                                                <label class="form-label fw-semibold">Category</label>
+                                                <select name="category" class="form-select" {% if not can_edit_selected_library %}disabled{% endif %} required>
+                                                    {% for category in workout_categories %}
+                                                        <option value="{{ category }}" {% if exercise.category == category %}selected{% endif %}>{{ category }}</option>
+                                                    {% endfor %}
+                                                </select>
+                                            </div>
+                                            <div class="col-6 col-md-3">
+                                                <label class="form-label fw-semibold">Level</label>
+                                                <select name="level" class="form-select" {% if not can_edit_selected_library %}disabled{% endif %} required>
+                                                    <option value="1" {% if exercise.level == 1 %}selected{% endif %}>Beginner</option>
+                                                    <option value="2" {% if exercise.level == 2 %}selected{% endif %}>Intermediate</option>
+                                                    <option value="3" {% if exercise.level == 3 %}selected{% endif %}>Advanced</option>
+                                                </select>
+                                            </div>
+                                            <div class="col-12 col-md-6">
+                                                <label class="form-label fw-semibold">Movement Type</label>
+                                                <select name="movement_type" class="form-select" {% if not can_edit_selected_library %}disabled{% endif %}>
+                                                    {% for movement_type in movement_type_choices %}
+                                                        <option value="{{ movement_type }}" {% if (exercise.movement_type or 'accessory') == movement_type %}selected{% endif %}>{{ movement_type|title }}</option>
+                                                    {% endfor %}
+                                                </select>
+                                            </div>
+                                            <div class="col-12 col-md-6">
+                                                <label class="form-label fw-semibold">Subcategory</label>
+                                                <select name="subcategory" class="form-select" {% if not can_edit_selected_library %}disabled{% endif %}>
+                                                    {{ render_subcategory_options(subcategory_choices, exercise.subcategory, True, 'Select Subcategory') }}
+                                                </select>
+                                            </div>
+                                            <div class="col-12">
+                                                <label class="form-label fw-semibold">Description</label>
+                                                <textarea name="description" class="form-control" rows="3" {% if not can_edit_selected_library %}readonly{% endif %} required>{{ exercise.description }}</textarea>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="catalog-form-section catalog-form-section--media">
+                                        {{ render_media_editor('edit-' ~ exercise.id, exercise, not can_edit_selected_library) }}
+                                    </div>
+                                </form>
+                                {% if can_edit_selected_library %}
+                                    <form method="post"
+                                          id="catalog-delete-exercise-{{ exercise.id }}"
+                                          class="d-none"
+                                          onsubmit="return confirm('Delete this exercise from the exercise library?');">
+                                        <input type="hidden" name="action" value="delete_exercise">
+                                        <input type="hidden" name="workout_id" value="{{ exercise.id }}">
+                                    </form>
+                                    <div class="catalog-form-actions mt-3 catalog-exercise-detail__actions">
+                                        <button type="submit"
+                                                form="catalog-delete-exercise-{{ exercise.id }}"
+                                                class="btn btn-outline-danger">Delete Exercise</button>
+                                        <button type="submit"
+                                                form="catalog-update-exercise-{{ exercise.id }}"
+                                                class="btn btn-primary">Save Exercise</button>
+                                    </div>
+                                {% endif %}
+                            </details>
+                        {% endfor %}
+                    </div>
+                    <div class="catalog-exercise-list__empty js-catalog-empty-state d-none" aria-live="polite">
+                        <p class="mb-1">No exercises match the current search and filters.</p>
+                        <p class="mb-0">Clear the filters or adjust the search to see more results.</p>
+                    </div>
+                {% else %}
+                    <p class="mb-0 text-muted">No custom exercises have been added for this gym yet.</p>
+                {% endif %}
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    (() => {
+        const bytesLabel = (value) => {
+            const number = Number(value || 0);
+            if (!Number.isFinite(number) || number <= 0) return '0 MB';
+            return `${(number / (1024 * 1024)).toFixed(0)} MB`;
+        };
+
+        const loadVideoMetadata = (file) => new Promise((resolve, reject) => {
+            const url = URL.createObjectURL(file);
+            const video = document.createElement('video');
+            video.preload = 'metadata';
+            video.muted = true;
+            video.playsInline = true;
+            video.onloadedmetadata = () => {
+                const payload = {
+                    url,
+                    duration: Number(video.duration || 0),
+                    width: Number(video.videoWidth || 0),
+                    height: Number(video.videoHeight || 0),
+                };
+                resolve(payload);
+            };
+            video.onerror = () => {
+                URL.revokeObjectURL(url);
+                reject(new Error('Unable to read video metadata.'));
+            };
+            video.src = url;
+        });
+
+        const loadImageMetadata = (file) => new Promise((resolve, reject) => {
+            const url = URL.createObjectURL(file);
+            const image = new Image();
+            image.onload = () => {
+                resolve({
+                    url,
+                    width: Number(image.naturalWidth || 0),
+                    height: Number(image.naturalHeight || 0),
+                });
+            };
+            image.onerror = () => {
+                URL.revokeObjectURL(url);
+                reject(new Error('Unable to read image metadata.'));
+            };
+            image.src = url;
+        });
+
+        const dataUrlToBlob = async (dataUrl) => {
+            const response = await fetch(dataUrl);
+            return await response.blob();
+        };
+
+        const uploadToCloudinary = async (editor, file, resourceType, uploadKind) => {
+            const signUrl = editor.dataset.signUrl;
+            const gymId = editor.dataset.gymId;
+            const signatureResponse = await fetch(signUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                body: JSON.stringify({
+                    gym_id: gymId,
+                    resource_type: resourceType,
+                    upload_kind: uploadKind,
+                }),
+            });
+            const signaturePayload = await signatureResponse.json();
+            if (!signatureResponse.ok || !signaturePayload.success) {
+                throw new Error(signaturePayload.error || 'Unable to prepare media upload.');
+            }
+
+            const formData = new FormData();
+            formData.append('file', file, file.name || `${uploadKind}.${resourceType === 'video' ? 'mp4' : 'jpg'}`);
+            formData.append('api_key', signaturePayload.api_key);
+            formData.append('timestamp', signaturePayload.timestamp);
+            formData.append('signature', signaturePayload.signature);
+            formData.append('folder', signaturePayload.folder);
+            formData.append('public_id', signaturePayload.public_id);
+            formData.append('upload_preset', signaturePayload.upload_preset);
+            formData.append('overwrite', 'false');
+
+            const uploadResponse = await fetch(signaturePayload.upload_url, {
+                method: 'POST',
+                body: formData,
+            });
+            const uploadPayload = await uploadResponse.json();
+            if (!uploadResponse.ok || uploadPayload.error) {
+                throw new Error(uploadPayload.error?.message || 'Cloud upload failed.');
+            }
+            return uploadPayload;
+        };
+
+        const createEditorState = (editor) => ({
+            editor,
+            videoFile: null,
+            videoObjectUrl: '',
+            startImageFile: null,
+            endImageFile: null,
+            startImageObjectUrl: '',
+            endImageObjectUrl: '',
+            startCaptureBlob: null,
+            endCaptureBlob: null,
+        });
+
+        const setPlaceholderVisibility = (target, show) => {
+            if (!target) return;
+            target.classList.toggle('d-none', !show);
+        };
+
+        const setImagePreview = (imageEl, placeholderEl, sourceUrl) => {
+            if (!imageEl || !placeholderEl) return;
+            if (sourceUrl) {
+                imageEl.src = sourceUrl;
+                imageEl.classList.remove('d-none');
+                placeholderEl.classList.add('d-none');
+            } else {
+                imageEl.src = '';
+                imageEl.classList.add('d-none');
+                placeholderEl.classList.remove('d-none');
+            }
+        };
+
+        const captureCurrentVideoFrame = async (videoEl) => {
+            if (!videoEl || !videoEl.videoWidth || !videoEl.videoHeight) {
+                throw new Error('Load a local video before capturing stills.');
+            }
+            const canvas = document.createElement('canvas');
+            canvas.width = videoEl.videoWidth;
+            canvas.height = videoEl.videoHeight;
+            const context = canvas.getContext('2d');
+            context.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+            const blob = await dataUrlToBlob(dataUrl);
+            return {
+                blob,
+                previewUrl: dataUrl,
+                currentTime: Number(videoEl.currentTime || 0),
+            };
+        };
+
+        const validatePortraitVideo = async (file, editor) => {
+            const maxBytes = Number(editor.dataset.maxVideoBytes || 0);
+            const maxDuration = Number(editor.dataset.maxVideoDuration || 15);
+            if (file.size > maxBytes) {
+                throw new Error(`Video files must be ${bytesLabel(maxBytes)} or less.`);
+            }
+            const metadata = await loadVideoMetadata(file);
+            if (metadata.height <= metadata.width) {
+                URL.revokeObjectURL(metadata.url);
+                throw new Error('Video must be recorded in portrait orientation.');
+            }
+            if (!Number.isFinite(metadata.duration) || metadata.duration <= 0 || metadata.duration > maxDuration) {
+                URL.revokeObjectURL(metadata.url);
+                throw new Error(`Video demonstrations must be ${maxDuration} seconds or less.`);
+            }
+            return metadata;
+        };
+
+        const validatePortraitImage = async (file, editor) => {
+            const maxBytes = Number(editor.dataset.maxImageBytes || 0);
+            if (file.size > maxBytes) {
+                throw new Error(`Images must be ${bytesLabel(maxBytes)} or less.`);
+            }
+            const metadata = await loadImageMetadata(file);
+            if (metadata.height <= metadata.width) {
+                URL.revokeObjectURL(metadata.url);
+                throw new Error('Images must be uploaded in portrait orientation.');
+            }
+            return metadata;
+        };
+
+        const bindMediaEditor = (editor) => {
+            const state = createEditorState(editor);
+            const uploadEnabled = editor.dataset.uploadEnabled === 'true';
+            const readonly = editor.dataset.readonly === 'true';
+            const uploadButtons = editor.querySelectorAll('.js-trigger-upload');
+            const uploadSurfaces = editor.querySelectorAll('.js-upload-surface');
+            const videoInput = editor.querySelector('.js-video-input');
+            const videoPreview = editor.querySelector('.js-video-preview');
+            const videoPlaceholder = editor.querySelector('.js-video-placeholder');
+            const videoPlaceholderTitle = editor.querySelector('.js-video-placeholder-title');
+            const videoPlaceholderHint = editor.querySelector('.js-video-placeholder-hint');
+            const videoStatus = editor.querySelector('.js-video-status');
+            const legacyVideoNote = editor.querySelector('.js-legacy-video-note');
+            const legacyVideoLink = editor.querySelector('.js-legacy-video-link');
+            const captureStartBtn = editor.querySelector('.js-capture-start');
+            const captureEndBtn = editor.querySelector('.js-capture-end');
+            const removeVideoBtn = editor.querySelector('.js-remove-video');
+            const videoUploadLabel = editor.querySelector('.js-video-upload-label');
+            const startInput = editor.querySelector('.js-start-image-input');
+            const endInput = editor.querySelector('.js-end-image-input');
+            const startPreview = editor.querySelector('.js-start-image-preview');
+            const endPreview = editor.querySelector('.js-end-image-preview');
+            const startPlaceholder = editor.querySelector('.js-start-image-placeholder');
+            const endPlaceholder = editor.querySelector('.js-end-image-placeholder');
+            const removeStartBtn = editor.querySelector('.js-remove-start-image');
+            const removeEndBtn = editor.querySelector('.js-remove-end-image');
+            const startUploadLabel = editor.querySelector('.js-start-upload-label');
+            const endUploadLabel = editor.querySelector('.js-end-upload-label');
+            const videoAssetPayload = editor.querySelector('.js-video-asset-payload');
+            const startAssetPayload = editor.querySelector('.js-start-image-asset-payload');
+            const endAssetPayload = editor.querySelector('.js-end-image-asset-payload');
+            const removeVideoFlag = editor.querySelector('.js-remove-video-flag');
+            const removeStartFlag = editor.querySelector('.js-remove-start-image-flag');
+            const removeEndFlag = editor.querySelector('.js-remove-end-image-flag');
+            const legacyYoutube = editor.querySelector('.js-legacy-youtube');
+            const legacyStartInput = editor.querySelector('.js-legacy-start-image');
+            const legacyEndInput = editor.querySelector('.js-legacy-end-image');
+            const startFrameInput = editor.querySelector('.js-start-frame-seconds');
+            const endFrameInput = editor.querySelector('.js-end-frame-seconds');
+            const form = editor.closest('form');
+
+            const defaultVideoStatus = () => {
+                if (legacyYoutube && legacyYoutube.value) {
+                    return 'Legacy YouTube demo is active.';
+                }
+                return '';
+            };
+
+            const setVideoStatus = (message) => {
+                if (!videoStatus) return;
+                const safeMessage = String(message || '').trim();
+                if (!safeMessage) {
+                    videoStatus.textContent = '';
+                    videoStatus.classList.add('d-none');
+                    return;
+                }
+                videoStatus.textContent = safeMessage;
+                videoStatus.classList.remove('d-none');
+            };
+
+            const syncVideoPlaceholderCopy = () => {
+                if (!videoPlaceholderTitle || !videoPlaceholderHint) return;
+                if (legacyYoutube && legacyYoutube.value) {
+                    videoPlaceholderTitle.textContent = 'Legacy YouTube demo active';
+                    videoPlaceholderHint.textContent = 'Tap to replace';
+                    return;
+                }
+                videoPlaceholderTitle.textContent = 'Video coming soon';
+                videoPlaceholderHint.textContent = 'Tap to upload';
+            };
+
+            const hasPreviewAsset = (previewEl) => Boolean(
+                previewEl &&
+                !previewEl.classList.contains('d-none') &&
+                previewEl.getAttribute('src')
+            );
+
+            const hasVideoPreviewAsset = () => Boolean(
+                videoPreview &&
+                !videoPreview.classList.contains('d-none') &&
+                (
+                    videoPreview.getAttribute('src') ||
+                    videoPreview.currentSrc ||
+                    videoPreview.querySelector('source[src]')
+                )
+            );
+
+            const syncMediaActionState = () => {
+                const hasLocalVideo = hasVideoPreviewAsset();
+                const hasVideo = hasLocalVideo || Boolean(legacyYoutube && legacyYoutube.value);
+                const hasStartImage = hasPreviewAsset(startPreview) || Boolean(legacyStartInput && legacyStartInput.value);
+                const hasEndImage = hasPreviewAsset(endPreview) || Boolean(legacyEndInput && legacyEndInput.value);
+
+                if (videoUploadLabel) {
+                    videoUploadLabel.textContent = hasVideo ? 'Replace Video' : 'Upload Video';
+                }
+                if (startUploadLabel) {
+                    startUploadLabel.textContent = hasStartImage ? 'Replace Image' : 'Upload Image';
+                }
+                if (endUploadLabel) {
+                    endUploadLabel.textContent = hasEndImage ? 'Replace Image' : 'Upload Image';
+                }
+
+                if (captureStartBtn) {
+                    captureStartBtn.disabled = !hasLocalVideo;
+                    captureStartBtn.classList.toggle('d-none', !hasLocalVideo);
+                }
+                if (captureEndBtn) {
+                    captureEndBtn.disabled = !hasLocalVideo;
+                    captureEndBtn.classList.toggle('d-none', !hasLocalVideo);
+                }
+                if (removeVideoBtn) {
+                    removeVideoBtn.classList.toggle('d-none', !hasVideo);
+                }
+                if (removeStartBtn) {
+                    removeStartBtn.classList.toggle('d-none', !hasStartImage);
+                }
+                if (removeEndBtn) {
+                    removeEndBtn.classList.toggle('d-none', !hasEndImage);
+                }
+            };
+
+            const openUploadPicker = (targetKey) => {
+                const inputMap = {
+                    video: videoInput,
+                    start: startInput,
+                    end: endInput,
+                };
+                const input = inputMap[targetKey];
+                if (!input) return;
+                if (!uploadEnabled) {
+                    window.alert('Cloudinary uploads are not configured yet.');
+                    return;
+                }
+                input.click();
+            };
+
+            uploadSurfaces.forEach((surface) => {
+                surface.addEventListener('click', (event) => {
+                    if (event.target.closest('a') || event.target.closest('button')) {
+                        return;
+                    }
+                    if (surface.dataset.targetInput === 'video' && event.target.closest('video')) {
+                        return;
+                    }
+                    openUploadPicker(surface.dataset.targetInput);
+                });
+                surface.addEventListener('keydown', (event) => {
+                    if (event.key !== 'Enter' && event.key !== ' ') {
+                        return;
+                    }
+                    event.preventDefault();
+                    openUploadPicker(surface.dataset.targetInput);
+                });
+            });
+
+            uploadButtons.forEach((button) => {
+                button.addEventListener('click', () => {
+                    openUploadPicker(button.dataset.targetInput);
+                });
+            });
+
+            const clearVideoSelection = ({ clearLegacy = false } = {}) => {
+                if (state.videoObjectUrl) {
+                    URL.revokeObjectURL(state.videoObjectUrl);
+                    state.videoObjectUrl = '';
+                }
+                state.videoFile = null;
+                videoAssetPayload.value = '';
+                if (videoInput) {
+                    videoInput.value = '';
+                }
+                if (videoPreview) {
+                    videoPreview.pause();
+                    videoPreview.removeAttribute('src');
+                    videoPreview.querySelectorAll('source').forEach((node) => node.remove());
+                    videoPreview.load();
+                    videoPreview.classList.add('d-none');
+                }
+                if (clearLegacy && legacyYoutube) {
+                    legacyYoutube.value = '';
+                    if (legacyVideoLink) {
+                        legacyVideoLink.classList.add('d-none');
+                        legacyVideoLink.href = '#';
+                    }
+                    if (legacyVideoNote) {
+                        legacyVideoNote.classList.add('d-none');
+                    }
+                }
+                const hasLegacyVideo = Boolean(legacyYoutube && legacyYoutube.value);
+                syncVideoPlaceholderCopy();
+                setPlaceholderVisibility(videoPlaceholder, true);
+                setVideoStatus(defaultVideoStatus());
+                if (hasLegacyVideo) {
+                    if (legacyVideoLink) {
+                        legacyVideoLink.classList.remove('d-none');
+                    }
+                    if (legacyVideoNote) {
+                        legacyVideoNote.classList.remove('d-none');
+                    }
+                }
+                syncMediaActionState();
+            };
+
+            const setVideoPreview = (url, { clearLegacy = false } = {}) => {
+                if (!videoPreview) return;
+                videoPreview.querySelectorAll('source').forEach((node) => node.remove());
+                videoPreview.src = url || '';
+                videoPreview.classList.toggle('d-none', !url);
+                setPlaceholderVisibility(videoPlaceholder, !url);
+                if (url) {
+                    setVideoStatus('Local video ready. Pause on the exact movement start and finish, then capture both stills.');
+                } else {
+                    setVideoStatus(defaultVideoStatus());
+                }
+                if (clearLegacy) {
+                    if (legacyVideoNote) legacyVideoNote.classList.add('d-none');
+                    if (legacyVideoLink) {
+                        legacyVideoLink.classList.add('d-none');
+                        legacyVideoLink.href = '#';
+                    }
+                }
+                syncMediaActionState();
+            };
+
+            const clearStartImage = ({ clearLegacy = false } = {}) => {
+                if (state.startImageObjectUrl) {
+                    URL.revokeObjectURL(state.startImageObjectUrl);
+                    state.startImageObjectUrl = '';
+                }
+                state.startImageFile = null;
+                state.startCaptureBlob = null;
+                startAssetPayload.value = '';
+                startFrameInput.value = '';
+                if (startInput) {
+                    startInput.value = '';
+                }
+                setImagePreview(startPreview, startPlaceholder, '');
+                if (clearLegacy && legacyStartInput) {
+                    legacyStartInput.value = '';
+                }
+                syncMediaActionState();
+            };
+
+            const clearEndImage = ({ clearLegacy = false } = {}) => {
+                if (state.endImageObjectUrl) {
+                    URL.revokeObjectURL(state.endImageObjectUrl);
+                    state.endImageObjectUrl = '';
+                }
+                state.endImageFile = null;
+                state.endCaptureBlob = null;
+                endAssetPayload.value = '';
+                endFrameInput.value = '';
+                if (endInput) {
+                    endInput.value = '';
+                }
+                setImagePreview(endPreview, endPlaceholder, '');
+                if (clearLegacy && legacyEndInput) {
+                    legacyEndInput.value = '';
+                }
+                syncMediaActionState();
+            };
+
+            if (videoInput) {
+                videoInput.addEventListener('change', async () => {
+                    const [file] = videoInput.files || [];
+                    if (!file) {
+                        clearVideoSelection();
+                        return;
+                    }
+                    if (!uploadEnabled) {
+                        window.alert('Cloudinary uploads are not configured yet.');
+                        clearVideoSelection();
+                        return;
+                    }
+                    try {
+                        const metadata = await validatePortraitVideo(file, editor);
+                        if (state.videoObjectUrl) {
+                            URL.revokeObjectURL(state.videoObjectUrl);
+                        }
+                        state.videoFile = file;
+                        state.videoObjectUrl = metadata.url;
+                        removeVideoFlag.value = '0';
+                        setVideoPreview(metadata.url, { clearLegacy: true });
+                    } catch (error) {
+                        window.alert(error.message || 'Video upload failed validation.');
+                        clearVideoSelection();
+                    }
+                });
+            }
+
+            if (startInput) {
+                startInput.addEventListener('change', async () => {
+                    const [file] = startInput.files || [];
+                    if (!file) {
+                        return;
+                    }
+                    try {
+                        const metadata = await validatePortraitImage(file, editor);
+                        if (state.startImageObjectUrl) {
+                            URL.revokeObjectURL(state.startImageObjectUrl);
+                        }
+                        state.startImageFile = file;
+                        state.startCaptureBlob = null;
+                        state.startImageObjectUrl = metadata.url;
+                        removeStartFlag.value = '0';
+                        startFrameInput.value = '';
+                        setImagePreview(startPreview, startPlaceholder, metadata.url);
+                        syncMediaActionState();
+                    } catch (error) {
+                        window.alert(error.message || 'Start image failed validation.');
+                        clearStartImage();
+                    }
+                });
+            }
+
+            if (endInput) {
+                endInput.addEventListener('change', async () => {
+                    const [file] = endInput.files || [];
+                    if (!file) {
+                        return;
+                    }
+                    try {
+                        const metadata = await validatePortraitImage(file, editor);
+                        if (state.endImageObjectUrl) {
+                            URL.revokeObjectURL(state.endImageObjectUrl);
+                        }
+                        state.endImageFile = file;
+                        state.endCaptureBlob = null;
+                        state.endImageObjectUrl = metadata.url;
+                        removeEndFlag.value = '0';
+                        endFrameInput.value = '';
+                        setImagePreview(endPreview, endPlaceholder, metadata.url);
+                        syncMediaActionState();
+                    } catch (error) {
+                        window.alert(error.message || 'End image failed validation.');
+                        clearEndImage();
+                    }
+                });
+            }
+
+            if (captureStartBtn) {
+                captureStartBtn.addEventListener('click', async () => {
+                    try {
+                        const frame = await captureCurrentVideoFrame(videoPreview);
+                        if (state.startImageObjectUrl) {
+                            URL.revokeObjectURL(state.startImageObjectUrl);
+                            state.startImageObjectUrl = '';
+                        }
+                        state.startCaptureBlob = frame.blob;
+                        state.startImageFile = null;
+                        removeStartFlag.value = '0';
+                        startFrameInput.value = frame.currentTime.toFixed(3);
+                        setImagePreview(startPreview, startPlaceholder, frame.previewUrl);
+                        syncMediaActionState();
+                    } catch (error) {
+                        window.alert(error.message || 'Unable to capture start frame.');
+                    }
+                });
+            }
+
+            if (captureEndBtn) {
+                captureEndBtn.addEventListener('click', async () => {
+                    try {
+                        const frame = await captureCurrentVideoFrame(videoPreview);
+                        if (state.endImageObjectUrl) {
+                            URL.revokeObjectURL(state.endImageObjectUrl);
+                            state.endImageObjectUrl = '';
+                        }
+                        state.endCaptureBlob = frame.blob;
+                        state.endImageFile = null;
+                        removeEndFlag.value = '0';
+                        endFrameInput.value = frame.currentTime.toFixed(3);
+                        setImagePreview(endPreview, endPlaceholder, frame.previewUrl);
+                        syncMediaActionState();
+                    } catch (error) {
+                        window.alert(error.message || 'Unable to capture end frame.');
+                    }
+                });
+            }
+
+            if (removeVideoBtn) {
+                removeVideoBtn.addEventListener('click', () => {
+                    removeVideoFlag.value = '1';
+                    clearVideoSelection({ clearLegacy: true });
+                });
+            }
+
+            if (removeStartBtn) {
+                removeStartBtn.addEventListener('click', () => {
+                    removeStartFlag.value = '1';
+                    clearStartImage({ clearLegacy: true });
+                });
+            }
+
+            if (removeEndBtn) {
+                removeEndBtn.addEventListener('click', () => {
+                    removeEndFlag.value = '1';
+                    clearEndImage({ clearLegacy: true });
+                });
+            }
+
+            editor._mediaState = state;
+            syncMediaActionState();
+
+            if (readonly) {
+                return;
+            }
+
+            if (!form || form.dataset.mediaBound === 'true') {
+                return;
+            }
+            form.dataset.mediaBound = 'true';
+            form.addEventListener('submit', async (event) => {
+                const editors = Array.from(form.querySelectorAll('.js-media-editor'));
+                if (!editors.length) {
+                    return;
+                }
+                if (form.dataset.mediaSubmitting === 'true') {
+                    event.preventDefault();
+                    return;
+                }
+                form.dataset.mediaSubmitting = 'true';
+                event.preventDefault();
+                try {
+                    for (const currentEditor of editors) {
+                        const currentState = currentEditor === editor ? state : currentEditor._mediaState;
+                        if (!currentState) continue;
+                        const currentVideoAssetPayload = currentEditor.querySelector('.js-video-asset-payload');
+                        const currentStartAssetPayload = currentEditor.querySelector('.js-start-image-asset-payload');
+                        const currentEndAssetPayload = currentEditor.querySelector('.js-end-image-asset-payload');
+                        const currentRemoveVideoFlag = currentEditor.querySelector('.js-remove-video-flag');
+                        const currentRemoveStartFlag = currentEditor.querySelector('.js-remove-start-image-flag');
+                        const currentRemoveEndFlag = currentEditor.querySelector('.js-remove-end-image-flag');
+
+                        currentVideoAssetPayload.value = '';
+                        currentStartAssetPayload.value = '';
+                        currentEndAssetPayload.value = '';
+
+                        if (currentState.videoFile && (!currentState.startCaptureBlob && !currentState.startImageFile)) {
+                            throw new Error('Choose the exact start position image before saving the video demo.');
+                        }
+                        if (currentState.videoFile && (!currentState.endCaptureBlob && !currentState.endImageFile)) {
+                            throw new Error('Choose the exact end position image before saving the video demo.');
+                        }
+
+                        if (currentState.videoFile) {
+                            const uploadPayload = await uploadToCloudinary(currentEditor, currentState.videoFile, 'video', 'demo_video');
+                            currentVideoAssetPayload.value = JSON.stringify(uploadPayload);
+                            currentRemoveVideoFlag.value = '0';
+                        }
+
+                        if (currentState.startImageFile || currentState.startCaptureBlob) {
+                            const startUploadFile = currentState.startImageFile || new File(
+                                [currentState.startCaptureBlob],
+                                `start_${Date.now()}.jpg`,
+                                { type: 'image/jpeg' }
+                            );
+                            const uploadPayload = await uploadToCloudinary(currentEditor, startUploadFile, 'image', 'start_image');
+                            currentStartAssetPayload.value = JSON.stringify(uploadPayload);
+                            currentRemoveStartFlag.value = '0';
+                        }
+
+                        if (currentState.endImageFile || currentState.endCaptureBlob) {
+                            const endUploadFile = currentState.endImageFile || new File(
+                                [currentState.endCaptureBlob],
+                                `end_${Date.now()}.jpg`,
+                                { type: 'image/jpeg' }
+                            );
+                            const uploadPayload = await uploadToCloudinary(currentEditor, endUploadFile, 'image', 'end_image');
+                            currentEndAssetPayload.value = JSON.stringify(uploadPayload);
+                            currentRemoveEndFlag.value = '0';
+                        }
+                    }
+                    form.submit();
+                } catch (error) {
+                    form.dataset.mediaSubmitting = 'false';
+                    window.alert(error.message || 'Unable to upload media right now.');
+                }
+            });
+        };
+
+        window.addEventListener('DOMContentLoaded', () => {
+            const catalogLibraryPage = document.querySelector('.catalog-library-page');
+            const shouldOpenExerciseLibraryModal = catalogLibraryPage?.dataset.openExerciseLibraryModal === 'true';
+            const normalizeText = (value) => String(value || '').trim().toLowerCase();
+            const compareStrings = (left, right) => left.localeCompare(right, undefined, { sensitivity: 'base' });
+            const levelRank = (value) => {
+                const numericValue = Number(value || 0);
+                return Number.isFinite(numericValue) && numericValue > 0 ? numericValue : Number.MAX_SAFE_INTEGER;
+            };
+
+            const bindCatalogExerciseTools = () => {
+                const tools = document.querySelector('.js-catalog-exercise-tools');
+                const list = document.querySelector('.catalog-exercise-list');
+                if (!tools || !list) {
+                    return;
+                }
+
+                const items = Array.from(list.querySelectorAll('.js-catalog-exercise-item'));
+                if (!items.length) {
+                    return;
+                }
+
+                const searchInput = tools.querySelector('.js-catalog-filter-search');
+                const sortSelect = tools.querySelector('.js-catalog-filter-sort');
+                const categorySelect = tools.querySelector('.js-catalog-filter-category');
+                const levelSelect = tools.querySelector('.js-catalog-filter-level');
+                const movementSelect = tools.querySelector('.js-catalog-filter-movement');
+                const mediaSelect = tools.querySelector('.js-catalog-filter-media');
+                const resetButton = tools.querySelector('.js-catalog-filter-reset');
+                const visibleCount = tools.querySelector('.js-catalog-visible-count');
+                const emptyState = document.querySelector('.js-catalog-empty-state');
+
+                const sortItems = (sortValue) => {
+                    const sortedItems = [...items];
+                    sortedItems.sort((left, right) => {
+                        const leftIndex = Number(left.dataset.originalIndex || 0);
+                        const rightIndex = Number(right.dataset.originalIndex || 0);
+                        const leftName = left.dataset.name || '';
+                        const rightName = right.dataset.name || '';
+
+                        switch (sortValue) {
+                            case 'name-asc':
+                                return compareStrings(leftName, rightName) || leftIndex - rightIndex;
+                            case 'name-desc':
+                                return compareStrings(rightName, leftName) || leftIndex - rightIndex;
+                            case 'category': {
+                                const categoryComparison = compareStrings(left.dataset.category || '', right.dataset.category || '');
+                                return categoryComparison || compareStrings(leftName, rightName) || leftIndex - rightIndex;
+                            }
+                            case 'level': {
+                                const levelComparison = levelRank(left.dataset.level) - levelRank(right.dataset.level);
+                                return levelComparison || compareStrings(leftName, rightName) || leftIndex - rightIndex;
+                            }
+                            default:
+                                return leftIndex - rightIndex;
+                        }
+                    });
+
+                    sortedItems.forEach((item) => {
+                        list.appendChild(item);
+                    });
+                };
+
+                const applyFilters = () => {
+                    const searchValue = normalizeText(searchInput?.value);
+                    const categoryValue = categorySelect?.value || '';
+                    const levelValue = levelSelect?.value || '';
+                    const movementValue = movementSelect?.value || '';
+                    const mediaValue = mediaSelect?.value || '';
+
+                    let visibleItems = 0;
+                    items.forEach((item) => {
+                        const matchesSearch = !searchValue || normalizeText(item.dataset.search).includes(searchValue);
+                        const matchesCategory = !categoryValue || item.dataset.category === categoryValue;
+                        const matchesLevel = !levelValue || item.dataset.level === levelValue;
+                        const matchesMovement = !movementValue || item.dataset.movementType === movementValue;
+                        const matchesMedia = !mediaValue || item.dataset.mediaStatus === mediaValue;
+                        const shouldShow = matchesSearch && matchesCategory && matchesLevel && matchesMovement && matchesMedia;
+
+                        item.hidden = !shouldShow;
+                        if (!shouldShow) {
+                            item.open = false;
+                        } else {
+                            visibleItems += 1;
+                        }
+                    });
+
+                    if (visibleCount) {
+                        visibleCount.textContent = String(visibleItems);
+                    }
+                    if (emptyState) {
+                        emptyState.classList.toggle('d-none', visibleItems !== 0);
+                    }
+                };
+
+                const syncExerciseList = () => {
+                    sortItems(sortSelect?.value || 'default');
+                    applyFilters();
+                };
+
+                [searchInput, sortSelect, categorySelect, levelSelect, movementSelect, mediaSelect]
+                    .filter(Boolean)
+                    .forEach((control) => {
+                        control.addEventListener('input', syncExerciseList);
+                        control.addEventListener('change', syncExerciseList);
+                    });
+
+                if (resetButton) {
+                    resetButton.addEventListener('click', () => {
+                        if (searchInput) searchInput.value = '';
+                        if (sortSelect) sortSelect.value = 'default';
+                        if (categorySelect) categorySelect.value = '';
+                        if (levelSelect) levelSelect.value = '';
+                        if (movementSelect) movementSelect.value = '';
+                        if (mediaSelect) mediaSelect.value = '';
+                        syncExerciseList();
+                    });
+                }
+
+                syncExerciseList();
+            };
+
+            const bindExerciseLibraryModal = () => {
+                const modalElement = document.getElementById('exerciseLibraryModal');
+                if (!modalElement) {
+                    return;
+                }
+
+                const sourceSelect = modalElement.querySelector('#catalog-mode');
+                const libraryForm = modalElement.querySelector('.catalog-library-panel__form--library');
+                const gymFields = modalElement.querySelector('.js-catalog-library-gym-fields');
+                const gymSelect = modalElement.querySelector('#catalog-gym-id');
+                const createPrompt = modalElement.querySelector('.js-catalog-library-create-prompt');
+                const createDivider = modalElement.querySelector('.js-catalog-library-create-divider');
+                const createForm = modalElement.querySelector('.js-catalog-library-create-form');
+                const createNameInput = modalElement.querySelector('#gym-name');
+                const openCreateButtons = modalElement.querySelectorAll('.js-catalog-open-create-gym');
+                const closeCreateButtons = modalElement.querySelectorAll('.js-catalog-close-create-gym');
+                let isCreateFormOpen = createForm ? !createForm.hidden : false;
+
+                const setCreateFormOpen = (isOpen, { focus = false } = {}) => {
+                    isCreateFormOpen = isOpen;
+                    if (createDivider) {
+                        createDivider.hidden = !isOpen;
+                    }
+                    if (createForm) {
+                        createForm.hidden = !isOpen;
+                    }
+                    if (createPrompt) {
+                        createPrompt.hidden = isOpen;
+                    }
+                    openCreateButtons.forEach((button) => {
+                        button.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+                    });
+
+                    if (isOpen && focus && createNameInput) {
+                        window.requestAnimationFrame(() => {
+                            createNameInput.focus();
+                            createNameInput.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+                        });
+                    }
+                };
+
+                const syncLibraryModalState = ({ openCreate = isCreateFormOpen, focusCreate = false } = {}) => {
+                    const gymModeEnabled = sourceSelect?.value === 'gym';
+
+                    if (gymFields) {
+                        gymFields.hidden = !gymModeEnabled;
+                    }
+                    if (gymSelect) {
+                        gymSelect.disabled = !gymModeEnabled;
+                    }
+
+                    if (!gymModeEnabled) {
+                        setCreateFormOpen(false);
+                        return;
+                    }
+                    setCreateFormOpen(openCreate, { focus: focusCreate });
+                };
+
+                if (sourceSelect) {
+                    sourceSelect.addEventListener('change', () => {
+                        syncLibraryModalState();
+                    });
+                }
+
+                openCreateButtons.forEach((button) => {
+                    button.addEventListener('click', () => {
+                        if (sourceSelect) {
+                            sourceSelect.value = 'gym';
+                        }
+                        syncLibraryModalState({ openCreate: true, focusCreate: true });
+                    });
+                });
+
+                closeCreateButtons.forEach((button) => {
+                    button.addEventListener('click', (event) => {
+                        event.preventDefault();
+                        if (sourceSelect) {
+                            sourceSelect.value = 'gym';
+                        }
+                        syncLibraryModalState({ openCreate: false });
+                    });
+                });
+
+                modalElement.addEventListener('show.bs.modal', (event) => {
+                    const trigger = event.relatedTarget;
+                    const requestedView = trigger?.dataset.libraryModalView || 'library';
+                    const openCreate = requestedView === 'create';
+                    modalElement.dataset.libraryModalView = requestedView;
+
+                    if (openCreate && sourceSelect) {
+                        sourceSelect.value = 'gym';
+                    }
+
+                    syncLibraryModalState({ openCreate, focusCreate: false });
+                });
+
+                modalElement.addEventListener('shown.bs.modal', () => {
+                    if (modalElement.dataset.libraryModalView === 'create' && createForm?.hidden === false && createNameInput) {
+                        createNameInput.focus();
+                    }
+                });
+
+                modalElement.addEventListener('hidden.bs.modal', () => {
+                    if (libraryForm) {
+                        libraryForm.reset();
+                    }
+                    if (createForm) {
+                        createForm.reset();
+                    }
+                    modalElement.dataset.libraryModalView = 'library';
+                    syncLibraryModalState({ openCreate: false });
+                });
+
+                syncLibraryModalState();
+            };
+
+            bindExerciseLibraryModal();
+            document.querySelectorAll('.js-media-editor').forEach(bindMediaEditor);
+            document.querySelectorAll('.js-collapse-add-panel-btn').forEach((button) => {
+                button.addEventListener('click', () => {
+                    const panel = button.closest('.js-catalog-add-panel');
+                    if (!panel) return;
+                    panel.open = false;
+                    const summary = panel.querySelector('summary');
+                    if (summary) {
+                        summary.focus();
+                    }
+                });
+            });
+            bindCatalogExerciseTools();
+            if (shouldOpenExerciseLibraryModal) {
+                const modalElement = document.getElementById('exerciseLibraryModal');
+                if (modalElement && window.bootstrap && window.bootstrap.Modal) {
+                    window.bootstrap.Modal.getOrCreateInstance(modalElement).show();
+                }
+            }
+        });
+    })();
+</script>
+{% endblock %}

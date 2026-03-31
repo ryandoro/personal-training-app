@@ -18,6 +18,13 @@ def get_connection():
     return psycopg2.connect(os.getenv("DATABASE_URL"))
 
 ADMIN_EMAILS = [e.strip().lower() for e in os.getenv('ADMIN_EMAILS', '').split(',') if e.strip()]
+DEFAULT_CATALOG_GYM_LOOKUP = {
+    "name": "Western Racquet and Fitness Club",
+    "city": "Green Bay",
+    "state": "Wisconsin",
+    "country": "United States",
+}
+DEFAULT_CATALOG_GYM_ID = None
 
 
 # Define the workout structure
@@ -158,6 +165,41 @@ LEG_PRESS_MACHINE_PREFIXES = {
     "HAMMER_STRENGTH": "hammer strength leg press machine",
 }
 LEG_PRESS_FETCH_BUFFER = 4
+
+
+def get_default_catalog_gym_id() -> int | None:
+    global DEFAULT_CATALOG_GYM_ID
+    if DEFAULT_CATALOG_GYM_ID:
+        return DEFAULT_CATALOG_GYM_ID
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT id
+                      FROM gyms
+                     WHERE lower(name) = lower(%s)
+                       AND lower(COALESCE(city, '')) = lower(%s)
+                       AND lower(COALESCE(state, '')) = lower(%s)
+                       AND lower(COALESCE(country, '')) = lower(%s)
+                     ORDER BY id
+                     LIMIT 1
+                    """,
+                    (
+                        DEFAULT_CATALOG_GYM_LOOKUP["name"],
+                        DEFAULT_CATALOG_GYM_LOOKUP["city"],
+                        DEFAULT_CATALOG_GYM_LOOKUP["state"],
+                        DEFAULT_CATALOG_GYM_LOOKUP["country"],
+                    ),
+                )
+                row = cursor.fetchone()
+                default_id = row[0] if row else None
+                if default_id:
+                    DEFAULT_CATALOG_GYM_ID = int(default_id)
+                    return DEFAULT_CATALOG_GYM_ID
+    except Exception:
+        logger.exception("Unable to resolve default catalog gym id")
+    return None
 
 
 def normalize_home_equipment_selection(values) -> list[str]:
@@ -941,6 +983,8 @@ def generate_workout(
     duration_minutes=60,
     custom_categories=None,
     equipment_filters=None,
+    catalog_mode=None,
+    catalog_gym_id=None,
 ):
     """
     Generate a workout based on the selected category, user level, and preferred duration.
@@ -995,6 +1039,17 @@ def generate_workout(
 
     restrict_barbell = bool(equipment_tokens) and "BARBELL" not in equipment_tokens
     restrict_dumbbell = bool(equipment_tokens) and "DUMBBELL" not in equipment_tokens
+    mode_value = (str(catalog_mode).strip().lower() if catalog_mode is not None else "default")
+    if mode_value not in {"default", "gym"}:
+        mode_value = "default"
+    try:
+        gym_id_value = int(catalog_gym_id) if catalog_gym_id not in (None, "") else None
+    except (TypeError, ValueError):
+        gym_id_value = None
+    if mode_value != "gym" or gym_id_value is None or gym_id_value <= 0:
+        mode_value = "default"
+        gym_id_value = None
+    default_catalog_gym_id = get_default_catalog_gym_id()
 
     workout_plan = OrderedDict()
 
@@ -1055,6 +1110,18 @@ def generate_workout(
                     WHERE w.category = %s AND w.level <= %s
                 """
                 params = [user_id, subcategory, user_level]
+                if mode_value == "gym" and gym_id_value:
+                    if default_catalog_gym_id and gym_id_value == default_catalog_gym_id:
+                        query += " AND (w.gym_id = %s OR w.gym_id IS NULL)"
+                        params.append(gym_id_value)
+                    else:
+                        query += " AND w.gym_id = %s"
+                        params.append(gym_id_value)
+                elif default_catalog_gym_id:
+                    query += " AND (w.gym_id = %s OR w.gym_id IS NULL)"
+                    params.append(default_catalog_gym_id)
+                else:
+                    query += " AND w.gym_id IS NULL"
                 if equipment_clause:
                     if use_cardio_bodyweight_override:
                         placeholders = ",".join(["%s"] * len(CARDIO_BODYWEIGHT_WORKOUTS))

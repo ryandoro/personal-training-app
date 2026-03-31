@@ -1,7 +1,20 @@
-import os, re, logging, json, math, uuid, psycopg2, psycopg2.extras, psycopg2.errors, stripe, requests
+import os, re, logging, json, math, uuid, time as time_module, psycopg2, psycopg2.extras, psycopg2.errors, stripe, requests
+from difflib import SequenceMatcher
 from flask import Flask, flash, redirect, render_template, request, session, jsonify, url_for, current_app, abort, send_from_directory, g
 from markupsafe import Markup
 from werkzeug.security import generate_password_hash, check_password_hash
+from agent_service import (
+    cancel_agent_action,
+    chat_with_fitbaseai,
+    clear_history as clear_agent_history,
+    confirm_agent_action,
+    ensure_agent_schema,
+    get_agent_admin_summary,
+    get_latest_thread as get_agent_latest_thread,
+    ingest_manuscript_upload,
+    run_research_sync,
+    get_thread_messages as get_agent_thread_messages,
+)
 from helpers import (
     login_required,
     calculate_target_heart_rate,
@@ -53,6 +66,8 @@ from datetime import datetime, date, timedelta, timezone, time, tzinfo
 from zoneinfo import ZoneInfo
 from mail import (
     send_email,
+    send_gym_request_reviewed_email,
+    send_gym_request_submitted_email,
     send_password_reset_email,
     send_invite_email,
     send_verification_email,
@@ -62,6 +77,17 @@ from mail import (
 from urllib.parse import urlencode, urlparse 
 from decimal import Decimal, InvalidOperation
 from dns import resolver as dns_resolver, exception as dns_exception
+
+try:
+    import cloudinary
+    from cloudinary import api as cloudinary_api
+    from cloudinary import uploader as cloudinary_uploader
+    from cloudinary import utils as cloudinary_utils
+except ImportError:  # pragma: no cover - local environments may not have the package yet.
+    cloudinary = None
+    cloudinary_api = None
+    cloudinary_uploader = None
+    cloudinary_utils = None
 
 # Set up basic logging configuration
 logging.basicConfig(level=logging.INFO)
@@ -114,10 +140,33 @@ TURNSTILE_SITE_KEY = os.getenv("TURNSTILE_SITE_KEY")
 TURNSTILE_SECRET_KEY = os.getenv("TURNSTILE_SECRET_KEY")
 TURNSTILE_ENABLED = bool(TURNSTILE_SITE_KEY and TURNSTILE_SECRET_KEY)
 SESSION_VERSION_CHECK_INTERVAL_SECONDS = int(os.getenv("SESSION_VERSION_CHECK_INTERVAL_SECONDS", "0"))
+CLOUDINARY_CLOUD_NAME = (os.getenv("CLOUDINARY_CLOUD_NAME") or "").strip()
+CLOUDINARY_API_KEY = (os.getenv("CLOUDINARY_API_KEY") or "").strip()
+CLOUDINARY_API_SECRET = (os.getenv("CLOUDINARY_API_SECRET") or "").strip()
+CLOUDINARY_TRAINER_VIDEO_UPLOAD_PRESET = (
+    os.getenv("CLOUDINARY_TRAINER_VIDEO_UPLOAD_PRESET") or "fitbaseai_trainer_video_v1"
+).strip()
+CLOUDINARY_TRAINER_IMAGE_UPLOAD_PRESET = (
+    os.getenv("CLOUDINARY_TRAINER_IMAGE_UPLOAD_PRESET") or "fitbaseai_trainer_image_v1"
+).strip()
+CLOUDINARY_ENABLED = bool(
+    cloudinary
+    and CLOUDINARY_CLOUD_NAME
+    and CLOUDINARY_API_KEY
+    and CLOUDINARY_API_SECRET
+)
 
 REGISTRATION_RATE_LIMIT_WINDOW = timedelta(hours=int(os.getenv("REGISTRATION_RATE_LIMIT_WINDOW_HOURS", "1")))
 REGISTRATION_RATE_LIMIT_PER_EMAIL = int(os.getenv("REGISTRATION_RATE_LIMIT_PER_EMAIL", "3"))
 REGISTRATION_RATE_LIMIT_PER_IP = int(os.getenv("REGISTRATION_RATE_LIMIT_PER_IP", "20"))
+
+if CLOUDINARY_ENABLED:
+    cloudinary.config(
+        cloud_name=CLOUDINARY_CLOUD_NAME,
+        api_key=CLOUDINARY_API_KEY,
+        api_secret=CLOUDINARY_API_SECRET,
+        secure=True,
+    )
 
 DISPOSABLE_EMAIL_DOMAINS = {
     "mailinator.com",
@@ -168,6 +217,1254 @@ TRAINER_SESSION_BUCKET_CODES = {entry['code'] for entry in TRAINER_SESSION_BUCKE
 SCHEDULE_ACCESS_REQUIRED_MESSAGE = "Schedule access requires an active training plan."
 DEFAULT_CALENDAR_WINDOW = (5, 21)
 MIN_CALENDAR_WINDOW_HOURS = 5
+CATALOG_MODE_DEFAULT = "default"
+CATALOG_MODE_GYM = "gym"
+CATALOG_MODE_CHOICES = {CATALOG_MODE_DEFAULT, CATALOG_MODE_GYM}
+MOVEMENT_TYPE_CHOICES = {"compound", "accessory", "other"}
+WORKOUT_SUBCATEGORY_CHOICES = (
+    {"value": "ALL MUSCLE GROUPS", "label": "All Muscle Groups"},
+    {"value": "BUTTOCKS (GLUTES)", "label": "Buttocks (Glutes)"},
+    {"value": "FRONT/MIDDLE ABS (RECTUS ABDOMINIS)", "label": "Front/Middle Abs (Rectus Abdominis)"},
+    {"value": "FRONT SHOULDER", "label": "Front Shoulder"},
+    {"value": "GENERAL CARDIO", "label": "General Cardio"},
+    {"value": "HAMSTRINGS", "label": "Hamstrings"},
+    {"value": "INNER BICEPS", "label": "Inner Biceps"},
+    {"value": "INNER THIGH (ADDUCTORS)", "label": "Inner Thigh (Adductors)"},
+    {"value": "INNER TRICEPS", "label": "Inner Triceps"},
+    {"value": "LOWER BACK", "label": "Lower Back"},
+    {"value": "LOWER CHEST", "label": "Lower Chest"},
+    {"value": "LOWER LEG (CALVES)", "label": "Lower Leg (Calves)"},
+    {"value": "MIDDLE BACK", "label": "Middle Back"},
+    {"value": "MIDDLE CHEST", "label": "Middle Chest"},
+    {"value": "MIDDLE SHOULDER", "label": "Middle Shoulder"},
+    {"value": "MIDDLE TRICEPS", "label": "Middle Triceps"},
+    {"value": "OUTER BICEPS", "label": "Outer Biceps"},
+    {"value": "OUTER THIGH (ABDUCTORS)", "label": "Outer Thigh (Abductors)"},
+    {"value": "OUTER TRICEPS", "label": "Outer Triceps"},
+    {"value": "QUADRICEPS", "label": "Quadriceps"},
+    {"value": "REAR SHOULDER", "label": "Rear Shoulder"},
+    {"value": "SIDE ABS (OBLIQUES)", "label": "Side Abs (Obliques)"},
+    {"value": "UPPER BACK", "label": "Upper Back"},
+    {"value": "UPPER CHEST", "label": "Upper Chest"},
+)
+DEFAULT_CATALOG_GYM_PROFILE = {
+    "name": "Western Racquet and Fitness Club",
+    "city": "Green Bay",
+    "state": "Wisconsin",
+    "country": "United States",
+    "address_line1": "2500 S Ashland Ave",
+    "address_line2": None,
+    "postal_code": "54304",
+}
+DEFAULT_CATALOG_GYM_ID = None
+FITBASEAI_SUPERADMIN_USER_ID = int(os.getenv("FITBASEAI_SUPERADMIN_USER_ID", "1"))
+GYM_STATUS_VERIFIED = "verified"
+GYM_STATUS_PENDING = "pending"
+GYM_STATUS_REJECTED = "rejected"
+GYM_REQUEST_STATUS_PENDING = "pending"
+GYM_REQUEST_STATUS_APPROVED = "approved"
+GYM_REQUEST_STATUS_REJECTED = "rejected"
+GYM_REQUEST_STATUS_CHOICES = {
+    GYM_REQUEST_STATUS_PENDING,
+    GYM_REQUEST_STATUS_APPROVED,
+    GYM_REQUEST_STATUS_REJECTED,
+}
+GYM_REQUEST_RECOMMENDATION_REVIEW_REQUIRED = "review_required"
+GYM_REQUEST_RECOMMENDATION_POSSIBLE_DUPLICATE = "possible_duplicate"
+GYM_REQUEST_RECOMMENDATION_INSUFFICIENT_EVIDENCE = "insufficient_evidence"
+GYM_REQUEST_REVIEW_WINDOW_TEXT = "Gym requests are typically reviewed within 24 hours."
+GYM_REQUEST_REVIEW_PENDING_TEXT = (
+    f"{GYM_REQUEST_REVIEW_WINDOW_TEXT} "
+    "You'll see pending requests listed here until they are approved."
+)
+MEDIA_SCOPE_PRIVATE = "private"
+MEDIA_SCOPE_GYM_SHARED = "gym_shared"
+MEDIA_SCOPE_CHOICES = {MEDIA_SCOPE_PRIVATE, MEDIA_SCOPE_GYM_SHARED}
+MEDIA_VIDEO_ROLE = "video"
+MEDIA_IMAGE_START_ROLE = "start_image"
+MEDIA_IMAGE_END_ROLE = "end_image"
+MAX_EXERCISE_VIDEO_DURATION_SECONDS = 15
+MAX_EXERCISE_VIDEO_BYTES = 100 * 1024 * 1024
+MAX_EXERCISE_IMAGE_BYTES = 10 * 1024 * 1024
+MEDIA_UPLOAD_FOLDER_ROOT = "fitbaseai"
+MEDIA_VIDEO_PLACEHOLDER_LABEL = "Video coming soon"
+MEDIA_START_PLACEHOLDER_LABEL = "Start image coming soon"
+MEDIA_END_PLACEHOLDER_LABEL = "End image coming soon"
+try:
+    CLOUDINARY_VIDEO_METADATA_RETRY_ATTEMPTS = max(
+        1,
+        int(os.getenv("CLOUDINARY_VIDEO_METADATA_RETRY_ATTEMPTS", "6")),
+    )
+except (TypeError, ValueError):
+    CLOUDINARY_VIDEO_METADATA_RETRY_ATTEMPTS = 6
+try:
+    CLOUDINARY_VIDEO_METADATA_RETRY_DELAY_SECONDS = max(
+        0.1,
+        float(os.getenv("CLOUDINARY_VIDEO_METADATA_RETRY_DELAY_SECONDS", "1.0")),
+    )
+except (TypeError, ValueError):
+    CLOUDINARY_VIDEO_METADATA_RETRY_DELAY_SECONDS = 1.0
+
+
+def _normalize_catalog_mode(value, *, default=CATALOG_MODE_DEFAULT):
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in CATALOG_MODE_CHOICES:
+            return normalized
+    return default
+
+
+def _coerce_optional_int(value):
+    try:
+        if value in (None, ""):
+            return None
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _resolve_catalog_scope(*, mode=None, gym_id=None) -> tuple[str, int | None]:
+    normalized_mode = _normalize_catalog_mode(mode, default=CATALOG_MODE_DEFAULT)
+    gym_id_val = _coerce_optional_int(gym_id)
+    if normalized_mode != CATALOG_MODE_GYM or gym_id_val is None or gym_id_val <= 0:
+        return CATALOG_MODE_DEFAULT, None
+    return CATALOG_MODE_GYM, gym_id_val
+
+
+def _catalog_filter_sql(alias: str, mode: str, gym_id: int | None) -> tuple[str, list]:
+    normalized_mode, normalized_gym_id = _resolve_catalog_scope(mode=mode, gym_id=gym_id)
+    default_gym_id = _get_default_catalog_gym_id()
+    if normalized_mode == CATALOG_MODE_GYM and normalized_gym_id:
+        if default_gym_id and normalized_gym_id == default_gym_id:
+            return f"({alias}.gym_id = %s OR {alias}.gym_id IS NULL)", [normalized_gym_id]
+        return f"{alias}.gym_id = %s", [normalized_gym_id]
+    if default_gym_id:
+        return f"({alias}.gym_id = %s OR {alias}.gym_id IS NULL)", [default_gym_id]
+    return f"{alias}.gym_id IS NULL", []
+
+
+def _normalize_gym_directory_value(value: str | None) -> str:
+    return re.sub(r"\s+", " ", str(value or "").strip()).lower()
+
+
+def _build_gym_request_payload(form_data) -> dict:
+    submitted_name = re.sub(r"\s+", " ", str(form_data.get("gym_name") or "").strip())
+    submitted_city = re.sub(r"\s+", " ", str(form_data.get("gym_city") or "").strip())
+    submitted_state = re.sub(r"\s+", " ", str(form_data.get("gym_state") or "").strip())
+    submitted_country = re.sub(r"\s+", " ", str(form_data.get("gym_country") or "").strip())
+    submitted_address_line1 = re.sub(r"\s+", " ", str(form_data.get("gym_address_line1") or "").strip())
+    submitted_postal_code = re.sub(r"\s+", " ", str(form_data.get("gym_postal_code") or "").strip())
+    submitted_address_line2 = re.sub(r"\s+", " ", str(form_data.get("gym_address_line2") or "").strip())
+    return {
+        "submitted_name": submitted_name,
+        "submitted_city": submitted_city or None,
+        "submitted_state": submitted_state or None,
+        "submitted_country": submitted_country or None,
+        "submitted_address_line1": submitted_address_line1 or None,
+        "submitted_postal_code": submitted_postal_code or None,
+        "submitted_address_line2": submitted_address_line2 or None,
+        "normalized_name": _normalize_gym_directory_value(submitted_name),
+        "normalized_city": _normalize_gym_directory_value(submitted_city),
+        "normalized_state": _normalize_gym_directory_value(submitted_state),
+        "normalized_country": _normalize_gym_directory_value(submitted_country),
+        "normalized_address_line1": _normalize_gym_directory_value(submitted_address_line1),
+        "normalized_postal_code": _normalize_gym_directory_value(submitted_postal_code),
+    }
+
+
+def _gym_name_similarity(left: str | None, right: str | None) -> float:
+    if not left or not right:
+        return 0.0
+    return SequenceMatcher(None, left, right).ratio()
+
+
+def _build_gym_request_agent_review(cursor, request_payload: dict) -> tuple[str, float, str, dict]:
+    evidence: dict[str, list | str | dict] = {
+        "missing_fields": [],
+        "similar_verified_gyms": [],
+        "similar_pending_requests": [],
+    }
+    missing_fields = [
+        field_name
+        for field_name, field_value in (
+            ("city", request_payload.get("normalized_city")),
+            ("state", request_payload.get("normalized_state")),
+            ("country", request_payload.get("normalized_country")),
+        )
+        if not field_value
+    ]
+    if not request_payload.get("normalized_address_line1"):
+        evidence["missing_fields"].append("address_line1")
+    if not request_payload.get("normalized_postal_code"):
+        evidence["missing_fields"].append("postal_code")
+    evidence["missing_fields"].extend(missing_fields)
+
+    verified_matches = []
+    if request_payload.get("normalized_country"):
+        cursor.execute(
+            """
+            SELECT id, name, city, state, country
+              FROM gyms
+             WHERE COALESCE(status, %s) = %s
+               AND lower(COALESCE(country, '')) = %s
+             ORDER BY lower(name)
+            """,
+            (GYM_STATUS_VERIFIED, GYM_STATUS_VERIFIED, request_payload["normalized_country"]),
+        )
+        for row in cursor.fetchall() or []:
+            row_name = _normalize_gym_directory_value(row.get("name"))
+            score = _gym_name_similarity(request_payload.get("normalized_name"), row_name)
+            same_region = (
+                _normalize_gym_directory_value(row.get("city")) == request_payload.get("normalized_city")
+                and _normalize_gym_directory_value(row.get("state")) == request_payload.get("normalized_state")
+            )
+            if score >= 0.8 or (same_region and score >= 0.68):
+                verified_matches.append({
+                    "gym_id": row.get("id"),
+                    "name": row.get("name"),
+                    "city": row.get("city"),
+                    "state": row.get("state"),
+                    "country": row.get("country"),
+                    "name_similarity": round(score, 3),
+                })
+
+    pending_matches = []
+    cursor.execute(
+        """
+        SELECT id, submitted_name, submitted_city, submitted_state, submitted_country
+          FROM gym_requests
+         WHERE status = %s
+           AND normalized_country = %s
+         ORDER BY created_at DESC
+         LIMIT 10
+        """,
+        (GYM_REQUEST_STATUS_PENDING, request_payload.get("normalized_country")),
+    )
+    for row in cursor.fetchall() or []:
+        score = _gym_name_similarity(
+            request_payload.get("normalized_name"),
+            _normalize_gym_directory_value(row.get("submitted_name")),
+        )
+        same_region = (
+            _normalize_gym_directory_value(row.get("submitted_city")) == request_payload.get("normalized_city")
+            and _normalize_gym_directory_value(row.get("submitted_state")) == request_payload.get("normalized_state")
+        )
+        if score >= 0.8 or (same_region and score >= 0.68):
+            pending_matches.append({
+                "request_id": row.get("id"),
+                "name": row.get("submitted_name"),
+                "city": row.get("submitted_city"),
+                "state": row.get("submitted_state"),
+                "country": row.get("submitted_country"),
+                "name_similarity": round(score, 3),
+            })
+
+    evidence["similar_verified_gyms"] = verified_matches
+    evidence["similar_pending_requests"] = pending_matches
+
+    if verified_matches:
+        top_match = verified_matches[0]
+        summary = (
+            f"Possible duplicate of verified gym '{top_match['name']}'"
+            f" in {top_match.get('city') or 'Unknown City'}, {top_match.get('state') or 'Unknown State'}."
+        )
+        return (
+            GYM_REQUEST_RECOMMENDATION_POSSIBLE_DUPLICATE,
+            max(0.72, float(top_match["name_similarity"])),
+            summary,
+            evidence,
+        )
+
+    if pending_matches:
+        top_match = pending_matches[0]
+        summary = (
+            f"Possible duplicate of another pending gym request for '{top_match['name']}'."
+        )
+        return (
+            GYM_REQUEST_RECOMMENDATION_POSSIBLE_DUPLICATE,
+            max(0.65, float(top_match["name_similarity"])),
+            summary,
+            evidence,
+        )
+
+    if missing_fields:
+        return (
+            GYM_REQUEST_RECOMMENDATION_INSUFFICIENT_EVIDENCE,
+            0.35,
+            "Missing city, state, or country. Add complete location details before approval.",
+            evidence,
+        )
+
+    return (
+        GYM_REQUEST_RECOMMENDATION_REVIEW_REQUIRED,
+        0.55,
+        "No exact verified gym match found. Manual review is required before this gym becomes selectable.",
+        evidence,
+    )
+
+
+def _is_fitbaseai_superadmin(user_id: int | None) -> bool:
+    return bool(user_id) and int(user_id) == FITBASEAI_SUPERADMIN_USER_ID
+
+
+def _approve_gym_request(cursor, *, request_id: int, reviewer_id: int, review_notes: str | None = None) -> tuple[dict, int]:
+    cursor.execute(
+        """
+        SELECT *
+          FROM gym_requests
+         WHERE id = %s
+           AND status = %s
+         FOR UPDATE
+        """,
+        (request_id, GYM_REQUEST_STATUS_PENDING),
+    )
+    request_row = cursor.fetchone()
+    if not request_row:
+        raise ValueError("Gym request could not be found or has already been reviewed.")
+
+    cursor.execute(
+        """
+        SELECT id
+          FROM gyms
+         WHERE COALESCE(status, %s) = %s
+           AND lower(name) = lower(%s)
+           AND lower(COALESCE(city, '')) = lower(COALESCE(%s, ''))
+           AND lower(COALESCE(state, '')) = lower(COALESCE(%s, ''))
+           AND lower(COALESCE(country, '')) = lower(COALESCE(%s, ''))
+         LIMIT 1
+        """,
+        (
+            GYM_STATUS_VERIFIED,
+            GYM_STATUS_VERIFIED,
+            request_row.get("submitted_name"),
+            request_row.get("submitted_city"),
+            request_row.get("submitted_state"),
+            request_row.get("submitted_country"),
+        ),
+    )
+    existing_gym = cursor.fetchone()
+    if existing_gym:
+        gym_id = existing_gym["id"]
+    else:
+        cursor.execute(
+            """
+            INSERT INTO gyms (
+                name,
+                city,
+                state,
+                country,
+                address_line1,
+                postal_code,
+                address_line2,
+                created_by,
+                status,
+                verified_by_user_id,
+                verified_at,
+                verification_source,
+                verification_notes
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, now(), %s, %s)
+            RETURNING id
+            """,
+            (
+                request_row.get("submitted_name"),
+                request_row.get("submitted_city"),
+                request_row.get("submitted_state"),
+                request_row.get("submitted_country"),
+                request_row.get("submitted_address_line1"),
+                request_row.get("submitted_postal_code"),
+                request_row.get("submitted_address_line2"),
+                request_row.get("requested_by_user_id"),
+                GYM_STATUS_VERIFIED,
+                reviewer_id,
+                "manual_review",
+                review_notes,
+            ),
+        )
+        created_gym = cursor.fetchone() or {}
+        gym_id = created_gym.get("id")
+    if not gym_id:
+        raise ValueError("Unable to create the verified gym record.")
+
+    cursor.execute(
+        """
+        UPDATE gym_requests
+           SET status = %s,
+               matched_gym_id = %s,
+               reviewed_by_user_id = %s,
+               reviewed_at = now(),
+               review_notes = %s,
+               updated_at = now()
+         WHERE id = %s
+        """,
+        (
+            GYM_REQUEST_STATUS_APPROVED,
+            gym_id,
+            reviewer_id,
+            review_notes,
+            request_id,
+        ),
+    )
+
+    requested_by_user_id = _coerce_optional_int(request_row.get("requested_by_user_id"))
+    if requested_by_user_id:
+        default_catalog_gym_id = _get_default_catalog_gym_id()
+        catalog_mode = (
+            CATALOG_MODE_DEFAULT
+            if default_catalog_gym_id and gym_id == default_catalog_gym_id
+            else CATALOG_MODE_GYM
+        )
+        cursor.execute(
+            """
+            UPDATE users
+               SET gym_id = %s,
+                   gym_catalog_preference = %s
+             WHERE id = %s
+            """,
+            (gym_id, catalog_mode, requested_by_user_id),
+        )
+
+    return request_row, gym_id
+
+
+def _reject_gym_request(cursor, *, request_id: int, reviewer_id: int, review_notes: str | None = None) -> dict:
+    cursor.execute(
+        """
+        SELECT *
+          FROM gym_requests
+         WHERE id = %s
+           AND status = %s
+         FOR UPDATE
+        """,
+        (request_id, GYM_REQUEST_STATUS_PENDING),
+    )
+    request_row = cursor.fetchone()
+    if not request_row:
+        raise ValueError("Gym request could not be found or has already been reviewed.")
+
+    cursor.execute(
+        """
+        UPDATE gym_requests
+           SET status = %s,
+               reviewed_by_user_id = %s,
+               reviewed_at = now(),
+               review_notes = %s,
+               updated_at = now()
+         WHERE id = %s
+        """,
+        (
+            GYM_REQUEST_STATUS_REJECTED,
+            reviewer_id,
+            review_notes or "Rejected during manual review.",
+            request_id,
+        ),
+    )
+    return request_row
+
+
+def _load_user_notification_stub(cursor, user_id: int | None) -> dict | None:
+    resolved_user_id = _coerce_optional_int(user_id)
+    if not resolved_user_id:
+        return None
+    cursor.execute(
+        """
+        SELECT id, name, last_name, username, email
+          FROM users
+         WHERE id = %s
+        """,
+        (resolved_user_id,),
+    )
+    return cursor.fetchone()
+
+
+def _format_gym_request_location(request_row: dict | None) -> str:
+    if not request_row:
+        return "Location not provided"
+    parts = [
+        part
+        for part in (
+            request_row.get("submitted_city"),
+            request_row.get("submitted_state"),
+            request_row.get("submitted_country"),
+        )
+        if part
+    ]
+    return ", ".join(parts) if parts else "Location not provided"
+
+
+def _format_gym_request_address(request_row: dict | None) -> str:
+    if not request_row:
+        return ""
+    parts = [
+        part
+        for part in (
+            request_row.get("submitted_address_line1"),
+            request_row.get("submitted_postal_code"),
+            request_row.get("submitted_address_line2"),
+        )
+        if part
+    ]
+    return ", ".join(parts)
+
+
+def _format_gym_request_confidence(confidence_value) -> str | None:
+    try:
+        if confidence_value in (None, ""):
+            return None
+        return f"{float(confidence_value) * 100:.0f}%"
+    except (TypeError, ValueError):
+        return None
+
+
+def _gym_request_email_details(request_row: dict) -> dict:
+    return {
+        "name": request_row.get("submitted_name") or "Unnamed gym",
+        "location": _format_gym_request_location(request_row),
+        "address": _format_gym_request_address(request_row),
+        "agent_summary": request_row.get("agent_summary") or "",
+        "agent_confidence": _format_gym_request_confidence(request_row.get("agent_confidence")),
+    }
+
+
+def _notify_superadmin_of_gym_request(*, request_id: int, request_row: dict) -> None:
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            superadmin = _load_user_notification_stub(cursor, FITBASEAI_SUPERADMIN_USER_ID)
+            requester = _load_user_notification_stub(cursor, request_row.get("requested_by_user_id"))
+
+    if not superadmin or not superadmin.get("email"):
+        return
+
+    requester_display_name = _format_display_name(requester or {}, "A FitBaseAI trainer")
+    requester_email = (requester or {}).get("email") or "Email unavailable"
+    review_url = f"{url_for('admin_users', _external=True)}#admin-gym-requests"
+    send_gym_request_submitted_email(
+        to_email=superadmin["email"],
+        reviewer_name=(superadmin or {}).get("name"),
+        requester_display_name=requester_display_name,
+        requester_email=requester_email,
+        request_details=_gym_request_email_details({**request_row, "id": request_id}),
+        review_url=review_url,
+    )
+
+
+def _notify_requester_of_gym_request_review(
+    *,
+    request_row: dict,
+    approved: bool,
+    review_notes: str | None = None,
+) -> None:
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            requester = _load_user_notification_stub(cursor, request_row.get("requested_by_user_id"))
+
+    if not requester or not requester.get("email"):
+        return
+
+    send_gym_request_reviewed_email(
+        to_email=requester["email"],
+        first_name=(requester or {}).get("name"),
+        request_details=_gym_request_email_details(request_row),
+        status=GYM_REQUEST_STATUS_APPROVED if approved else GYM_REQUEST_STATUS_REJECTED,
+        exercise_library_url=url_for('trainer_gym_catalog', _external=True),
+        review_notes=review_notes,
+    )
+
+
+def _extract_youtube_id(value: str | None) -> str | None:
+    raw = (value or "").strip()
+    if not raw:
+        return None
+    if "youtube.com" not in raw and "youtu.be" not in raw:
+        token = re.sub(r"[^A-Za-z0-9_-]", "", raw)
+        return token[:32] if token else None
+    parsed = urlparse(raw)
+    host = (parsed.netloc or "").lower()
+    path = (parsed.path or "").strip("/")
+    if "youtu.be" in host:
+        token = path.split("/")[0] if path else ""
+        token = re.sub(r"[^A-Za-z0-9_-]", "", token)
+        return token[:32] if token else None
+    if "youtube.com" in host:
+        query_params = parsed.query or ""
+        for piece in query_params.split("&"):
+            if piece.startswith("v="):
+                token = piece.split("=", 1)[1]
+                token = re.sub(r"[^A-Za-z0-9_-]", "", token)
+                return token[:32] if token else None
+        if path.startswith("embed/"):
+            token = path.split("/", 1)[1]
+            token = re.sub(r"[^A-Za-z0-9_-]", "", token)
+            return token[:32] if token else None
+    return None
+
+
+def _sanitize_media_field(value: str | None) -> str | None:
+    if value is None:
+        return None
+    cleaned = str(value).strip()
+    if not cleaned:
+        return None
+    return cleaned[:500]
+
+
+def _normalize_media_scope(value, *, default=MEDIA_SCOPE_PRIVATE):
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in MEDIA_SCOPE_CHOICES:
+            return normalized
+    return default
+
+
+def _coerce_bool(value) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return False
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _coerce_float_or_none(value):
+    try:
+        if value in (None, ""):
+            return None
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _json_object_or_none(raw_value):
+    if not raw_value:
+        return None
+    if isinstance(raw_value, dict):
+        return raw_value
+    try:
+        parsed = json.loads(raw_value)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
+def _build_media_folder(gym_id: int | None, trainer_id: int | None) -> str:
+    gym_token = _coerce_optional_int(gym_id) or 0
+    trainer_token = _coerce_optional_int(trainer_id) or 0
+    return f"{MEDIA_UPLOAD_FOLDER_ROOT}/gyms/{gym_token}/trainers/{trainer_token}/workouts"
+
+
+def _media_public_id_prefix(gym_id: int | None, trainer_id: int | None) -> str:
+    return f"{_build_media_folder(gym_id, trainer_id)}/"
+
+
+def _cloudinary_upload_url(resource_type: str) -> str:
+    safe_type = "video" if str(resource_type).strip().lower() == "video" else "image"
+    return f"https://api.cloudinary.com/v1_1/{CLOUDINARY_CLOUD_NAME}/{safe_type}/upload"
+
+
+def _cloudinary_upload_preset(resource_type: str) -> str | None:
+    normalized_type = str(resource_type).strip().lower()
+    if normalized_type == "video":
+        return CLOUDINARY_TRAINER_VIDEO_UPLOAD_PRESET or None
+    if normalized_type == "image":
+        return CLOUDINARY_TRAINER_IMAGE_UPLOAD_PRESET or None
+    return None
+
+
+def _cloudinary_is_ready() -> bool:
+    return CLOUDINARY_ENABLED and cloudinary_utils is not None
+
+
+def _fetch_cloudinary_asset(public_id: str, resource_type: str) -> dict | None:
+    if not _cloudinary_is_ready() or not public_id:
+        return None
+    safe_type = "video" if str(resource_type).strip().lower() == "video" else "image"
+    try:
+        return cloudinary_api.resource(public_id, resource_type=safe_type)
+    except Exception:
+        logging.exception("Cloudinary asset lookup failed for %s", public_id)
+        return None
+
+
+def _fetch_cloudinary_asset_with_retry(public_id: str, resource_type: str) -> dict | None:
+    normalized_type = str(resource_type).strip().lower()
+    max_attempts = 1
+    if normalized_type == MEDIA_VIDEO_ROLE:
+        max_attempts = max(1, CLOUDINARY_VIDEO_METADATA_RETRY_ATTEMPTS)
+
+    metadata = None
+    for attempt in range(1, max_attempts + 1):
+        metadata = _fetch_cloudinary_asset(public_id, resource_type)
+        if normalized_type != MEDIA_VIDEO_ROLE:
+            return metadata
+
+        duration_seconds = _coerce_float_or_none(metadata.get("duration")) if metadata else None
+        if metadata and duration_seconds is not None and duration_seconds > 0:
+            if attempt > 1:
+                logging.info(
+                    "Cloudinary video metadata ready for %s after %s attempts duration=%r width=%r height=%r bytes=%r format=%r",
+                    public_id,
+                    attempt,
+                    duration_seconds,
+                    metadata.get("width"),
+                    metadata.get("height"),
+                    metadata.get("bytes"),
+                    metadata.get("format"),
+                )
+            return metadata
+
+        logging.warning(
+            "Cloudinary video metadata not ready for %s attempt=%s/%s duration=%r width=%r height=%r bytes=%r format=%r",
+            public_id,
+            attempt,
+            max_attempts,
+            duration_seconds,
+            metadata.get("width") if metadata else None,
+            metadata.get("height") if metadata else None,
+            metadata.get("bytes") if metadata else None,
+            metadata.get("format") if metadata else None,
+        )
+        if attempt < max_attempts:
+            time_module.sleep(CLOUDINARY_VIDEO_METADATA_RETRY_DELAY_SECONDS)
+
+    return metadata
+
+
+def _delete_cloudinary_asset(public_id: str | None, resource_type: str | None):
+    if not _cloudinary_is_ready() or not public_id:
+        return
+    safe_type = "video" if str(resource_type).strip().lower() == "video" else "image"
+    try:
+        cloudinary_uploader.destroy(public_id, resource_type=safe_type, invalidate=True)
+    except Exception:
+        logging.exception("Cloudinary asset delete failed for %s", public_id)
+
+
+def _validate_media_orientation(width, height) -> bool:
+    width_val = _coerce_optional_int(width)
+    height_val = _coerce_optional_int(height)
+    if width_val is None or height_val is None:
+        return False
+    return height_val > width_val
+
+
+def _normalize_cloudinary_asset(asset_payload, resource_type: str, *, gym_id: int | None, trainer_id: int | None) -> dict | None:
+    payload = _json_object_or_none(asset_payload)
+    if not payload:
+        return None
+
+    public_id = _sanitize_media_field(payload.get("public_id"))
+    if not public_id:
+        return None
+
+    prefix = _media_public_id_prefix(gym_id, trainer_id)
+    if not public_id.startswith(prefix):
+        raise ValueError("Uploaded media does not belong to this trainer workspace.")
+
+    metadata = _fetch_cloudinary_asset_with_retry(public_id, resource_type)
+    if not metadata:
+        raise ValueError("Uploaded media could not be verified.")
+
+    secure_url = _sanitize_media_field(
+        metadata.get("secure_url")
+        or metadata.get("url")
+        or payload.get("secure_url")
+        or payload.get("url")
+    )
+    if not secure_url:
+        raise ValueError("Uploaded media is missing a delivery URL.")
+
+    width = _coerce_optional_int(metadata.get("width"))
+    if width is None:
+        width = _coerce_optional_int(payload.get("width"))
+
+    height = _coerce_optional_int(metadata.get("height"))
+    if height is None:
+        height = _coerce_optional_int(payload.get("height"))
+
+    bytes_value = _coerce_optional_int(metadata.get("bytes"))
+    if bytes_value is None:
+        bytes_value = _coerce_optional_int(payload.get("bytes"))
+
+    format_value = _sanitize_media_field(metadata.get("format") or payload.get("format"))
+
+    if not _validate_media_orientation(width, height):
+        _delete_cloudinary_asset(public_id, resource_type)
+        raise ValueError("Media must be uploaded in portrait orientation.")
+
+    if resource_type == MEDIA_VIDEO_ROLE:
+        duration_seconds = _coerce_float_or_none(metadata.get("duration"))
+        if duration_seconds is None or duration_seconds <= 0:
+            duration_seconds = _coerce_float_or_none(payload.get("duration"))
+        if duration_seconds is None or duration_seconds <= 0 or duration_seconds > MAX_EXERCISE_VIDEO_DURATION_SECONDS:
+            _delete_cloudinary_asset(public_id, resource_type)
+            if duration_seconds is None or duration_seconds <= 0:
+                raise ValueError("We couldn't verify the uploaded video duration yet. Please try saving again in a moment.")
+            raise ValueError(
+                f"Video demonstrations must be 15 seconds or less. Cloudinary reported {duration_seconds:.2f} seconds."
+            )
+        if bytes_value is None or bytes_value <= 0 or bytes_value > MAX_EXERCISE_VIDEO_BYTES:
+            _delete_cloudinary_asset(public_id, resource_type)
+            raise ValueError("Video files must be 100MB or less.")
+        return {
+            "public_id": public_id,
+            "secure_url": secure_url,
+            "resource_type": "video",
+            "bytes": bytes_value,
+            "width": width,
+            "height": height,
+            "duration_seconds": duration_seconds,
+            "format": format_value,
+        }
+
+    if bytes_value is None or bytes_value <= 0 or bytes_value > MAX_EXERCISE_IMAGE_BYTES:
+        _delete_cloudinary_asset(public_id, resource_type)
+        raise ValueError("Images must be 10MB or less.")
+    return {
+        "public_id": public_id,
+        "secure_url": secure_url,
+        "resource_type": "image",
+        "bytes": bytes_value,
+        "width": width,
+        "height": height,
+        "duration_seconds": None,
+        "format": format_value,
+    }
+
+
+def _media_placeholder_payload() -> dict:
+    return {
+        "demo_video_url": None,
+        "demo_video_poster_url": None,
+        "start_image_url": None,
+        "end_image_url": None,
+        "video_placeholder_label": MEDIA_VIDEO_PLACEHOLDER_LABEL,
+        "start_placeholder_label": MEDIA_START_PLACEHOLDER_LABEL,
+        "end_placeholder_label": MEDIA_END_PLACEHOLDER_LABEL,
+        "media_scope": None,
+        "media_owner_user_id": None,
+        "start_frame_seconds": None,
+        "end_frame_seconds": None,
+    }
+
+
+def _ensure_default_catalog_gym() -> int | None:
+    profile = DEFAULT_CATALOG_GYM_PROFILE
+    try:
+        with get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(
+                    """
+                    SELECT id
+                      FROM gyms
+                     WHERE lower(name) = lower(%s)
+                       AND lower(COALESCE(city, '')) = lower(COALESCE(%s, ''))
+                       AND lower(COALESCE(state, '')) = lower(COALESCE(%s, ''))
+                       AND lower(COALESCE(country, '')) = lower(COALESCE(%s, ''))
+                     ORDER BY id
+                     LIMIT 1
+                    """,
+                    (
+                        profile["name"],
+                        profile["city"],
+                        profile["state"],
+                        profile["country"],
+                    ),
+                )
+                row = cursor.fetchone()
+                gym_id = row.get('id') if row else None
+                if gym_id:
+                    cursor.execute(
+                        """
+                        UPDATE gyms
+                           SET name = %s,
+                               city = %s,
+                               state = %s,
+                               country = %s,
+                               address_line1 = %s,
+                               postal_code = %s,
+                               address_line2 = %s,
+                               updated_at = now()
+                         WHERE id = %s
+                        """,
+                        (
+                            profile["name"],
+                            profile["city"],
+                            profile["state"],
+                            profile["country"],
+                            profile["address_line1"],
+                            profile["postal_code"],
+                            profile["address_line2"],
+                            gym_id,
+                        ),
+                    )
+                else:
+                    cursor.execute(
+                        """
+                        INSERT INTO gyms (name, city, state, country, address_line1, postal_code, address_line2)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s)
+                        RETURNING id
+                        """,
+                        (
+                            profile["name"],
+                            profile["city"],
+                            profile["state"],
+                            profile["country"],
+                            profile["address_line1"],
+                            profile["postal_code"],
+                            profile["address_line2"],
+                        ),
+                    )
+                    inserted = cursor.fetchone() or {}
+                    gym_id = inserted.get('id')
+            conn.commit()
+        return gym_id if gym_id else None
+    except Exception:
+        logging.exception("Default catalog gym bootstrap failed")
+        return None
+
+
+def _get_default_catalog_gym_id() -> int | None:
+    global DEFAULT_CATALOG_GYM_ID
+    if DEFAULT_CATALOG_GYM_ID:
+        return DEFAULT_CATALOG_GYM_ID
+    DEFAULT_CATALOG_GYM_ID = _ensure_default_catalog_gym()
+    return DEFAULT_CATALOG_GYM_ID
+
+
+def _ensure_gym_catalog_schema():
+    statements = [
+        """
+        CREATE TABLE IF NOT EXISTS gyms (
+            id SERIAL PRIMARY KEY,
+            name TEXT NOT NULL,
+            city TEXT,
+            state TEXT,
+            country TEXT,
+            address_line1 TEXT,
+            postal_code TEXT,
+            address_line2 TEXT,
+            created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+        """,
+        "ALTER TABLE gyms ADD COLUMN IF NOT EXISTS postal_code TEXT",
+        "ALTER TABLE gyms ADD COLUMN IF NOT EXISTS status TEXT",
+        "ALTER TABLE gyms ADD COLUMN IF NOT EXISTS verified_by_user_id INTEGER",
+        "ALTER TABLE gyms ADD COLUMN IF NOT EXISTS verified_at TIMESTAMPTZ",
+        "ALTER TABLE gyms ADD COLUMN IF NOT EXISTS verification_source TEXT",
+        "ALTER TABLE gyms ADD COLUMN IF NOT EXISTS verification_notes TEXT",
+        f"""
+        UPDATE gyms
+           SET status = '{GYM_STATUS_VERIFIED}'
+         WHERE status IS NULL
+            OR status = ''
+        """,
+        f"ALTER TABLE gyms ALTER COLUMN status SET DEFAULT '{GYM_STATUS_VERIFIED}'",
+        f"""
+        UPDATE gyms
+           SET verified_at = COALESCE(verified_at, created_at, now()),
+               verification_source = COALESCE(NULLIF(verification_source, ''), 'legacy_seed'),
+               verified_by_user_id = COALESCE(verified_by_user_id, {FITBASEAI_SUPERADMIN_USER_ID})
+         WHERE status = '{GYM_STATUS_VERIFIED}'
+        """,
+        """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1
+                  FROM pg_constraint
+                 WHERE conname = 'gyms_verified_by_user_id_fkey'
+                   AND conrelid = 'gyms'::regclass
+            ) THEN
+                ALTER TABLE gyms
+                ADD CONSTRAINT gyms_verified_by_user_id_fkey
+                FOREIGN KEY (verified_by_user_id) REFERENCES users(id) ON DELETE SET NULL;
+            END IF;
+        END;
+        $$;
+        """,
+        f"""
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1
+                  FROM pg_constraint
+                 WHERE conname = 'gyms_status_check'
+                   AND conrelid = 'gyms'::regclass
+            ) THEN
+                ALTER TABLE gyms
+                ADD CONSTRAINT gyms_status_check
+                CHECK (status IN ('{GYM_STATUS_VERIFIED}', '{GYM_STATUS_PENDING}', '{GYM_STATUS_REJECTED}'));
+            END IF;
+        END;
+        $$;
+        """,
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS gyms_unique_name_location_idx
+            ON gyms (
+                lower(name),
+                lower(COALESCE(city, '')),
+                lower(COALESCE(state, '')),
+                lower(COALESCE(country, ''))
+            )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS gym_requests (
+            id SERIAL PRIMARY KEY,
+            requested_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            submitted_name TEXT NOT NULL,
+            submitted_city TEXT,
+            submitted_state TEXT,
+            submitted_country TEXT,
+            submitted_address_line1 TEXT,
+            submitted_postal_code TEXT,
+            submitted_address_line2 TEXT,
+            normalized_name TEXT NOT NULL,
+            normalized_city TEXT,
+            normalized_state TEXT,
+            normalized_country TEXT,
+            normalized_address_line1 TEXT,
+            normalized_postal_code TEXT,
+            status TEXT NOT NULL DEFAULT 'pending',
+            agent_recommendation TEXT,
+            agent_confidence NUMERIC(5, 4),
+            agent_summary TEXT,
+            agent_evidence_json JSONB,
+            matched_gym_id INTEGER REFERENCES gyms(id) ON DELETE SET NULL,
+            reviewed_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            reviewed_at TIMESTAMPTZ,
+            review_notes TEXT,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+        """,
+        "ALTER TABLE gym_requests ADD COLUMN IF NOT EXISTS submitted_postal_code TEXT",
+        "ALTER TABLE gym_requests ADD COLUMN IF NOT EXISTS normalized_postal_code TEXT",
+        f"""
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1
+                  FROM pg_constraint
+                 WHERE conname = 'gym_requests_status_check'
+                   AND conrelid = 'gym_requests'::regclass
+            ) THEN
+                ALTER TABLE gym_requests
+                ADD CONSTRAINT gym_requests_status_check
+                CHECK (status IN ('{GYM_REQUEST_STATUS_PENDING}', '{GYM_REQUEST_STATUS_APPROVED}', '{GYM_REQUEST_STATUS_REJECTED}'));
+            END IF;
+        END;
+        $$;
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS gym_requests_status_created_idx
+            ON gym_requests (status, created_at DESC)
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS gym_requests_requested_by_idx
+            ON gym_requests (requested_by_user_id, created_at DESC)
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS gym_requests_normalized_lookup_idx
+            ON gym_requests (
+                normalized_name,
+                COALESCE(normalized_city, ''),
+                COALESCE(normalized_state, ''),
+                COALESCE(normalized_country, '')
+            )
+        """,
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS gym_id INTEGER",
+        f"ALTER TABLE users ADD COLUMN IF NOT EXISTS gym_catalog_preference TEXT NOT NULL DEFAULT '{CATALOG_MODE_DEFAULT}'",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS exercise_library_setup_seen BOOLEAN",
+        f"""
+        UPDATE users
+           SET gym_catalog_preference = '{CATALOG_MODE_DEFAULT}'
+         WHERE gym_catalog_preference IS NULL
+            OR gym_catalog_preference NOT IN ('{CATALOG_MODE_DEFAULT}', '{CATALOG_MODE_GYM}')
+        """,
+        """
+        UPDATE users
+           SET exercise_library_setup_seen = TRUE
+         WHERE exercise_library_setup_seen IS NULL
+           AND role IN ('trainer', 'admin')
+           AND form_completed = TRUE
+        """,
+        """
+        UPDATE users
+           SET exercise_library_setup_seen = FALSE
+         WHERE exercise_library_setup_seen IS NULL
+        """,
+        "ALTER TABLE users ALTER COLUMN exercise_library_setup_seen SET DEFAULT FALSE",
+        """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1
+                  FROM pg_constraint
+                 WHERE conname = 'users_gym_id_fkey'
+                   AND conrelid = 'users'::regclass
+            ) THEN
+                ALTER TABLE users
+                ADD CONSTRAINT users_gym_id_fkey
+                FOREIGN KEY (gym_id) REFERENCES gyms(id) ON DELETE SET NULL;
+            END IF;
+        END;
+        $$;
+        """,
+        """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1
+                  FROM pg_constraint
+                 WHERE conname = 'users_gym_catalog_preference_check'
+                   AND conrelid = 'users'::regclass
+            ) THEN
+                ALTER TABLE users
+                ADD CONSTRAINT users_gym_catalog_preference_check
+                CHECK (gym_catalog_preference IN ('default', 'gym'));
+            END IF;
+        END;
+        $$;
+        """,
+        "ALTER TABLE workouts ADD COLUMN IF NOT EXISTS movement_type TEXT NOT NULL DEFAULT 'accessory'",
+        "ALTER TABLE workouts ADD COLUMN IF NOT EXISTS gym_id INTEGER",
+        "ALTER TABLE workouts ADD COLUMN IF NOT EXISTS created_by INTEGER",
+        """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1
+                  FROM pg_constraint
+                 WHERE conname = 'workouts_gym_id_fkey'
+                   AND conrelid = 'workouts'::regclass
+            ) THEN
+                ALTER TABLE workouts
+                ADD CONSTRAINT workouts_gym_id_fkey
+                FOREIGN KEY (gym_id) REFERENCES gyms(id) ON DELETE CASCADE;
+            END IF;
+        END;
+        $$;
+        """,
+        """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1
+                  FROM pg_constraint
+                 WHERE conname = 'workouts_created_by_fkey'
+                   AND conrelid = 'workouts'::regclass
+            ) THEN
+                ALTER TABLE workouts
+                ADD CONSTRAINT workouts_created_by_fkey
+                FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL;
+            END IF;
+        END;
+        $$;
+        """,
+        """
+        DO $$
+        BEGIN
+            IF EXISTS (
+                SELECT 1
+                  FROM pg_constraint
+                 WHERE conname = 'workouts_name_key'
+                   AND conrelid = 'workouts'::regclass
+            ) THEN
+                ALTER TABLE workouts DROP CONSTRAINT workouts_name_key;
+            END IF;
+        END;
+        $$;
+        """,
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS workouts_name_gym_unique_idx
+            ON workouts (lower(name), COALESCE(gym_id, 0))
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS workouts_catalog_lookup_idx
+            ON workouts (category, level, gym_id)
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS workouts_gym_id_idx
+            ON workouts (gym_id)
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS workout_media (
+            id SERIAL PRIMARY KEY,
+            workout_id INTEGER NOT NULL REFERENCES workouts(id) ON DELETE CASCADE,
+            gym_id INTEGER NOT NULL REFERENCES gyms(id) ON DELETE CASCADE,
+            owner_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            scope TEXT NOT NULL DEFAULT 'private',
+            video_public_id TEXT,
+            video_url TEXT,
+            video_format TEXT,
+            video_bytes BIGINT,
+            video_width INTEGER,
+            video_height INTEGER,
+            video_duration_seconds NUMERIC(8, 3),
+            start_image_public_id TEXT,
+            start_image_url TEXT,
+            start_image_format TEXT,
+            start_image_bytes BIGINT,
+            start_image_width INTEGER,
+            start_image_height INTEGER,
+            end_image_public_id TEXT,
+            end_image_url TEXT,
+            end_image_format TEXT,
+            end_image_bytes BIGINT,
+            end_image_width INTEGER,
+            end_image_height INTEGER,
+            start_frame_seconds NUMERIC(8, 3),
+            end_frame_seconds NUMERIC(8, 3),
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+        """,
+        """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1
+                  FROM pg_constraint
+                 WHERE conname = 'workout_media_scope_check'
+                   AND conrelid = 'workout_media'::regclass
+            ) THEN
+                ALTER TABLE workout_media
+                ADD CONSTRAINT workout_media_scope_check
+                CHECK (scope IN ('private', 'gym_shared'));
+            END IF;
+        END;
+        $$;
+        """,
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS workout_media_private_unique_idx
+            ON workout_media (workout_id, gym_id, owner_user_id)
+         WHERE scope = 'private'
+        """,
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS workout_media_shared_unique_idx
+            ON workout_media (workout_id, gym_id)
+         WHERE scope = 'gym_shared'
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS workout_media_lookup_idx
+            ON workout_media (workout_id, gym_id, scope, owner_user_id)
+        """,
+    ]
+
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cursor:
+                for statement in statements:
+                    cursor.execute(statement)
+            conn.commit()
+    except Exception:
+        logging.exception("Gym catalog schema bootstrap failed")
+
+
+_ensure_gym_catalog_schema()
+ensure_agent_schema()
+_get_default_catalog_gym_id()
 
 
 def _normalize_role_value(role_value, *, default=None):
@@ -498,6 +1795,14 @@ def _format_exercise(selected_category, exercise):
         max_weight = exercise.get('max_weight')
         max_reps = exercise.get('max_reps')
         notes = exercise.get('notes')
+        demo_video_url = exercise.get('demo_video_url')
+        demo_video_poster_url = exercise.get('demo_video_poster_url')
+        start_image_url = exercise.get('start_image_url')
+        end_image_url = exercise.get('end_image_url')
+        media_scope = exercise.get('media_scope')
+        media_owner_user_id = exercise.get('media_owner_user_id')
+        start_frame_seconds = exercise.get('start_frame_seconds')
+        end_frame_seconds = exercise.get('end_frame_seconds')
     else:
         workout_id = exercise[0]
         name = exercise[1]
@@ -508,6 +1813,14 @@ def _format_exercise(selected_category, exercise):
         max_weight = exercise[6] if len(exercise) > 6 else None
         max_reps = exercise[7] if len(exercise) > 7 else None
         notes = exercise[8] if len(exercise) > 8 else None
+        demo_video_url = None
+        demo_video_poster_url = None
+        start_image_url = None
+        end_image_url = None
+        media_scope = None
+        media_owner_user_id = None
+        start_frame_seconds = None
+        end_frame_seconds = None
 
     if max_weight is not None and not isinstance(max_weight, (int, float)):
         try:
@@ -532,13 +1845,60 @@ def _format_exercise(selected_category, exercise):
         'max_reps': max_reps,
         'category': selected_category,
         'notes': notes,
+        'demo_video_url': demo_video_url,
+        'demo_video_poster_url': demo_video_poster_url,
+        'start_image_url': start_image_url,
+        'end_image_url': end_image_url,
+        'media_scope': media_scope,
+        'media_owner_user_id': media_owner_user_id,
+        'start_frame_seconds': start_frame_seconds,
+        'end_frame_seconds': end_frame_seconds,
     }
 
 
-def format_workout_for_response(selected_category, workout_plan):
+def format_workout_for_response(
+    selected_category,
+    workout_plan,
+    *,
+    viewer_user_id: int | None = None,
+    viewer_gym_id: int | None = None,
+):
+    resolved_user_id = _coerce_optional_int(viewer_user_id) or _coerce_optional_int(session.get('user_id'))
+    resolved_gym_id = _coerce_optional_int(viewer_gym_id) or _viewer_media_gym_id_for_user(resolved_user_id)
+    normalized_blocks = _normalize_plan_for_iteration(workout_plan)
+    workout_ids = []
+    for _, exercises in normalized_blocks:
+        for exercise in exercises or []:
+            if isinstance(exercise, dict):
+                workout_ids.append(exercise.get('workout_id') or exercise.get('id'))
+            elif isinstance(exercise, (list, tuple)) and exercise:
+                workout_ids.append(exercise[0])
+    media_map = _resolve_workout_media_map(
+        workout_ids,
+        viewer_user_id=resolved_user_id,
+        viewer_gym_id=resolved_gym_id,
+    )
     formatted = []
-    for subcategory, exercises in _normalize_plan_for_iteration(workout_plan):
-        items = [_format_exercise(selected_category, ex) for ex in (exercises or [])]
+    for subcategory, exercises in normalized_blocks:
+        items = []
+        for exercise in exercises or []:
+            formatted_exercise = _format_exercise(selected_category, exercise)
+            workout_id = _coerce_optional_int(formatted_exercise.get('workout_id'))
+            media_payload = media_map.get(workout_id) or _media_placeholder_payload()
+            formatted_exercise.update(media_payload)
+            formatted_exercise['start_image_url'] = formatted_exercise.get('start_image_url') or _resolve_legacy_image_url(formatted_exercise.get('image_exercise_start'))
+            formatted_exercise['end_image_url'] = formatted_exercise.get('end_image_url') or _resolve_legacy_image_url(formatted_exercise.get('image_exercise_end'))
+            formatted_exercise['demo_video_poster_url'] = (
+                formatted_exercise.get('demo_video_poster_url')
+                or formatted_exercise.get('start_image_url')
+                or formatted_exercise.get('end_image_url')
+            )
+            formatted_exercise['show_video_placeholder'] = not bool(
+                formatted_exercise.get('demo_video_url') or formatted_exercise.get('youtube_id')
+            )
+            formatted_exercise['show_start_placeholder'] = not bool(formatted_exercise.get('start_image_url'))
+            formatted_exercise['show_end_placeholder'] = not bool(formatted_exercise.get('end_image_url'))
+            items.append(formatted_exercise)
         formatted.append({'subcategory': subcategory, 'exercises': items})
     return formatted
 
@@ -1383,6 +2743,8 @@ def training():
     trainer_sessions_per_week_prefill = None
     trainer_focus_areas_prefill = ''
     trainer_platform_goals_prefill = ''
+    catalog_mode = CATALOG_MODE_DEFAULT
+    catalog_gym_id = None
 
     try:
         # Check if the form has already been completed
@@ -1393,7 +2755,8 @@ def training():
                     SELECT form_completed, exercise_history, fitness_goals, workout_duration,
                            injury, injury_details, cardio_restriction, role,
                            trainer_client_count, trainer_sessions_per_week,
-                           trainer_focus_areas, trainer_platform_goals
+                           trainer_focus_areas, trainer_platform_goals,
+                           gym_catalog_preference, gym_id
                       FROM users
                      WHERE id = %s
                     """,
@@ -1413,6 +2776,7 @@ def training():
                 trainer_sessions_per_week_prefill = _normalize_trainer_bucket(result[9], TRAINER_SESSION_BUCKETS)
                 trainer_focus_areas_prefill = result[10] or ''
                 trainer_platform_goals_prefill = result[11] or ''
+                catalog_mode, catalog_gym_id = _resolve_catalog_scope(mode=result[12], gym_id=result[13])
                 injury_status_prefill = 'Yes' if (injury_regions_prefill or cardio_restriction_prefill or (injury_details_prefill or '').strip()) else 'No'
     except Exception as e:
         flash(f"An error occurred: {e}", "danger")
@@ -1632,6 +2996,9 @@ def training():
             trainer_focus_areas_prefill = trainer_focus_areas_value or ''
             trainer_platform_goals_prefill = trainer_platform_goals_value or ''
             flash("Your information has been successfully updated!", "success")
+            if is_trainer:
+                flash("Next: review your exercise library and confirm the gym you want to manage.", "info")
+                return redirect(url_for('trainer_gym_catalog'))
         except Exception as e:
             flash(f"An error occurred: {e}", "danger")
             return render_template(
@@ -1680,18 +3047,20 @@ def training():
                 # Fetch grouped workouts
                 for category, group in categories.items():
                     placeholders = ",".join(["%s"] * len(group))
+                    catalog_clause, catalog_params = _catalog_filter_sql("w", catalog_mode, catalog_gym_id)
                     query = f"""
                         SELECT name, description
-                          FROM workouts
-                         WHERE category IN ({placeholders})
-                         ORDER BY CASE movement_type
+                          FROM workouts w
+                         WHERE w.category IN ({placeholders})
+                           AND {catalog_clause}
+                         ORDER BY CASE w.movement_type
                                       WHEN 'compound' THEN 1
                                       WHEN 'accessory' THEN 2
                                       ELSE 3
                                   END,
-                                  name
+                                  w.name
                     """
-                    cursor.execute(query, group)
+                    cursor.execute(query, (*group, *catalog_params))
                     grouped_workouts[category] = cursor.fetchall()
 
                 # Fetch the user's exercise history and age
@@ -1724,19 +3093,21 @@ def training():
                         target_heart_rate_zone = calculate_target_heart_rate(age)
 
                     # Fetch workouts matching the user's level
+                    catalog_clause, catalog_params = _catalog_filter_sql("w", catalog_mode, catalog_gym_id)
                     cursor.execute(
-                        """
-                        SELECT name, description, category, subcategory
-                          FROM workouts
-                         WHERE level <= %s
-                         ORDER BY CASE movement_type
+                        f"""
+                        SELECT w.name, w.description, w.category, w.subcategory
+                          FROM workouts w
+                         WHERE w.level <= %s
+                           AND {catalog_clause}
+                         ORDER BY CASE w.movement_type
                                       WHEN 'compound' THEN 1
                                       WHEN 'accessory' THEN 2
                                       ELSE 3
                                   END,
-                                  name
+                                  w.name
                         """,
-                        (user_level,)
+                        (user_level, *catalog_params)
                     )
                     all_workouts = cursor.fetchall()
                     filtered_workouts = []
@@ -1866,6 +3237,779 @@ def trainer_clients():
     search_term = (request.args.get('search') or '').strip()
     context = _build_trainer_dashboard_context(user_id, trainer, search_term=search_term)
     return render_template('trainer_clients.html', **context)
+
+
+@app.post('/trainer/gym_catalog/upload_signature')
+@login_required
+def trainer_gym_catalog_upload_signature():
+    trainer_id = session['user_id']
+    trainer = _require_trainer(trainer_id)
+    if not trainer:
+        return jsonify({'success': False, 'error': 'Trainer access required.'}), 403
+    if not _cloudinary_is_ready():
+        return jsonify({
+            'success': False,
+            'error': 'Cloudinary media uploads are not configured.',
+        }), 503
+
+    data = request.get_json(silent=True) or {}
+    requested_gym_id = _coerce_optional_int(data.get('gym_id')) or trainer.get('gym_id') or _get_default_catalog_gym_id()
+    resource_type = str(data.get('resource_type') or '').strip().lower()
+    if resource_type not in {'image', 'video'}:
+        return jsonify({'success': False, 'error': 'Invalid media type.'}), 400
+    if not requested_gym_id:
+        return jsonify({'success': False, 'error': 'Select a gym before uploading media.'}), 400
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT 1
+                  FROM gyms
+                 WHERE id = %s
+                   AND COALESCE(status, %s) = %s
+                """,
+                (requested_gym_id, GYM_STATUS_VERIFIED, GYM_STATUS_VERIFIED),
+            )
+            if not cursor.fetchone():
+                return jsonify({'success': False, 'error': 'Selected gym could not be found or is not verified yet.'}), 404
+
+    upload_kind = re.sub(r'[^a-z0-9_]+', '_', str(data.get('upload_kind') or resource_type).strip().lower()).strip('_')
+    if not upload_kind:
+        upload_kind = resource_type
+    upload_preset = _cloudinary_upload_preset(resource_type)
+    if not upload_preset:
+        return jsonify({'success': False, 'error': 'Cloudinary upload preset is not configured.'}), 503
+
+    folder = _build_media_folder(requested_gym_id, trainer_id)
+    public_id = f"{upload_kind}_{uuid.uuid4().hex}"
+    timestamp = int(time_module.time())
+    params_to_sign = {
+        'timestamp': timestamp,
+        'folder': folder,
+        'public_id': public_id,
+        'upload_preset': upload_preset,
+        'overwrite': 'false',
+    }
+    signature = cloudinary_utils.api_sign_request(params_to_sign, CLOUDINARY_API_SECRET)
+    return jsonify({
+        'success': True,
+        'cloud_name': CLOUDINARY_CLOUD_NAME,
+        'api_key': CLOUDINARY_API_KEY,
+        'timestamp': timestamp,
+        'folder': folder,
+        'public_id': public_id,
+        'upload_preset': upload_preset,
+        'signature': signature,
+        'upload_url': _cloudinary_upload_url(resource_type),
+        'resource_type': resource_type,
+        'max_video_duration_seconds': MAX_EXERCISE_VIDEO_DURATION_SECONDS,
+        'max_video_bytes': MAX_EXERCISE_VIDEO_BYTES,
+        'max_image_bytes': MAX_EXERCISE_IMAGE_BYTES,
+    })
+
+
+@app.route('/trainer/gym_catalog', methods=['GET', 'POST'])
+@login_required
+def trainer_gym_catalog():
+    trainer_id = session['user_id']
+    trainer = _require_trainer(trainer_id)
+    default_catalog_gym_id = _get_default_catalog_gym_id()
+    if not trainer:
+        flash("Trainer access requires an active plan.", "danger")
+        return redirect(url_for('home'))
+    if trainer.get('role') == 'trainer' and not trainer.get('form_completed'):
+        flash("Complete your fitness questionnaire to unlock trainer tools.", "warning")
+        return redirect(url_for('training'))
+
+    show_exercise_library_onboarding = (
+        trainer.get('role') == 'trainer'
+        and not bool(trainer.get('exercise_library_setup_seen'))
+    )
+    open_exercise_library_modal = show_exercise_library_onboarding and request.method == 'GET'
+    if open_exercise_library_modal:
+        try:
+            with get_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        UPDATE users
+                           SET exercise_library_setup_seen = TRUE
+                         WHERE id = %s
+                           AND COALESCE(exercise_library_setup_seen, FALSE) = FALSE
+                        """,
+                        (trainer_id,),
+                    )
+                    conn.commit()
+        except Exception:
+            logging.exception("Failed to mark exercise library onboarding as seen for user %s", trainer_id)
+
+    if request.method == 'POST':
+        action = (request.form.get('action') or '').strip().lower()
+        submitted_gym_request_notification = None
+        try:
+            with get_connection() as conn:
+                with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                    cursor.execute(
+                        "SELECT gym_id, gym_catalog_preference FROM users WHERE id = %s",
+                        (trainer_id,),
+                    )
+                    trainer_profile = cursor.fetchone() or {}
+                    active_gym_id = _coerce_optional_int(trainer_profile.get('gym_id'))
+                    if not active_gym_id and default_catalog_gym_id:
+                        cursor.execute(
+                            """
+                            UPDATE users
+                               SET gym_id = %s
+                             WHERE id = %s
+                               AND gym_id IS NULL
+                            """,
+                            (default_catalog_gym_id, trainer_id),
+                        )
+                        active_gym_id = default_catalog_gym_id
+
+                    if action == 'set_catalog_mode':
+                        requested_mode = _normalize_catalog_mode(request.form.get('catalog_mode'))
+                        gym_id_input = _coerce_optional_int(request.form.get('gym_id'))
+                        if (
+                            requested_mode == CATALOG_MODE_GYM
+                            and default_catalog_gym_id
+                            and gym_id_input == default_catalog_gym_id
+                        ):
+                            requested_mode = CATALOG_MODE_DEFAULT
+                            gym_id_input = None
+                        if requested_mode == CATALOG_MODE_GYM:
+                            target_gym_id = gym_id_input or (
+                                active_gym_id
+                                if active_gym_id and active_gym_id != default_catalog_gym_id
+                                else None
+                            )
+                            if not target_gym_id:
+                                flash("Select a verified gym before enabling the gym exercise library.", "warning")
+                                return redirect(url_for('trainer_gym_catalog'))
+                            cursor.execute(
+                                """
+                                SELECT id
+                                  FROM gyms
+                                 WHERE id = %s
+                                   AND COALESCE(status, %s) = %s
+                                """,
+                                (target_gym_id, GYM_STATUS_VERIFIED, GYM_STATUS_VERIFIED),
+                            )
+                            if not cursor.fetchone():
+                                flash("Selected gym could not be found or is not verified yet.", "danger")
+                                return redirect(url_for('trainer_gym_catalog'))
+                            cursor.execute(
+                                """
+                                UPDATE users
+                                   SET gym_catalog_preference = %s,
+                                       gym_id = %s
+                                 WHERE id = %s
+                                """,
+                                (CATALOG_MODE_GYM, target_gym_id, trainer_id),
+                            )
+                            flash("Gym exercise library enabled.", "success")
+                        else:
+                            cursor.execute(
+                                """
+                                UPDATE users
+                                   SET gym_catalog_preference = %s
+                                 WHERE id = %s
+                                """,
+                                (CATALOG_MODE_DEFAULT, trainer_id),
+                            )
+                            flash("Default FitBaseAI exercise library enabled.", "success")
+
+                    elif action in {'create_gym', 'request_gym'}:
+                        request_payload = _build_gym_request_payload(request.form)
+
+                        if not request_payload.get('submitted_name'):
+                            flash("Gym name is required.", "danger")
+                            return redirect(url_for('trainer_gym_catalog'))
+                        if not all((
+                            request_payload.get('normalized_city'),
+                            request_payload.get('normalized_state'),
+                            request_payload.get('normalized_country'),
+                        )):
+                            flash("Gym city, state/region, and country are required for review.", "danger")
+                            return redirect(url_for('trainer_gym_catalog'))
+                        if not request_payload.get('normalized_address_line1'):
+                            flash("Address Line 1 is required for review.", "danger")
+                            return redirect(url_for('trainer_gym_catalog'))
+                        if not request_payload.get('normalized_postal_code'):
+                            flash("Postal code / ZIP is required for review.", "danger")
+                            return redirect(url_for('trainer_gym_catalog'))
+
+                        cursor.execute(
+                            """
+                            SELECT id, name
+                              FROM gyms
+                             WHERE COALESCE(status, %s) = %s
+                               AND lower(name) = lower(%s)
+                               AND lower(COALESCE(city, '')) = lower(COALESCE(%s, ''))
+                               AND lower(COALESCE(state, '')) = lower(COALESCE(%s, ''))
+                               AND lower(COALESCE(country, '')) = lower(COALESCE(%s, ''))
+                             LIMIT 1
+                            """,
+                            (
+                                GYM_STATUS_VERIFIED,
+                                GYM_STATUS_VERIFIED,
+                                request_payload['submitted_name'],
+                                request_payload['submitted_city'],
+                                request_payload['submitted_state'],
+                                request_payload['submitted_country'],
+                            ),
+                        )
+                        existing = cursor.fetchone()
+                        if existing:
+                            existing_gym_id = existing['id']
+                            if default_catalog_gym_id and existing_gym_id == default_catalog_gym_id:
+                                cursor.execute(
+                                    """
+                                    UPDATE users
+                                       SET gym_catalog_preference = %s,
+                                           gym_id = %s
+                                     WHERE id = %s
+                                    """,
+                                    (CATALOG_MODE_DEFAULT, existing_gym_id, trainer_id),
+                                )
+                                flash("That gym already exists as the default FitBaseAI exercise library.", "info")
+                            else:
+                                cursor.execute(
+                                    """
+                                    UPDATE users
+                                       SET gym_id = %s,
+                                           gym_catalog_preference = %s
+                                     WHERE id = %s
+                                    """,
+                                    (existing_gym_id, CATALOG_MODE_GYM, trainer_id),
+                                )
+                                flash("That gym already exists and has been assigned to your account.", "success")
+                            conn.commit()
+                            return redirect(url_for('trainer_gym_catalog'))
+
+                        cursor.execute(
+                            """
+                            SELECT id
+                              FROM gym_requests
+                             WHERE status = %s
+                               AND normalized_name = %s
+                               AND COALESCE(normalized_city, '') = COALESCE(%s, '')
+                               AND COALESCE(normalized_state, '') = COALESCE(%s, '')
+                               AND COALESCE(normalized_country, '') = COALESCE(%s, '')
+                             LIMIT 1
+                            """,
+                            (
+                                GYM_REQUEST_STATUS_PENDING,
+                                request_payload['normalized_name'],
+                                request_payload['normalized_city'],
+                                request_payload['normalized_state'],
+                                request_payload['normalized_country'],
+                            ),
+                        )
+                        existing_request = cursor.fetchone()
+                        if existing_request:
+                            flash("A request for that gym is already pending review.", "warning")
+                            return redirect(url_for('trainer_gym_catalog'))
+
+                        recommendation, confidence, summary, evidence = _build_gym_request_agent_review(cursor, request_payload)
+                        cursor.execute(
+                            """
+                            INSERT INTO gym_requests (
+                                requested_by_user_id,
+                                submitted_name,
+                                submitted_city,
+                                submitted_state,
+                                submitted_country,
+                                submitted_address_line1,
+                                submitted_postal_code,
+                                submitted_address_line2,
+                                normalized_name,
+                                normalized_city,
+                                normalized_state,
+                                normalized_country,
+                                normalized_address_line1,
+                                normalized_postal_code,
+                                status,
+                                agent_recommendation,
+                                agent_confidence,
+                                agent_summary,
+                                agent_evidence_json
+                            )
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
+                            RETURNING id
+                            """,
+                            (
+                                trainer_id,
+                                request_payload['submitted_name'],
+                                request_payload['submitted_city'],
+                                request_payload['submitted_state'],
+                                request_payload['submitted_country'],
+                                request_payload['submitted_address_line1'],
+                                request_payload['submitted_postal_code'],
+                                request_payload['submitted_address_line2'],
+                                request_payload['normalized_name'],
+                                request_payload['normalized_city'],
+                                request_payload['normalized_state'],
+                                request_payload['normalized_country'],
+                                request_payload['normalized_address_line1'],
+                                request_payload['normalized_postal_code'],
+                                GYM_REQUEST_STATUS_PENDING,
+                                recommendation,
+                                confidence,
+                                summary,
+                                json.dumps(evidence),
+                            ),
+                        )
+                        inserted_request = cursor.fetchone() or {}
+                        submitted_gym_request_notification = {
+                            "request_id": inserted_request.get("id"),
+                            "request_row": {
+                                "requested_by_user_id": trainer_id,
+                                "submitted_name": request_payload['submitted_name'],
+                                "submitted_city": request_payload['submitted_city'],
+                                "submitted_state": request_payload['submitted_state'],
+                                "submitted_country": request_payload['submitted_country'],
+                                "submitted_address_line1": request_payload['submitted_address_line1'],
+                                "submitted_postal_code": request_payload['submitted_postal_code'],
+                                "submitted_address_line2": request_payload['submitted_address_line2'],
+                                "agent_summary": summary,
+                                "agent_confidence": confidence,
+                            },
+                        }
+                        flash(
+                            f"Gym request submitted for review. {GYM_REQUEST_REVIEW_PENDING_TEXT}",
+                            "success",
+                        )
+
+                    elif action in {'add_exercise', 'update_exercise', 'delete_exercise'}:
+                        if not active_gym_id:
+                            flash("Select a verified gym or wait for your gym request to be approved before managing your exercise library.", "warning")
+                            return redirect(url_for('trainer_gym_catalog'))
+                        if (
+                            default_catalog_gym_id
+                            and active_gym_id == default_catalog_gym_id
+                            and trainer_id != FITBASEAI_SUPERADMIN_USER_ID
+                        ):
+                            flash("The default FitBaseAI exercise library is view-only. Create or select another gym library to make changes.", "warning")
+                            return redirect(url_for('trainer_gym_catalog'))
+
+                        if action == 'delete_exercise':
+                            workout_id = _coerce_optional_int(request.form.get('workout_id'))
+                            if not workout_id:
+                                flash("Exercise id is required.", "danger")
+                                return redirect(url_for('trainer_gym_catalog'))
+                            cursor.execute(
+                                "SELECT * FROM workout_media WHERE workout_id = %s",
+                                (workout_id,),
+                            )
+                            media_rows = cursor.fetchall() or []
+                            for media_row in media_rows:
+                                _remove_workout_media_assets(media_row)
+                            if default_catalog_gym_id and active_gym_id == default_catalog_gym_id:
+                                cursor.execute(
+                                    """
+                                    DELETE FROM workouts
+                                     WHERE id = %s
+                                       AND (gym_id = %s OR gym_id IS NULL)
+                                    """,
+                                    (workout_id, active_gym_id),
+                                )
+                            else:
+                                cursor.execute(
+                                    "DELETE FROM workouts WHERE id = %s AND gym_id = %s",
+                                    (workout_id, active_gym_id),
+                                )
+                            if cursor.rowcount:
+                                flash("Exercise deleted from the exercise library.", "success")
+                            else:
+                                flash("Exercise could not be deleted.", "warning")
+                        else:
+                            workout_id = _coerce_optional_int(request.form.get('workout_id'))
+                            name = (request.form.get('name') or '').strip()
+                            description = (request.form.get('description') or '').strip()
+                            category = (request.form.get('category') or '').strip().upper()
+                            subcategory = (request.form.get('subcategory') or '').strip().upper() or category
+                            level = _coerce_optional_int(request.form.get('level'))
+                            movement_type = (request.form.get('movement_type') or 'accessory').strip().lower()
+                            media_scope = _normalize_media_scope(request.form.get('media_scope'))
+                            remove_video = _coerce_bool(request.form.get('remove_video'))
+                            remove_start_image = _coerce_bool(request.form.get('remove_start_image'))
+                            remove_end_image = _coerce_bool(request.form.get('remove_end_image'))
+                            start_frame_seconds = _coerce_float_or_none(request.form.get('start_frame_seconds'))
+                            end_frame_seconds = _coerce_float_or_none(request.form.get('end_frame_seconds'))
+                            youtube_id = _extract_youtube_id(request.form.get('youtube'))
+                            image_start = _sanitize_media_field(request.form.get('image_start'))
+                            image_end = _sanitize_media_field(request.form.get('image_end'))
+                            if not image_start:
+                                image_start = None
+                            if not image_end:
+                                image_end = None
+
+                            video_asset = None
+                            start_image_asset = None
+                            end_image_asset = None
+                            if request.form.get('video_asset_payload'):
+                                video_asset = _normalize_cloudinary_asset(
+                                    request.form.get('video_asset_payload'),
+                                    MEDIA_VIDEO_ROLE,
+                                    gym_id=active_gym_id,
+                                    trainer_id=trainer_id,
+                                )
+                            if request.form.get('start_image_asset_payload'):
+                                start_image_asset = _normalize_cloudinary_asset(
+                                    request.form.get('start_image_asset_payload'),
+                                    'image',
+                                    gym_id=active_gym_id,
+                                    trainer_id=trainer_id,
+                                )
+                            if request.form.get('end_image_asset_payload'):
+                                end_image_asset = _normalize_cloudinary_asset(
+                                    request.form.get('end_image_asset_payload'),
+                                    'image',
+                                    gym_id=active_gym_id,
+                                    trainer_id=trainer_id,
+                                )
+
+                            if not name:
+                                flash("Exercise name is required.", "danger")
+                                return redirect(url_for('trainer_gym_catalog'))
+                            if not description:
+                                flash("Exercise description is required.", "danger")
+                                return redirect(url_for('trainer_gym_catalog'))
+                            if category not in CUSTOM_WORKOUT_CATEGORIES:
+                                flash("Choose a valid workout category.", "danger")
+                                return redirect(url_for('trainer_gym_catalog'))
+                            if not subcategory:
+                                subcategory = category
+                            if level is None or level < 1 or level > 3:
+                                flash("Level must be between 1 and 3.", "danger")
+                                return redirect(url_for('trainer_gym_catalog'))
+                            if movement_type not in MOVEMENT_TYPE_CHOICES:
+                                movement_type = 'accessory'
+
+                            if action == 'add_exercise':
+                                cursor.execute(
+                                    """
+                                    INSERT INTO workouts (
+                                        category, subcategory, name, description, level,
+                                        youtube_id, image_exercise_start, image_exercise_end,
+                                        movement_type, gym_id, created_by
+                                    )
+                                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                    RETURNING id
+                                    """,
+                                    (
+                                        category,
+                                        subcategory,
+                                        name,
+                                        description,
+                                        level,
+                                        youtube_id,
+                                        image_start,
+                                        image_end,
+                                        movement_type,
+                                        active_gym_id,
+                                        trainer_id,
+                                    ),
+                                )
+                                inserted_row = cursor.fetchone() or {}
+                                workout_id = inserted_row.get('id')
+                                if workout_id:
+                                    _upsert_workout_media_row(
+                                        cursor,
+                                        workout_id=workout_id,
+                                        gym_id=active_gym_id,
+                                        trainer_id=trainer_id,
+                                        scope=media_scope,
+                                        video_asset=video_asset,
+                                        start_asset=start_image_asset,
+                                        end_asset=end_image_asset,
+                                        start_frame_seconds=start_frame_seconds,
+                                        end_frame_seconds=end_frame_seconds,
+                                        remove_video=remove_video,
+                                        remove_start_image=remove_start_image,
+                                        remove_end_image=remove_end_image,
+                                    )
+                                flash("Exercise added to the exercise library.", "success")
+                            else:
+                                if not workout_id:
+                                    flash("Exercise id is required for updates.", "danger")
+                                    return redirect(url_for('trainer_gym_catalog'))
+                                if default_catalog_gym_id and active_gym_id == default_catalog_gym_id:
+                                    cursor.execute(
+                                        """
+                                        UPDATE workouts
+                                           SET category = %s,
+                                               subcategory = %s,
+                                               name = %s,
+                                               description = %s,
+                                               level = %s,
+                                               youtube_id = %s,
+                                               image_exercise_start = %s,
+                                               image_exercise_end = %s,
+                                               movement_type = %s,
+                                               gym_id = COALESCE(gym_id, %s)
+                                         WHERE id = %s
+                                           AND (gym_id = %s OR gym_id IS NULL)
+                                        """,
+                                        (
+                                            category,
+                                            subcategory,
+                                            name,
+                                            description,
+                                            level,
+                                            youtube_id,
+                                            image_start,
+                                            image_end,
+                                            movement_type,
+                                            active_gym_id,
+                                            workout_id,
+                                            active_gym_id,
+                                        ),
+                                    )
+                                else:
+                                    cursor.execute(
+                                        """
+                                        UPDATE workouts
+                                           SET category = %s,
+                                               subcategory = %s,
+                                               name = %s,
+                                               description = %s,
+                                               level = %s,
+                                               youtube_id = %s,
+                                               image_exercise_start = %s,
+                                               image_exercise_end = %s,
+                                               movement_type = %s
+                                         WHERE id = %s
+                                           AND gym_id = %s
+                                        """,
+                                        (
+                                            category,
+                                            subcategory,
+                                            name,
+                                            description,
+                                            level,
+                                            youtube_id,
+                                            image_start,
+                                            image_end,
+                                            movement_type,
+                                            workout_id,
+                                            active_gym_id,
+                                        ),
+                                    )
+                                if cursor.rowcount:
+                                    _upsert_workout_media_row(
+                                        cursor,
+                                        workout_id=workout_id,
+                                        gym_id=active_gym_id,
+                                        trainer_id=trainer_id,
+                                        scope=media_scope,
+                                        video_asset=video_asset,
+                                        start_asset=start_image_asset,
+                                        end_asset=end_image_asset,
+                                        start_frame_seconds=start_frame_seconds,
+                                        end_frame_seconds=end_frame_seconds,
+                                        remove_video=remove_video,
+                                        remove_start_image=remove_start_image,
+                                        remove_end_image=remove_end_image,
+                                    )
+                                    flash("Exercise updated in the exercise library.", "success")
+                                else:
+                                    flash("Exercise could not be updated.", "warning")
+                    else:
+                        flash("Unknown exercise library action.", "warning")
+
+                conn.commit()
+            if submitted_gym_request_notification and submitted_gym_request_notification.get("request_id"):
+                try:
+                    _notify_superadmin_of_gym_request(
+                        request_id=submitted_gym_request_notification["request_id"],
+                        request_row=submitted_gym_request_notification["request_row"],
+                    )
+                except Exception:
+                    logging.exception(
+                        "Superadmin gym request notification failed for request %s",
+                        submitted_gym_request_notification.get("request_id"),
+                    )
+        except psycopg2.errors.UniqueViolation:
+            flash("An exercise with that name already exists in this exercise library.", "danger")
+        except ValueError as exc:
+            logging.exception("Trainer gym catalog validation failed")
+            flash(str(exc), "danger")
+        except Exception:
+            logging.exception("Trainer gym catalog action failed")
+            flash("We couldn't save those exercise library changes.", "danger")
+
+        return redirect(url_for('trainer_gym_catalog'))
+
+    catalog_mode, gym_id = _catalog_scope_for_user_id(trainer_id)
+    if not gym_id and default_catalog_gym_id:
+        gym_id = default_catalog_gym_id
+    selected_gym = None
+    gyms = []
+    gym_exercises = []
+    pending_gym_requests = []
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            cursor.execute(
+                """
+                SELECT g.id,
+                       g.name,
+                       g.city,
+                       g.state,
+                       g.country,
+                       COUNT(w.id)::int AS exercise_count
+                  FROM gyms g
+             LEFT JOIN workouts w
+                    ON w.gym_id = g.id
+                 WHERE COALESCE(g.status, %s) = %s
+              GROUP BY g.id, g.name, g.city, g.state, g.country
+              ORDER BY CASE
+                           WHEN lower(g.name) = lower(%s)
+                            AND lower(COALESCE(g.city, '')) = lower(%s)
+                            AND lower(COALESCE(g.state, '')) = lower(%s)
+                            AND lower(COALESCE(g.country, '')) = lower(%s)
+                           THEN 0
+                           ELSE 1
+                       END,
+                       lower(g.name),
+                       lower(COALESCE(g.city, '')),
+                       lower(COALESCE(g.state, '')),
+                       lower(COALESCE(g.country, ''))
+                """,
+                (
+                    GYM_STATUS_VERIFIED,
+                    GYM_STATUS_VERIFIED,
+                    DEFAULT_CATALOG_GYM_PROFILE['name'],
+                    DEFAULT_CATALOG_GYM_PROFILE['city'],
+                    DEFAULT_CATALOG_GYM_PROFILE['state'],
+                    DEFAULT_CATALOG_GYM_PROFILE['country'],
+                ),
+            )
+            gyms = cursor.fetchall() or []
+            if gym_id:
+                cursor.execute(
+                    """
+                    SELECT id, name, city, state, country, address_line1, address_line2
+                      FROM gyms
+                     WHERE id = %s
+                       AND COALESCE(status, %s) = %s
+                    """,
+                    (gym_id, GYM_STATUS_VERIFIED, GYM_STATUS_VERIFIED),
+                )
+                selected_gym = cursor.fetchone()
+
+            if gym_id:
+                gym_clause, gym_params = _catalog_filter_sql("w", CATALOG_MODE_GYM, gym_id)
+                cursor.execute(
+                    f"""
+                    SELECT id,
+                           category,
+                           subcategory,
+                           name,
+                           description,
+                           level,
+                           movement_type,
+                           youtube_id,
+                           image_exercise_start,
+                           image_exercise_end
+                      FROM workouts w
+                     WHERE {gym_clause}
+                     ORDER BY category,
+                              CASE w.movement_type
+                                  WHEN 'compound' THEN 1
+                                  WHEN 'accessory' THEN 2
+                                  ELSE 3
+                              END,
+                              name
+                    """,
+                    tuple(gym_params),
+                )
+                gym_exercises = cursor.fetchall() or []
+
+            cursor.execute(
+                """
+                SELECT id,
+                       submitted_name,
+                       submitted_city,
+                       submitted_state,
+                       submitted_country,
+                       agent_recommendation,
+                       agent_confidence,
+                       agent_summary,
+                       created_at
+                  FROM gym_requests
+                 WHERE requested_by_user_id = %s
+                   AND status = %s
+                 ORDER BY created_at DESC
+                 LIMIT 5
+                """,
+                (trainer_id, GYM_REQUEST_STATUS_PENDING),
+            )
+            pending_gym_requests = cursor.fetchall() or []
+
+    gym_exercises = _overlay_resolved_media_list(
+        gym_exercises,
+        viewer_user_id=trainer_id,
+        viewer_gym_id=gym_id,
+    )
+
+    library_setup_mode = catalog_mode
+    if selected_gym and default_catalog_gym_id and selected_gym.get('id') == default_catalog_gym_id:
+        library_setup_mode = CATALOG_MODE_DEFAULT
+
+    alternate_gyms = [
+        gym for gym in gyms
+        if not default_catalog_gym_id or gym.get('id') != default_catalog_gym_id
+    ]
+    selected_alternate_gym = (
+        selected_gym
+        if selected_gym and (not default_catalog_gym_id or selected_gym.get('id') != default_catalog_gym_id)
+        else None
+    )
+    selected_library_is_default = bool(
+        selected_gym
+        and default_catalog_gym_id
+        and selected_gym.get('id') == default_catalog_gym_id
+    )
+    can_edit_selected_library = (
+        bool(selected_gym)
+        and (
+            not selected_library_is_default
+            or trainer_id == FITBASEAI_SUPERADMIN_USER_ID
+        )
+    )
+
+    return render_template(
+        'trainer_gym_catalog.html',
+        trainer=trainer,
+        catalog_mode=catalog_mode,
+        library_setup_mode=library_setup_mode,
+        selected_gym=selected_gym,
+        gyms=gyms,
+        alternate_gyms=alternate_gyms,
+        selected_alternate_gym=selected_alternate_gym,
+        gym_exercises=gym_exercises,
+        workout_categories=CUSTOM_WORKOUT_CATEGORIES,
+        movement_type_choices=sorted(MOVEMENT_TYPE_CHOICES),
+        subcategory_choices=WORKOUT_SUBCATEGORY_CHOICES,
+        subcategory_choice_values=[entry["value"] for entry in WORKOUT_SUBCATEGORY_CHOICES],
+        media_upload_enabled=_cloudinary_is_ready(),
+        max_video_duration_seconds=MAX_EXERCISE_VIDEO_DURATION_SECONDS,
+        max_video_bytes=MAX_EXERCISE_VIDEO_BYTES,
+        max_image_bytes=MAX_EXERCISE_IMAGE_BYTES,
+        media_scope_private=MEDIA_SCOPE_PRIVATE,
+        media_scope_gym_shared=MEDIA_SCOPE_GYM_SHARED,
+        show_exercise_library_onboarding=show_exercise_library_onboarding,
+        open_exercise_library_modal=open_exercise_library_modal,
+        pending_gym_requests=pending_gym_requests,
+        gym_request_review_window_text=GYM_REQUEST_REVIEW_WINDOW_TEXT,
+        gym_request_review_pending_text=GYM_REQUEST_REVIEW_PENDING_TEXT,
+        default_catalog_gym_id=default_catalog_gym_id,
+        selected_library_is_default=selected_library_is_default,
+        can_edit_selected_library=can_edit_selected_library,
+        fitbaseai_superadmin_user_id=FITBASEAI_SUPERADMIN_USER_ID,
+    )
 
 
 def _build_trainer_dashboard_context(user_id: int, trainer: dict, *, search_term: str = '') -> dict:
@@ -2036,7 +4180,8 @@ def _require_trainer(user_id: int) -> dict | None:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
             cursor.execute(
                 """
-                SELECT id, role, name, last_name, username, email, subscription_type, workouts_completed, form_completed
+                SELECT id, role, name, last_name, username, email, subscription_type, workouts_completed, form_completed,
+                       gym_id, gym_catalog_preference, exercise_library_setup_seen
                   FROM users
                  WHERE id = %s
                 """,
@@ -2068,6 +4213,599 @@ def _trainer_has_pro_access(trainer_row: dict | None) -> bool:
     if role not in {'trainer', 'admin'}:
         return False
     return subscription == 'pro'
+
+
+def _fitbaseai_access_enabled(user_row: dict | None) -> bool:
+    if not user_row:
+        return False
+    role = (user_row.get('role') or '').lower()
+    subscription = (user_row.get('subscription_type') or '').lower()
+    if role == 'admin':
+        return True
+    return role == 'trainer' and subscription == 'pro'
+
+
+def _fitbaseai_home_orb_visible(user_row: dict | None) -> bool:
+    if not user_row:
+        return False
+    if _fitbaseai_access_enabled(user_row):
+        return True
+    role = (user_row.get('role') or '').lower()
+    subscription = (user_row.get('subscription_type') or '').lower()
+    return role == 'user' and subscription == 'premium'
+
+
+def _current_user_can_access_fitbaseai(user_id: int | None) -> bool:
+    if not user_id:
+        return False
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            cursor.execute(
+                "SELECT role, subscription_type FROM users WHERE id = %s",
+                (user_id,),
+            )
+            user_row = cursor.fetchone()
+    return _fitbaseai_access_enabled(user_row)
+
+
+def _catalog_scope_from_user_row(user_row: dict | None) -> tuple[str, int | None]:
+    if not user_row:
+        return CATALOG_MODE_DEFAULT, None
+    return _resolve_catalog_scope(
+        mode=user_row.get('gym_catalog_preference'),
+        gym_id=user_row.get('gym_id'),
+    )
+
+
+def _catalog_scope_for_user_id(user_id: int) -> tuple[str, int | None]:
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            cursor.execute(
+                "SELECT gym_catalog_preference, gym_id FROM users WHERE id = %s",
+                (user_id,),
+            )
+            row = cursor.fetchone()
+    return _catalog_scope_from_user_row(row)
+
+
+def _viewer_media_gym_id_for_user(user_id: int | None) -> int | None:
+    if user_id:
+        _, gym_id = _catalog_scope_for_user_id(user_id)
+        if gym_id:
+            return gym_id
+    return _get_default_catalog_gym_id()
+
+
+def _resolve_legacy_image_url(raw_value: str | None) -> str | None:
+    if not raw_value:
+        return None
+    if raw_value[:4].lower() == "http":
+        return raw_value
+    if raw_value.startswith("/static/"):
+        return raw_value
+    if "/" in raw_value:
+        return url_for('static', filename=raw_value.lstrip('/'))
+    return url_for('static', filename=f"images/{raw_value}")
+
+
+def _resolve_media_owner_user_id_for_user(user_id: int | None) -> int | None:
+    resolved_user_id = _coerce_optional_int(user_id)
+    if not resolved_user_id:
+        return None
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT trainer_id FROM users WHERE id = %s", (resolved_user_id,))
+            row = cursor.fetchone()
+    if row and row[0]:
+        return _coerce_optional_int(row[0]) or resolved_user_id
+    return resolved_user_id
+
+
+def _resolve_workout_payload_media_owner_user_id(workout_payload, *, fallback_user_id: int | None = None) -> int | None:
+    if isinstance(workout_payload, dict):
+        payload_owner_id = _coerce_optional_int(workout_payload.get("media_owner_user_id"))
+        if payload_owner_id:
+            return payload_owner_id
+    return _coerce_optional_int(fallback_user_id)
+
+
+def _resolve_workout_media_map(
+    workout_ids,
+    *,
+    viewer_user_id: int | None = None,
+    viewer_gym_id: int | None = None,
+) -> dict[int, dict]:
+    normalized_ids = []
+    seen_ids = set()
+    for raw_id in workout_ids or []:
+        workout_id = _coerce_optional_int(raw_id)
+        if not workout_id or workout_id in seen_ids:
+            continue
+        seen_ids.add(workout_id)
+        normalized_ids.append(workout_id)
+    if not normalized_ids:
+        return {}
+
+    resolved_user_id = _coerce_optional_int(viewer_user_id)
+    resolved_gym_id = _coerce_optional_int(viewer_gym_id) or _viewer_media_gym_id_for_user(resolved_user_id)
+    if not resolved_gym_id:
+        return {}
+
+    placeholders = ",".join(["%s"] * len(normalized_ids))
+    params = [resolved_gym_id]
+    private_clause = "scope = 'gym_shared'"
+    if resolved_user_id:
+        private_clause = "(scope = 'private' AND owner_user_id = %s) OR scope = 'gym_shared'"
+        params.append(resolved_user_id)
+    params.extend(normalized_ids)
+
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            cursor.execute(
+                f"""
+                SELECT id,
+                       workout_id,
+                       gym_id,
+                       owner_user_id,
+                       scope,
+                       video_public_id,
+                       video_url,
+                       video_format,
+                       video_bytes,
+                       video_width,
+                       video_height,
+                       video_duration_seconds,
+                       start_image_public_id,
+                       start_image_url,
+                       start_image_format,
+                       start_image_bytes,
+                       start_image_width,
+                       start_image_height,
+                       end_image_public_id,
+                       end_image_url,
+                       end_image_format,
+                       end_image_bytes,
+                       end_image_width,
+                       end_image_height,
+                       start_frame_seconds,
+                       end_frame_seconds,
+                       updated_at
+                  FROM workout_media
+                 WHERE gym_id = %s
+                   AND ({private_clause})
+                   AND workout_id IN ({placeholders})
+                 ORDER BY workout_id,
+                          CASE scope
+                              WHEN 'private' THEN 0
+                              ELSE 1
+                          END,
+                          updated_at DESC,
+                          id DESC
+                """,
+                tuple(params),
+            )
+            rows = cursor.fetchall() or []
+
+    media_map = {}
+    for row in rows:
+        workout_id = row.get("workout_id")
+        if workout_id in media_map:
+            continue
+        media_map[workout_id] = {
+            "demo_video_url": row.get("video_url"),
+            "demo_video_poster_url": row.get("start_image_url") or row.get("end_image_url"),
+            "start_image_url": row.get("start_image_url"),
+            "end_image_url": row.get("end_image_url"),
+            "video_placeholder_label": MEDIA_VIDEO_PLACEHOLDER_LABEL,
+            "start_placeholder_label": MEDIA_START_PLACEHOLDER_LABEL,
+            "end_placeholder_label": MEDIA_END_PLACEHOLDER_LABEL,
+            "media_scope": row.get("scope"),
+            "media_owner_user_id": row.get("owner_user_id"),
+            "start_frame_seconds": _coerce_float_or_none(row.get("start_frame_seconds")),
+            "end_frame_seconds": _coerce_float_or_none(row.get("end_frame_seconds")),
+        }
+    return media_map
+
+
+def _overlay_resolved_media(
+    exercise_dict: dict,
+    *,
+    viewer_user_id: int | None = None,
+    viewer_gym_id: int | None = None,
+) -> dict:
+    if not isinstance(exercise_dict, dict):
+        return exercise_dict
+    merged = dict(exercise_dict)
+    workout_id = _coerce_optional_int(merged.get("workout_id") or merged.get("id"))
+    media_map = _resolve_workout_media_map(
+        [workout_id] if workout_id else [],
+        viewer_user_id=viewer_user_id,
+        viewer_gym_id=viewer_gym_id,
+    )
+    resolved_media = media_map.get(workout_id) if workout_id else None
+    if not resolved_media:
+        resolved_media = _media_placeholder_payload()
+    legacy_start_url = _resolve_legacy_image_url(merged.get("image_exercise_start"))
+    legacy_end_url = _resolve_legacy_image_url(merged.get("image_exercise_end"))
+
+    merged.update(resolved_media)
+    merged["start_image_url"] = merged.get("start_image_url") or legacy_start_url
+    merged["end_image_url"] = merged.get("end_image_url") or legacy_end_url
+    merged["demo_video_url"] = merged.get("demo_video_url")
+    merged["demo_video_poster_url"] = merged.get("demo_video_poster_url") or merged.get("start_image_url") or merged.get("end_image_url")
+    merged["show_video_placeholder"] = not bool(merged.get("demo_video_url") or merged.get("youtube_id"))
+    merged["show_start_placeholder"] = not bool(merged.get("start_image_url"))
+    merged["show_end_placeholder"] = not bool(merged.get("end_image_url"))
+    return merged
+
+
+def _overlay_resolved_media_list(
+    rows,
+    *,
+    viewer_user_id: int | None = None,
+    viewer_gym_id: int | None = None,
+) -> list[dict]:
+    dict_rows = [dict(row) for row in (rows or [])]
+    workout_ids = [
+        _coerce_optional_int(row.get("workout_id") or row.get("id"))
+        for row in dict_rows
+    ]
+    media_map = _resolve_workout_media_map(
+        workout_ids,
+        viewer_user_id=viewer_user_id,
+        viewer_gym_id=viewer_gym_id,
+    )
+    enriched = []
+    for row in dict_rows:
+        workout_id = _coerce_optional_int(row.get("workout_id") or row.get("id"))
+        media_payload = media_map.get(workout_id) or _media_placeholder_payload()
+        row.update(media_payload)
+        row["start_image_url"] = row.get("start_image_url") or _resolve_legacy_image_url(row.get("image_exercise_start"))
+        row["end_image_url"] = row.get("end_image_url") or _resolve_legacy_image_url(row.get("image_exercise_end"))
+        row["demo_video_poster_url"] = row.get("demo_video_poster_url") or row.get("start_image_url") or row.get("end_image_url")
+        row["show_video_placeholder"] = not bool(row.get("demo_video_url") or row.get("youtube_id"))
+        row["show_start_placeholder"] = not bool(row.get("start_image_url"))
+        row["show_end_placeholder"] = not bool(row.get("end_image_url"))
+        enriched.append(row)
+    return enriched
+
+
+def _select_workout_media_row(cursor, workout_id: int, gym_id: int, trainer_id: int, scope: str) -> dict | None:
+    normalized_scope = _normalize_media_scope(scope)
+    if normalized_scope == MEDIA_SCOPE_GYM_SHARED:
+        cursor.execute(
+            """
+            SELECT *
+              FROM workout_media
+             WHERE workout_id = %s
+               AND gym_id = %s
+               AND scope = %s
+             LIMIT 1
+            """,
+            (workout_id, gym_id, MEDIA_SCOPE_GYM_SHARED),
+        )
+        return cursor.fetchone()
+    cursor.execute(
+        """
+        SELECT *
+          FROM workout_media
+         WHERE workout_id = %s
+           AND gym_id = %s
+           AND scope = %s
+           AND owner_user_id = %s
+         LIMIT 1
+        """,
+        (workout_id, gym_id, MEDIA_SCOPE_PRIVATE, trainer_id),
+    )
+    return cursor.fetchone()
+
+
+def _remove_workout_media_assets(row: dict | None):
+    if not row:
+        return
+    for public_id, resource_type in (
+        (row.get("video_public_id"), MEDIA_VIDEO_ROLE),
+        (row.get("start_image_public_id"), MEDIA_IMAGE_START_ROLE),
+        (row.get("end_image_public_id"), MEDIA_IMAGE_END_ROLE),
+    ):
+        normalized_type = MEDIA_VIDEO_ROLE if resource_type == MEDIA_VIDEO_ROLE else "image"
+        _delete_cloudinary_asset(public_id, normalized_type)
+
+
+def _row_has_workout_media(row: dict | None) -> bool:
+    if not row:
+        return False
+    return any(
+        row.get(column)
+        for column in (
+            "video_public_id",
+            "video_url",
+            "start_image_public_id",
+            "start_image_url",
+            "end_image_public_id",
+            "end_image_url",
+        )
+    )
+
+
+def _delete_replaced_workout_media_assets(previous_row: dict | None, next_row: dict | None):
+    if not previous_row:
+        return
+    for column, resource_type in (
+        ("video_public_id", MEDIA_VIDEO_ROLE),
+        ("start_image_public_id", "image"),
+        ("end_image_public_id", "image"),
+    ):
+        previous_public_id = previous_row.get(column)
+        next_public_id = next_row.get(column) if next_row else None
+        if previous_public_id and previous_public_id != next_public_id:
+            _delete_cloudinary_asset(previous_public_id, resource_type)
+
+
+def _upsert_workout_media_row(
+    cursor,
+    *,
+    workout_id: int,
+    gym_id: int,
+    trainer_id: int,
+    scope: str,
+    video_asset: dict | None = None,
+    start_asset: dict | None = None,
+    end_asset: dict | None = None,
+    start_frame_seconds=None,
+    end_frame_seconds=None,
+    remove_video: bool = False,
+    remove_start_image: bool = False,
+    remove_end_image: bool = False,
+):
+    normalized_scope = _normalize_media_scope(scope)
+    private_row = _select_workout_media_row(cursor, workout_id, gym_id, trainer_id, MEDIA_SCOPE_PRIVATE)
+    shared_row = _select_workout_media_row(cursor, workout_id, gym_id, trainer_id, MEDIA_SCOPE_GYM_SHARED)
+    target_row = private_row if normalized_scope == MEDIA_SCOPE_PRIVATE else shared_row
+    target_row_id = target_row.get("id") if target_row else None
+    source_row_to_delete = None
+
+    if normalized_scope == MEDIA_SCOPE_PRIVATE:
+        current = dict(target_row or shared_row or {})
+        old_target_row = dict(target_row) if target_row else None
+    else:
+        if private_row:
+            current = dict(private_row)
+            if target_row:
+                old_target_row = dict(target_row)
+                if private_row.get("id") != target_row.get("id"):
+                    source_row_to_delete = private_row
+            else:
+                old_target_row = dict(private_row)
+                target_row_id = private_row.get("id")
+        else:
+            current = dict(target_row or {})
+            old_target_row = dict(target_row) if target_row else None
+
+    def set_video_columns(asset):
+        current["video_public_id"] = asset.get("public_id")
+        current["video_url"] = asset.get("secure_url")
+        current["video_format"] = asset.get("format")
+        current["video_bytes"] = asset.get("bytes")
+        current["video_width"] = asset.get("width")
+        current["video_height"] = asset.get("height")
+        current["video_duration_seconds"] = asset.get("duration_seconds")
+
+    def set_image_columns(prefix, asset):
+        current[f"{prefix}_public_id"] = asset.get("public_id")
+        current[f"{prefix}_url"] = asset.get("secure_url")
+        current[f"{prefix}_format"] = asset.get("format")
+        current[f"{prefix}_bytes"] = asset.get("bytes")
+        current[f"{prefix}_width"] = asset.get("width")
+        current[f"{prefix}_height"] = asset.get("height")
+
+    if video_asset:
+        set_video_columns(video_asset)
+    elif remove_video:
+        set_video_columns({
+            "public_id": None,
+            "secure_url": None,
+            "format": None,
+            "bytes": None,
+            "width": None,
+            "height": None,
+            "duration_seconds": None,
+        })
+
+    if start_asset:
+        set_image_columns("start_image", start_asset)
+    elif remove_start_image:
+        set_image_columns("start_image", {
+            "public_id": None,
+            "secure_url": None,
+            "format": None,
+            "bytes": None,
+            "width": None,
+            "height": None,
+        })
+        current["start_frame_seconds"] = None
+
+    if end_asset:
+        set_image_columns("end_image", end_asset)
+    elif remove_end_image:
+        set_image_columns("end_image", {
+            "public_id": None,
+            "secure_url": None,
+            "format": None,
+            "bytes": None,
+            "width": None,
+            "height": None,
+        })
+        current["end_frame_seconds"] = None
+
+    if start_frame_seconds is not None:
+        current["start_frame_seconds"] = _coerce_float_or_none(start_frame_seconds)
+    if end_frame_seconds is not None:
+        current["end_frame_seconds"] = _coerce_float_or_none(end_frame_seconds)
+
+    has_any_media = _row_has_workout_media(current)
+    if not has_any_media:
+        if target_row_id:
+            cursor.execute("DELETE FROM workout_media WHERE id = %s", (target_row_id,))
+            _delete_replaced_workout_media_assets(old_target_row, None)
+        if source_row_to_delete and source_row_to_delete.get("id") != target_row_id:
+            cursor.execute("DELETE FROM workout_media WHERE id = %s", (source_row_to_delete.get("id"),))
+            _delete_replaced_workout_media_assets(source_row_to_delete, None)
+        return None
+
+    params = (
+        workout_id,
+        gym_id,
+        trainer_id,
+        normalized_scope,
+        current.get("video_public_id"),
+        current.get("video_url"),
+        current.get("video_format"),
+        current.get("video_bytes"),
+        current.get("video_width"),
+        current.get("video_height"),
+        current.get("video_duration_seconds"),
+        current.get("start_image_public_id"),
+        current.get("start_image_url"),
+        current.get("start_image_format"),
+        current.get("start_image_bytes"),
+        current.get("start_image_width"),
+        current.get("start_image_height"),
+        current.get("end_image_public_id"),
+        current.get("end_image_url"),
+        current.get("end_image_format"),
+        current.get("end_image_bytes"),
+        current.get("end_image_width"),
+        current.get("end_image_height"),
+        current.get("start_frame_seconds"),
+        current.get("end_frame_seconds"),
+    )
+
+    if target_row_id:
+        cursor.execute(
+            """
+            UPDATE workout_media
+               SET owner_user_id = %s,
+                   scope = %s,
+                   video_public_id = %s,
+                   video_url = %s,
+                   video_format = %s,
+                   video_bytes = %s,
+                   video_width = %s,
+                   video_height = %s,
+                   video_duration_seconds = %s,
+                   start_image_public_id = %s,
+                   start_image_url = %s,
+                   start_image_format = %s,
+                   start_image_bytes = %s,
+                   start_image_width = %s,
+                   start_image_height = %s,
+                   end_image_public_id = %s,
+                   end_image_url = %s,
+                   end_image_format = %s,
+                   end_image_bytes = %s,
+                   end_image_width = %s,
+                   end_image_height = %s,
+                   start_frame_seconds = %s,
+                   end_frame_seconds = %s,
+                   updated_at = now()
+             WHERE id = %s
+            """,
+            (
+                trainer_id,
+                normalized_scope,
+                current.get("video_public_id"),
+                current.get("video_url"),
+                current.get("video_format"),
+                current.get("video_bytes"),
+                current.get("video_width"),
+                current.get("video_height"),
+                current.get("video_duration_seconds"),
+                current.get("start_image_public_id"),
+                current.get("start_image_url"),
+                current.get("start_image_format"),
+                current.get("start_image_bytes"),
+                current.get("start_image_width"),
+                current.get("start_image_height"),
+                current.get("end_image_public_id"),
+                current.get("end_image_url"),
+                current.get("end_image_format"),
+                current.get("end_image_bytes"),
+                current.get("end_image_width"),
+                current.get("end_image_height"),
+                current.get("start_frame_seconds"),
+                current.get("end_frame_seconds"),
+                target_row_id,
+            ),
+        )
+        if source_row_to_delete and source_row_to_delete.get("id") != target_row_id:
+            cursor.execute("DELETE FROM workout_media WHERE id = %s", (source_row_to_delete.get("id"),))
+            _delete_replaced_workout_media_assets(source_row_to_delete, current)
+        _delete_replaced_workout_media_assets(old_target_row, current)
+        return target_row_id
+
+    cursor.execute(
+        """
+        INSERT INTO workout_media (
+            workout_id,
+            gym_id,
+            owner_user_id,
+            scope,
+            video_public_id,
+            video_url,
+            video_format,
+            video_bytes,
+            video_width,
+            video_height,
+            video_duration_seconds,
+            start_image_public_id,
+            start_image_url,
+            start_image_format,
+            start_image_bytes,
+            start_image_width,
+            start_image_height,
+            end_image_public_id,
+            end_image_url,
+            end_image_format,
+            end_image_bytes,
+            end_image_width,
+            end_image_height,
+            start_frame_seconds,
+            end_frame_seconds
+        )
+        VALUES (
+            %s, %s, %s, %s,
+            %s, %s, %s, %s, %s, %s, %s,
+            %s, %s, %s, %s, %s, %s,
+            %s, %s, %s, %s, %s, %s,
+            %s, %s
+        )
+        RETURNING id
+        """,
+        params,
+    )
+    inserted = cursor.fetchone() or {}
+    inserted_id = inserted.get("id")
+    if source_row_to_delete and source_row_to_delete.get("id") != inserted_id:
+        cursor.execute("DELETE FROM workout_media WHERE id = %s", (source_row_to_delete.get("id"),))
+        _delete_replaced_workout_media_assets(source_row_to_delete, current)
+    return inserted_id
+
+
+def _fetch_gym_for_trainer(user_id: int) -> dict | None:
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            cursor.execute(
+                """
+                SELECT g.id, g.name, g.city, g.state, g.country
+                  FROM users u
+             LEFT JOIN gyms g
+                    ON g.id = u.gym_id
+                 WHERE u.id = %s
+                """,
+                (user_id,),
+            )
+            return cursor.fetchone()
 
 
 def _get_trainer_link_invite(conn, token_id: int) -> dict | None:
@@ -2177,6 +4915,7 @@ def client_profile(client_id):
     if not trainer:
         flash("Trainer access required.", "danger")
         return redirect(url_for('home'))
+    trainer_catalog_mode, trainer_catalog_gym_id = _catalog_scope_from_user_row(trainer)
 
     exercise_search_term = (request.args.get('exercise_q') or '').strip()
     exercise_search_results = []
@@ -2239,6 +4978,7 @@ def client_profile(client_id):
 
             if exercise_search_term:
                 name_clause, name_params = _build_name_search_clause(exercise_search_term)
+                catalog_clause, catalog_params = _catalog_filter_sql("w", trainer_catalog_mode, trainer_catalog_gym_id)
                 cursor.execute(
                     f"""
                     SELECT w.id AS workout_id,
@@ -2246,6 +4986,8 @@ def client_profile(client_id):
                            w.description,
                            w.category,
                            w.youtube_id,
+                           w.image_exercise_start,
+                           w.image_exercise_end,
                            uep.max_weight,
                            uep.max_reps,
                            uep.notes
@@ -2254,17 +4996,23 @@ def client_profile(client_id):
                         ON uep.workout_id = w.id
                        AND uep.user_id = %s
                      WHERE {name_clause}
+                       AND {catalog_clause}
                      ORDER BY CASE w.movement_type
                                   WHEN 'compound' THEN 1
                                   WHEN 'accessory' THEN 2
                                   ELSE 3
                               END,
                               w.name
-                     LIMIT 25
+                LIMIT 25
                     """,
-                    (client_id, *name_params),
+                    (client_id, *name_params, *catalog_params),
                 )
                 exercise_search_results = cursor.fetchall() or []
+                exercise_search_results = _overlay_resolved_media_list(
+                    exercise_search_results,
+                    viewer_user_id=trainer_id,
+                    viewer_gym_id=trainer_catalog_gym_id or _viewer_media_gym_id_for_user(trainer_id),
+                )
     booked_counts, completed_counts = _compute_client_schedule_counts(trainer_id, [client_id], sync_booked=True)
     client['sessions_booked'] = booked_counts.get(client_id, client.get('sessions_booked') or 0)
     sessions_completed_count = completed_counts.get(client_id, sessions_completed_count)
@@ -2305,8 +5053,17 @@ def client_profile(client_id):
         workout_payload = active.get('workout_data') or {}
         plan = workout_payload.get('plan') if isinstance(workout_payload, dict) else None
         formatted_plan = None
+        active_media_owner_user_id = _resolve_workout_payload_media_owner_user_id(
+            workout_payload,
+            fallback_user_id=_coerce_optional_int(client.get('trainer_id')) or trainer_id,
+        )
         if plan:
-            formatted_plan = format_workout_for_response(active['category'], plan)
+            formatted_plan = format_workout_for_response(
+                active['category'],
+                plan,
+                viewer_user_id=active_media_owner_user_id,
+                viewer_gym_id=_coerce_optional_int(workout_payload.get('catalog_gym_id')) if isinstance(workout_payload, dict) else None,
+            )
         if isinstance(workout_payload, dict):
             skipped_payload = workout_payload.get('skipped')
             if isinstance(skipped_payload, dict):
@@ -2406,7 +5163,16 @@ def client_profile(client_id):
             raw_payload = _parse_session_payload(selected_session.get('session_payload'))
             if raw_payload and _session_payload_has_plan(raw_payload):
                 base_category = raw_payload.get('category') or selected_session.get('session_category')
-                formatted_plan = format_workout_for_response(base_category, raw_payload.get('plan'))
+                session_media_owner_user_id = _resolve_workout_payload_media_owner_user_id(
+                    raw_payload,
+                    fallback_user_id=_coerce_optional_int(client.get('trainer_id')) or trainer_id,
+                )
+                formatted_plan = format_workout_for_response(
+                    base_category,
+                    raw_payload.get('plan'),
+                    viewer_user_id=session_media_owner_user_id,
+                    viewer_gym_id=_coerce_optional_int(raw_payload.get('catalog_gym_id')) if isinstance(raw_payload, dict) else None,
+                )
                 session_workout = {
                     'category': base_category,
                     'duration_minutes': raw_payload.get('duration_minutes'),
@@ -2547,6 +5313,57 @@ def _format_local_time_range(start_dt: datetime | None, end_dt: datetime | None)
     if end_label:
         return None, end_label, end_label
     return None, None, None
+
+
+def _format_local_date_label(dt: datetime | None) -> str | None:
+    if not dt:
+        return None
+    return f"{dt.strftime('%B')} {dt.day}, {dt.year}"
+
+
+def _format_workout_session_completion_label(
+    *,
+    slot_start: datetime | None,
+    slot_end: datetime | None,
+    completed_at: datetime | None,
+    tz_info: tzinfo | None,
+) -> str | None:
+    def _localize(dt: datetime | None) -> datetime | None:
+        if not isinstance(dt, datetime):
+            return None
+        localized = dt
+        if localized.tzinfo is None:
+            localized = localized.replace(tzinfo=timezone.utc)
+        if tz_info is not None:
+            try:
+                localized = localized.astimezone(tz_info)
+            except Exception:
+                pass
+        return localized
+
+    local_start = _localize(slot_start)
+    local_end = _localize(slot_end)
+    if local_start:
+        start_date_label = _format_local_date_label(local_start)
+        start_time_label = _format_local_time_label(local_start)
+        if local_end:
+            end_date_label = _format_local_date_label(local_end)
+            end_time_label = _format_local_time_label(local_end)
+            if start_date_label and start_time_label and end_time_label:
+                if local_start.date() == local_end.date():
+                    return f"{start_date_label} at {start_time_label} - {end_time_label}"
+                if end_date_label:
+                    return f"{start_date_label} at {start_time_label} - {end_date_label} at {end_time_label}"
+        if start_date_label and start_time_label:
+            return f"{start_date_label} at {start_time_label}"
+
+    localized_completed = _localize(completed_at)
+    if localized_completed:
+        completed_date_label = _format_local_date_label(localized_completed)
+        completed_time_label = _format_local_time_label(localized_completed)
+        if completed_date_label and completed_time_label:
+            return f"{completed_date_label} at {completed_time_label}"
+    return None
 
 
 def _resolve_local_zone(candidate_tz=None):
@@ -4290,13 +7107,13 @@ def _fetch_client_sessions(
     start_time_from: datetime | None = None,
     start_time_to: datetime | None = None,
 ):
-    base_conditions = ["trainer_id = %s", "client_id = %s"]
+    base_conditions = ["ts.trainer_id = %s", "ts.client_id = %s"]
     base_params = [trainer_id, client_id]
 
     cursor.execute(
         f"""
         SELECT COUNT(*) AS total
-          FROM trainer_schedule
+          FROM trainer_schedule ts
          WHERE {' AND '.join(base_conditions)}
         """,
         base_params,
@@ -4317,7 +7134,7 @@ def _fetch_client_sessions(
     cursor.execute(
         f"""
         SELECT COUNT(*) AS total
-          FROM trainer_schedule
+          FROM trainer_schedule ts
          WHERE {where_clause}
         """,
         filtered_params,
@@ -4326,10 +7143,22 @@ def _fetch_client_sessions(
     filtered_total = int(filtered_row.get('total') or 0)
 
     query = f"""
-        SELECT id, start_time, end_time, status, created_at
-          FROM trainer_schedule
+        SELECT ts.id,
+               ts.start_time,
+               ts.end_time,
+               ts.status,
+               ts.created_at,
+               ts.session_id,
+               ts.session_category,
+               ts.session_completed_at,
+               ts.is_self_booked,
+               t.name AS trainer_name,
+               t.last_name AS trainer_last_name,
+               t.username AS trainer_username
+          FROM trainer_schedule ts
+          JOIN users t ON t.id = ts.trainer_id
          WHERE {where_clause}
-         ORDER BY start_time ASC
+         ORDER BY ts.start_time ASC
     """
     data_params = list(filtered_params)
     if limit is not None:
@@ -4339,6 +7168,54 @@ def _fetch_client_sessions(
     cursor.execute(query, data_params)
     rows = cursor.fetchall() or []
     return total_all, filtered_total, rows
+
+
+def _agenda_session_workout_label(row) -> str:
+    category = (row.get('session_category') or '').strip() if row else ''
+    if category:
+        return category
+    if row and row.get('is_self_booked'):
+        return 'Self Workout'
+    return 'Trainer Session'
+
+
+def _agenda_session_source_label(row) -> str:
+    status = ((row or {}).get('status') or 'booked').lower()
+    if row and row.get('is_self_booked'):
+        return 'Self-Completed Workout' if status == 'completed' or row.get('session_completed_at') else 'Self Workout'
+    trainer_label = _format_display_name(
+        {
+            'name': (row or {}).get('trainer_name'),
+            'last_name': (row or {}).get('trainer_last_name'),
+            'username': (row or {}).get('trainer_username'),
+        },
+        'Trainer',
+    )
+    return f'With {trainer_label}'
+
+
+def _agenda_session_details_url(
+    row,
+    *,
+    timezone_name: str | None = None,
+    tz_offset_minutes: int | None = None,
+    back_target: str | None = None,
+):
+    if not row:
+        return None
+    status = (row.get('status') or 'booked').lower()
+    session_id_val = row.get('session_id')
+    if not session_id_val or (status != 'completed' and not row.get('session_completed_at')):
+        return None
+
+    url_params = {'session_id': session_id_val}
+    if timezone_name:
+        url_params['timezone'] = timezone_name
+    if tz_offset_minutes is not None:
+        url_params['tz_offset'] = tz_offset_minutes
+    if back_target:
+        url_params['back'] = back_target
+    return url_for('workout_session_view', **url_params)
 
 
 def _fetch_trainer_sessions(
@@ -4752,7 +7629,7 @@ def trainer_client_agenda(client_id):
         except Exception:
             return fmt_utc(dt)
 
-    back_target = request.full_path or url_for('trainer_self_agenda_view')
+    back_target = request.full_path or url_for('trainer_client_agenda', client_id=client_id)
     if back_target.endswith('?'):
         back_target = back_target[:-1]
     agenda_events = []
@@ -4773,6 +7650,12 @@ def trainer_client_agenda(client_id):
                 start_time_display = fmt_utc(start_dt)
         if end_dt:
             end_time_display = _format_local_time(end_dt)
+        session_url = _agenda_session_details_url(
+            row,
+            timezone_name=timezone_name,
+            tz_offset_minutes=tz_offset_minutes,
+            back_target=back_target,
+        )
         agenda_events.append({
             'id': row['id'],
             'status': (row.get('status') or 'booked').lower(),
@@ -4781,6 +7664,9 @@ def trainer_client_agenda(client_id):
             'end_time': end_time_display,
             'start_time_iso': start_iso,
             'end_time_iso': end_iso,
+            'workout_label': _agenda_session_workout_label(row),
+            'source_label': _agenda_session_source_label(row),
+            'session_url': session_url,
         })
 
     page_totals = {
@@ -5011,10 +7897,18 @@ def client_self_agenda():
 
             query = f"""
                 SELECT ts.id,
+                       ts.session_id,
+                       ts.session_category,
+                       ts.session_completed_at,
+                       ts.is_self_booked,
                        ts.start_time,
                        ts.end_time,
-                       ts.status
+                       ts.status,
+                       t.name AS trainer_name,
+                       t.last_name AS trainer_last_name,
+                       t.username AS trainer_username
                   FROM trainer_schedule ts
+                  JOIN users t ON t.id = ts.trainer_id
                  WHERE {where_clause}
                  ORDER BY ts.start_time ASC
             """
@@ -5033,6 +7927,10 @@ def client_self_agenda():
         args = request.args.to_dict(flat=True)
         args['page'] = total_pages
         return redirect(url_for('client_self_agenda', **args))
+
+    back_target = request.full_path or url_for('client_self_agenda')
+    if back_target.endswith('?'):
+        back_target = back_target[:-1]
 
     def _format_local_time(dt):
         try:
@@ -5059,6 +7957,12 @@ def client_self_agenda():
                 start_time_display = fmt_utc(start_dt)
         if end_dt:
             end_time_display = _format_local_time(end_dt)
+        session_url = _agenda_session_details_url(
+            row,
+            timezone_name=timezone_name,
+            tz_offset_minutes=tz_offset_minutes,
+            back_target=back_target,
+        )
         agenda_events.append({
             'id': row['id'],
             'status': (row.get('status') or 'booked').lower(),
@@ -5067,6 +7971,9 @@ def client_self_agenda():
             'end_time': end_time_display,
             'start_time_iso': start_iso,
             'end_time_iso': end_iso,
+            'workout_label': _agenda_session_workout_label(row),
+            'source_label': _agenda_session_source_label(row),
+            'session_url': session_url,
         })
 
     page_totals = {
@@ -6314,6 +9221,8 @@ def generate_client_workout(client_id):
             flash("Select at least one piece of equipment for a Custom Home Workout.", "warning")
             return redirect(url_for('client_profile', client_id=client_id))
 
+    trainer_catalog_mode, trainer_catalog_gym_id = _catalog_scope_from_user_row(trainer)
+
     try:
         workout_plan, skipped_meta = generate_workout(
             selected_category,
@@ -6322,20 +9231,29 @@ def generate_client_workout(client_id):
             duration_minutes,
             custom_categories=custom_selection if is_custom else None,
             equipment_filters=home_equipment if is_home else None,
+            catalog_mode=trainer_catalog_mode,
+            catalog_gym_id=trainer_catalog_gym_id,
         )
     except ValueError as exc:
         flash(str(exc), "warning")
         return redirect(url_for('client_profile', client_id=client_id))
+    media_owner_user_id = _coerce_optional_int(client.get('trainer_id')) or trainer_id
     workout_payload = {
         'plan': workout_plan,
         'duration_minutes': duration_minutes,
         'skipped': skipped_meta,
+        'catalog_mode': trainer_catalog_mode,
+        'catalog_gym_id': trainer_catalog_gym_id,
+        'media_owner_user_id': media_owner_user_id,
     }
     workout_payload['category'] = selected_category
     if is_custom:
         workout_payload['custom_categories'] = custom_selection
     if is_home:
         workout_payload['home_equipment'] = home_equipment
+
+    workout_payload, optimization_meta = _optimize_workout_payload_layout(workout_payload)
+    workout_plan = workout_payload.get('plan') or workout_plan
 
     if session_event_id:
         display_category, _ = _resolve_workout_display_metadata(workout_payload, selected_category)
@@ -6363,6 +9281,8 @@ def generate_client_workout(client_id):
                 skipped_summary.append("Cardio restricted")
             if skipped_summary:
                 flash_message = f"{flash_message} ({'; '.join(skipped_summary)})"
+        if optimization_meta.get('changed'):
+            flash_message = f"{flash_message} Workout organized."
         flash(flash_message, "success")
         return redirect(url_for('client_profile', client_id=client_id, session_event_id=session_event_id))
 
@@ -6380,6 +9300,8 @@ def generate_client_workout(client_id):
             skipped_summary.append("Cardio restricted")
     if skipped_summary:
         flash_message = f"{flash_message} ({'; '.join(skipped_summary)})"
+    if optimization_meta.get('changed'):
+        flash_message = f"{flash_message} Workout organized."
 
     flash(flash_message, "success")
     return redirect(url_for('client_profile', client_id=client_id, focus='active'))
@@ -7165,7 +10087,13 @@ def generate_workout_route():
     with get_connection() as conn:
         with conn.cursor() as cursor:
             cursor.execute("""
-                SELECT exercise_history, COALESCE(workout_duration, 60) AS workout_duration, subscription_type, trial_end_date 
+                SELECT exercise_history,
+                       COALESCE(workout_duration, 60) AS workout_duration,
+                       subscription_type,
+                       trial_end_date,
+                       gym_catalog_preference,
+                       gym_id,
+                       trainer_id
                 FROM users 
                 WHERE id = %s
             """, (user_id,))
@@ -7174,6 +10102,8 @@ def generate_workout_route():
             duration_minutes = int(row[1])
             subscription_type = row[2]
             trial_end_date = row[3]
+            catalog_mode, catalog_gym_id = _resolve_catalog_scope(mode=row[4], gym_id=row[5])
+            media_owner_user_id = _coerce_optional_int(row[6]) or user_id
 
             today = datetime.today().date()
             if subscription_type == 'free' or (subscription_type == 'premium' and trial_end_date and today > trial_end_date):
@@ -7204,6 +10134,8 @@ def generate_workout_route():
             duration_minutes,
             custom_categories=custom_selection if is_custom else None,
             equipment_filters=home_equipment if is_home else None,
+            catalog_mode=catalog_mode,
+            catalog_gym_id=catalog_gym_id,
         )
     except ValueError as exc:
         return jsonify({'success': False, 'error': str(exc)}), 400
@@ -7211,15 +10143,26 @@ def generate_workout_route():
         'plan': workout_plan,
         'duration_minutes': duration_minutes,
         'skipped': skipped_meta,
+        'catalog_mode': catalog_mode,
+        'catalog_gym_id': catalog_gym_id,
+        'media_owner_user_id': media_owner_user_id,
     }
     if is_custom:
         workout_payload['custom_categories'] = custom_selection
     if is_home:
         workout_payload['home_equipment'] = home_equipment
 
+    workout_payload, optimization_meta = _optimize_workout_payload_layout(workout_payload)
+    workout_plan = workout_payload.get('plan') or workout_plan
+
     set_active_workout(user_id, selected_category, workout_payload)
 
-    formatted_workout = format_workout_for_response(selected_category, workout_plan)
+    formatted_workout = format_workout_for_response(
+        selected_category,
+        workout_plan,
+        viewer_user_id=media_owner_user_id,
+        viewer_gym_id=catalog_gym_id,
+    )
 
     return jsonify({
         'success': True,
@@ -7229,6 +10172,9 @@ def generate_workout_route():
         'skipped': skipped_meta,
         'custom_categories': custom_selection if is_custom else [],
         'home_equipment': home_equipment if is_home else [],
+        'catalog_mode': catalog_mode,
+        'catalog_gym_id': catalog_gym_id,
+        'organized_for_efficiency': bool(optimization_meta.get('changed')),
     })
 
 
@@ -7245,7 +10191,15 @@ def get_active_workout_route():
     if not plan:
         return jsonify({'success': False})
 
-    formatted_workout = format_workout_for_response(row['category'], plan)
+    formatted_workout = format_workout_for_response(
+        row['category'],
+        plan,
+        viewer_user_id=_resolve_workout_payload_media_owner_user_id(
+            data,
+            fallback_user_id=_resolve_media_owner_user_id_for_user(user_id),
+        ),
+        viewer_gym_id=_coerce_optional_int(data.get('catalog_gym_id')) if isinstance(data, dict) else None,
+    )
 
     return jsonify({
         'success': True,
@@ -7610,6 +10564,13 @@ def _apply_formatted_exercise(entry, formatted_exercise):
             'max_weight': fields[6],
             'max_reps': fields[7],
             'notes': fields[8],
+            'demo_video_url': formatted_exercise.get('demo_video_url'),
+            'demo_video_poster_url': formatted_exercise.get('demo_video_poster_url'),
+            'start_image_url': formatted_exercise.get('start_image_url'),
+            'end_image_url': formatted_exercise.get('end_image_url'),
+            'show_video_placeholder': formatted_exercise.get('show_video_placeholder'),
+            'show_start_placeholder': formatted_exercise.get('show_start_placeholder'),
+            'show_end_placeholder': formatted_exercise.get('show_end_placeholder'),
         })
         return updated
     if isinstance(entry, list):
@@ -7632,6 +10593,207 @@ def _build_new_exercise_entry(exercises, formatted_exercise):
     if sample_entry is None:
         return formatted_exercise
     return _apply_formatted_exercise(sample_entry, formatted_exercise)
+
+
+WORKOUT_EQUIPMENT_FAMILIES = (
+    "machine",
+    "dumbbell",
+    "barbell",
+    "bodyweight",
+    "cable",
+    "trx",
+    "other",
+)
+WORKOUT_EQUIPMENT_FAMILY_PATTERNS = (
+    ("machine", re.compile(r"\bmachine\b", flags=re.IGNORECASE)),
+    ("dumbbell", re.compile(r"\bdumbbell\b", flags=re.IGNORECASE)),
+    ("barbell", re.compile(r"\bbarbell\b", flags=re.IGNORECASE)),
+    ("bodyweight", re.compile(r"\bbodyweight\b", flags=re.IGNORECASE)),
+    ("cable", re.compile(r"\bcable\b", flags=re.IGNORECASE)),
+    ("trx", re.compile(r"\btrx\b", flags=re.IGNORECASE)),
+)
+
+
+def _exercise_entry_name(entry):
+    if isinstance(entry, dict):
+        return entry.get('name')
+    if isinstance(entry, (list, tuple)) and len(entry) > 1:
+        return entry[1]
+    return None
+
+
+def _infer_workout_equipment_family(name: str | None) -> str:
+    normalized = (name or '').strip().lower()
+    if not normalized:
+        return "other"
+    for family, pattern in WORKOUT_EQUIPMENT_FAMILY_PATTERNS:
+        if pattern.search(normalized):
+            return family
+    return "other"
+
+
+def _movement_type_sort_rank(value: str | None) -> int:
+    normalized = (value or '').strip().lower()
+    if normalized == 'compound':
+        return 0
+    if normalized == 'accessory':
+        return 1
+    return 2
+
+
+def _load_workout_layout_metadata(workout_ids: list[int]) -> dict[int, dict]:
+    cleaned_ids = [int(workout_id) for workout_id in workout_ids if _coerce_optional_int(workout_id)]
+    if not cleaned_ids:
+        return {}
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            cursor.execute(
+                """
+                SELECT id,
+                       name,
+                       movement_type
+                  FROM workouts
+                 WHERE id = ANY(%s)
+                """,
+                (cleaned_ids,),
+            )
+            rows = cursor.fetchall() or []
+    return {
+        int(row['id']): {
+            'name': row.get('name'),
+            'movement_type': row.get('movement_type'),
+        }
+        for row in rows
+        if row.get('id') is not None
+    }
+
+
+def _family_sequence_from_entries(entries: list[dict]) -> dict[str, int]:
+    family_sequence: list[str] = []
+    for entry in entries:
+        family = entry.get('family') or 'other'
+        if family == 'other' or family in family_sequence:
+            continue
+        family_sequence.append(family)
+    for family in WORKOUT_EQUIPMENT_FAMILIES:
+        if family != 'other' and family not in family_sequence:
+            family_sequence.append(family)
+    family_sequence.append('other')
+    return {family: idx for idx, family in enumerate(family_sequence)}
+
+
+def _sort_workout_block_exercises_for_efficiency(exercises: list, metadata_map: dict[int, dict]) -> tuple[list, dict]:
+    annotated: list[dict] = []
+    for original_index, entry in enumerate(exercises or []):
+        workout_id = _coerce_optional_int(_exercise_entry_workout_id(entry))
+        metadata = metadata_map.get(workout_id or -1) or {}
+        movement_type = metadata.get('movement_type')
+        family = _infer_workout_equipment_family(_exercise_entry_name(entry) or metadata.get('name'))
+        annotated.append(
+            {
+                'entry': entry,
+                'workout_id': workout_id,
+                'movement_type': movement_type,
+                'movement_rank': _movement_type_sort_rank(movement_type),
+                'family': family,
+                'original_index': original_index,
+            }
+        )
+
+    if len(annotated) < 2:
+        primary_family = annotated[0]['family'] if annotated else 'other'
+        primary_rank = annotated[0]['movement_rank'] if annotated else 2
+        return list(exercises or []), {
+            'changed': False,
+            'primary_family': primary_family,
+            'primary_movement_rank': primary_rank,
+        }
+
+    family_rank = _family_sequence_from_entries(annotated)
+    ordered = sorted(
+        annotated,
+        key=lambda item: (
+            item['movement_rank'],
+            family_rank.get(item['family'] or 'other', len(family_rank)),
+            item['original_index'],
+        ),
+    )
+    changed = [item.get('workout_id') for item in ordered] != [item.get('workout_id') for item in annotated]
+    primary_family = ordered[0]['family'] if ordered else 'other'
+    primary_rank = ordered[0]['movement_rank'] if ordered else 2
+    return [item['entry'] for item in ordered], {
+        'changed': changed,
+        'primary_family': primary_family,
+        'primary_movement_rank': primary_rank,
+    }
+
+
+def _optimize_workout_payload_layout(workout_payload: dict) -> tuple[dict, dict]:
+    normalized_payload = _normalize_workout_payload_plan(workout_payload)
+    if not isinstance(normalized_payload, dict):
+        return workout_payload, {'changed': False}
+
+    plan = normalized_payload.get('plan')
+    if not isinstance(plan, list):
+        return normalized_payload, {'changed': False}
+
+    workout_ids = []
+    normalized_blocks: list[dict] = []
+    for block in plan:
+        if not isinstance(block, dict) or 'subcategory' not in block:
+            continue
+        exercises = list(block.get('exercises') or [])
+        normalized_blocks.append({**block, 'exercises': exercises})
+        for entry in exercises:
+            workout_id = _coerce_optional_int(_exercise_entry_workout_id(entry))
+            if workout_id:
+                workout_ids.append(workout_id)
+
+    if not normalized_blocks:
+        return normalized_payload, {'changed': False}
+
+    metadata_map = _load_workout_layout_metadata(workout_ids)
+    optimized_blocks: list[dict] = []
+    block_layout_meta: list[dict] = []
+    changed_exercise_blocks = 0
+
+    for original_index, block in enumerate(normalized_blocks):
+        optimized_exercises, block_meta = _sort_workout_block_exercises_for_efficiency(
+            block.get('exercises') or [],
+            metadata_map,
+        )
+        if block_meta.get('changed'):
+            changed_exercise_blocks += 1
+        optimized_blocks.append({**block, 'exercises': optimized_exercises})
+        block_layout_meta.append(
+            {
+                'original_index': original_index,
+                'primary_family': block_meta.get('primary_family') or 'other',
+                'primary_movement_rank': int(block_meta.get('primary_movement_rank', 2)),
+            }
+        )
+
+    family_rank = _family_sequence_from_entries(block_layout_meta)
+    ordered_indexes = sorted(
+        range(len(optimized_blocks)),
+        key=lambda idx: (
+            block_layout_meta[idx]['primary_movement_rank'],
+            family_rank.get(block_layout_meta[idx]['primary_family'], len(family_rank)),
+            block_layout_meta[idx]['original_index'],
+        ),
+    )
+    block_order_changed = ordered_indexes != list(range(len(optimized_blocks)))
+    reordered_blocks = [optimized_blocks[idx] for idx in ordered_indexes]
+
+    updated_payload = dict(normalized_payload)
+    updated_payload['plan'] = reordered_blocks
+    grouped_families = [family for family in family_rank.keys() if family != 'other']
+    return updated_payload, {
+        'changed': bool(changed_exercise_blocks or block_order_changed),
+        'changed_exercise_blocks': changed_exercise_blocks,
+        'block_order_changed': block_order_changed,
+        'grouped_families': grouped_families,
+    }
 
 
 _PAYLOAD_UNSET = object()
@@ -7793,6 +10955,8 @@ def _load_trainer_session_payload_for_edit(trainer: dict, event_id: int):
                 SELECT id,
                        trainer_id,
                        client_id,
+                       start_time,
+                       end_time,
                        status,
                        session_payload,
                        session_category,
@@ -7800,7 +10964,6 @@ def _load_trainer_session_payload_for_edit(trainer: dict, event_id: int):
                   FROM trainer_schedule
                  WHERE id = %s
                 """,
-                (event_id,),
             )
             row = cursor.fetchone()
     if not row:
@@ -7864,6 +11027,10 @@ def _resolve_refresh_context(workout_payload, subcategory, workout_id):
 
     subcategory_key = (subcategory or "").strip().upper()
     use_cardio_override = allow_cardio_bodyweight and subcategory_key == 'CARDIO'
+    catalog_mode, catalog_gym_id = _resolve_catalog_scope(
+        mode=workout_payload.get('catalog_mode'),
+        gym_id=workout_payload.get('catalog_gym_id'),
+    )
 
     context = {
         'target_block': target_block,
@@ -7875,6 +11042,8 @@ def _resolve_refresh_context(workout_payload, subcategory, workout_id):
         'use_cardio_override': use_cardio_override,
         'restrict_barbell': restrict_barbell,
         'restrict_dumbbell': restrict_dumbbell,
+        'catalog_mode': catalog_mode,
+        'catalog_gym_id': catalog_gym_id,
     }
     return context, None
 
@@ -7923,6 +11092,10 @@ def _resolve_block_without_anchor(workout_payload, subcategory):
 
     subcategory_key = (subcategory or "").strip().upper()
     use_cardio_override = allow_cardio_bodyweight and subcategory_key == 'CARDIO'
+    catalog_mode, catalog_gym_id = _resolve_catalog_scope(
+        mode=workout_payload.get('catalog_mode'),
+        gym_id=workout_payload.get('catalog_gym_id'),
+    )
 
     context = {
         'target_block': target_block,
@@ -7933,6 +11106,8 @@ def _resolve_block_without_anchor(workout_payload, subcategory):
         'use_cardio_override': use_cardio_override,
         'restrict_barbell': restrict_barbell,
         'restrict_dumbbell': restrict_dumbbell,
+        'catalog_mode': catalog_mode,
+        'catalog_gym_id': catalog_gym_id,
     }
     return context, None
 
@@ -7950,6 +11125,8 @@ def _build_alternate_exercise_query(
     *,
     selected_workout_id=None,
     random_order=True,
+    catalog_mode=CATALOG_MODE_DEFAULT,
+    catalog_gym_id=None,
 ):
     query_parts = [
         """
@@ -7971,6 +11148,9 @@ def _build_alternate_exercise_query(
         """
     ]
     params = [target_user_id, subcategory, user_level]
+    catalog_clause, catalog_params = _catalog_filter_sql("w", catalog_mode, catalog_gym_id)
+    query_parts.append(f" AND {catalog_clause}")
+    params.extend(catalog_params)
     excluded_ids = sorted(existing_ids or [])
     if excluded_ids:
         placeholders = ','.join(['%s'] * len(excluded_ids))
@@ -8335,6 +11515,8 @@ def personal_list_workout_alternatives(workout_id):
         context['restrict_barbell'],
         context['restrict_dumbbell'],
         random_order=False,
+        catalog_mode=context['catalog_mode'],
+        catalog_gym_id=context['catalog_gym_id'],
     )
     with get_connection() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
@@ -8409,6 +11591,8 @@ def personal_refresh_workout_exercise(workout_id):
         context['restrict_dumbbell'],
         selected_workout_id=replacement_workout_id,
         random_order=replacement_workout_id is None,
+        catalog_mode=context['catalog_mode'],
+        catalog_gym_id=context['catalog_gym_id'],
     )
 
     with get_connection() as conn:
@@ -8510,6 +11694,8 @@ def personal_add_workout_exercise(workout_id):
         context['restrict_dumbbell'],
         selected_workout_id=replacement_workout_id,
         random_order=replacement_workout_id is None,
+        catalog_mode=context['catalog_mode'],
+        catalog_gym_id=context['catalog_gym_id'],
     )
 
     with get_connection() as conn:
@@ -8747,6 +11933,8 @@ def trainer_list_client_workout_alternates(client_id, workout_id):
         context['restrict_barbell'],
         context['restrict_dumbbell'],
         random_order=False,
+        catalog_mode=context['catalog_mode'],
+        catalog_gym_id=context['catalog_gym_id'],
     )
     with get_connection() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
@@ -8828,6 +12016,8 @@ def trainer_refresh_client_workout_exercise(client_id, workout_id):
         context['restrict_dumbbell'],
         selected_workout_id=replacement_workout_id,
         random_order=replacement_workout_id is None,
+        catalog_mode=context['catalog_mode'],
+        catalog_gym_id=context['catalog_gym_id'],
     )
 
     with get_connection() as conn:
@@ -8948,6 +12138,8 @@ def trainer_add_client_workout_exercise(client_id, workout_id):
         context['restrict_dumbbell'],
         selected_workout_id=replacement_workout_id,
         random_order=replacement_workout_id is None,
+        catalog_mode=context['catalog_mode'],
+        catalog_gym_id=context['catalog_gym_id'],
     )
 
     with get_connection() as conn:
@@ -9184,6 +12376,8 @@ def trainer_session_list_workout_alternates(event_id, workout_id):
         context['restrict_barbell'],
         context['restrict_dumbbell'],
         random_order=False,
+        catalog_mode=context['catalog_mode'],
+        catalog_gym_id=context['catalog_gym_id'],
     )
     with get_connection() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
@@ -9261,6 +12455,8 @@ def trainer_refresh_session_workout_exercise(event_id, workout_id):
         context['restrict_dumbbell'],
         selected_workout_id=replacement_workout_id,
         random_order=replacement_workout_id is None,
+        catalog_mode=context['catalog_mode'],
+        catalog_gym_id=context['catalog_gym_id'],
     )
 
     with get_connection() as conn:
@@ -9381,6 +12577,8 @@ def trainer_add_session_workout_exercise(event_id, workout_id):
         context['restrict_dumbbell'],
         selected_workout_id=replacement_workout_id,
         random_order=replacement_workout_id is None,
+        catalog_mode=context['catalog_mode'],
+        catalog_gym_id=context['catalog_gym_id'],
     )
 
     with get_connection() as conn:
@@ -9851,6 +13049,8 @@ def workout_session_view(session_id):
                 """
                 SELECT client_id,
                        trainer_id,
+                       start_time,
+                       end_time,
                        session_payload,
                        session_category,
                        session_completed_at
@@ -9908,7 +13108,15 @@ def workout_session_view(session_id):
     if isinstance(payload, dict) and payload.get('plan'):
         plan = payload.get('plan')
         base_category = payload.get('category') or row.get('session_category') or 'Workout Session'
-        formatted_plan = format_workout_for_response(base_category, plan)
+        formatted_plan = format_workout_for_response(
+            base_category,
+            plan,
+            viewer_user_id=_resolve_workout_payload_media_owner_user_id(
+                payload,
+                fallback_user_id=_coerce_optional_int(trainer_owner_id) or session.get('user_id'),
+            ),
+            viewer_gym_id=_coerce_optional_int(payload.get('catalog_gym_id')) if isinstance(payload, dict) else None,
+        )
         workouts = OrderedDict()
         for block in formatted_plan:
             subcategory = block.get('subcategory')
@@ -9952,17 +13160,12 @@ def workout_session_view(session_id):
     if not display_category:
         display_category = 'Workout Session'
 
-    completed_at = row.get('session_completed_at')
-    completion_label = None
-    if isinstance(completed_at, datetime):
-        localized_completed = completed_at
-        if localized_completed.tzinfo is None:
-            localized_completed = localized_completed.replace(tzinfo=timezone.utc)
-        try:
-            localized_completed = localized_completed.astimezone(tz_info)
-        except Exception:
-            pass
-        completion_label = localized_completed.strftime("%B %d, %Y at %I:%M %p")
+    completion_label = _format_workout_session_completion_label(
+        slot_start=row.get('start_time'),
+        slot_end=row.get('end_time'),
+        completed_at=row.get('session_completed_at'),
+        tz_info=tz_info,
+    )
 
     return render_template(
         'workout_details.html',
@@ -10042,19 +13245,33 @@ def exercise_history_data():
     except (TypeError, ValueError):
         return jsonify({'success': False, 'error': 'Invalid workout id'}), 400
 
-    client_id_raw = request.args.get('client_id')
-    client_id = None
     target_user_id = session['user_id']
+    target_user_id_raw = request.args.get('target_user_id') or request.args.get('client_id')
     trainer = None
 
-    if client_id_raw:
-        trainer = _require_trainer(session['user_id'])
-        if not trainer:
-            return jsonify({'success': False, 'error': 'Trainer access required'}), 403
+    if target_user_id_raw:
         try:
-            client_id = int(str(client_id_raw).strip())
+            requested_target_user_id = int(str(target_user_id_raw).strip())
         except (TypeError, ValueError):
-            return jsonify({'success': False, 'error': 'Invalid client id'}), 400
+            return jsonify({'success': False, 'error': 'Invalid target user id'}), 400
+
+        if requested_target_user_id != session['user_id']:
+            trainer = _require_trainer(session['user_id'])
+            if not trainer:
+                return jsonify({'success': False, 'error': 'Trainer access required'}), 403
+            with get_connection() as conn:
+                with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                    linked = _ensure_trainer_client_link(
+                        cursor,
+                        session['user_id'],
+                        requested_target_user_id,
+                        trainer.get('role'),
+                    )
+                    if not linked:
+                        return jsonify({'success': False, 'error': 'Access denied'}), 403
+            target_user_id = requested_target_user_id
+        else:
+            target_user_id = requested_target_user_id
 
     window_key = (request.args.get('window') or '').strip().lower()
     if window_key not in HISTORY_WINDOW_DELTAS:
@@ -10066,19 +13283,23 @@ def exercise_history_data():
     valid_window_sequence = ['90d', '1y', 'all']
     with get_connection() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
-            if client_id:
-                linked = _ensure_trainer_client_link(cursor, session['user_id'], client_id, trainer.get('role'))
-                if not linked:
-                    return jsonify({'success': False, 'error': 'Access denied'}), 403
-                target_user_id = client_id
-
             cursor.execute(
                 """
-                SELECT id, name, category
-                  FROM workouts
-                 WHERE id = %s
+                SELECT w.id,
+                       w.name,
+                       w.category,
+                       w.description,
+                       uep.max_weight,
+                       uep.max_reps,
+                       uep.notes,
+                       uep.updated_at
+                  FROM workouts w
+             LEFT JOIN user_exercise_progress uep
+                    ON uep.workout_id = w.id
+                   AND uep.user_id = %s
+                 WHERE w.id = %s
                 """,
-                (workout_id,),
+                (target_user_id, workout_id),
             )
             workout_row = cursor.fetchone()
             if not workout_row:
@@ -10194,12 +13415,20 @@ def exercise_history_data():
 
     summary = None
     if raw_history:
+        first_entry = raw_history[0]
         latest_entry = raw_history[-1]
         summary = {
+            'first_weight': first_entry.get('weight'),
+            'first_reps': first_entry.get('reps'),
+            'first_one_rm': first_entry.get('est_one_rm'),
+            'first_value': first_entry.get('display_value'),
+            'first_recorded_at': first_entry.get('recorded_at'),
             'latest_weight': latest_entry.get('weight'),
             'latest_reps': latest_entry.get('reps'),
             'latest_one_rm': latest_entry.get('est_one_rm'),
             'latest_value': latest_entry.get('display_value'),
+            'latest_recorded_at': latest_entry.get('recorded_at'),
+            'last_recorded_at': latest_entry.get('recorded_at'),
             'best_value': best_value,
         }
 
@@ -10226,6 +13455,11 @@ def exercise_history_data():
             'id': workout_id,
             'name': workout_row.get('name'),
             'category': workout_row.get('category'),
+            'description': workout_row.get('description'),
+            'max_weight': _coerce_float(workout_row.get('max_weight')),
+            'max_reps': int(round(_coerce_float(workout_row.get('max_reps')))) if _coerce_float(workout_row.get('max_reps')) is not None else None,
+            'notes': workout_row.get('notes') or '',
+            'updated_at': workout_row.get('updated_at').isoformat() if workout_row.get('updated_at') else None,
         },
         'is_cardio': is_cardio,
         'is_time_hold': is_time_hold,
@@ -10245,6 +13479,7 @@ def search():
     user_id = session['user_id']
     check_and_downgrade_trial(user_id)
     check_subscription_expiry(user_id)
+    catalog_mode, catalog_gym_id = _catalog_scope_for_user_id(user_id)
     query = request.args.get("q", "").strip()
 
     if not query:
@@ -10259,22 +13494,25 @@ def search():
     with get_connection() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
             name_clause, name_params = _build_name_search_clause(query)
+            catalog_clause, catalog_params = _catalog_filter_sql("w", catalog_mode, catalog_gym_id)
             cursor.execute(
                 f"""
                 SELECT w.id AS workout_id,
                        w.name,
                        w.description,
                        w.category,
+                       w.youtube_id,
                        w.image_exercise_start,
                        w.image_exercise_end,
                        uep.max_weight,
                        uep.max_reps,
                        uep.notes
                  FROM workouts w
-            LEFT JOIN user_exercise_progress uep
+             LEFT JOIN user_exercise_progress uep
                    ON w.id = uep.workout_id
                   AND uep.user_id = %s
                 WHERE {name_clause}
+                  AND {catalog_clause}
                  ORDER BY CASE w.movement_type
                               WHEN 'compound' THEN 1
                               WHEN 'accessory' THEN 2
@@ -10282,9 +13520,14 @@ def search():
                           END,
                           w.name
                 """,
-                (user_id, *name_params),
+                (user_id, *name_params, *catalog_params),
             )
             results = cursor.fetchall() or []
+    results = _overlay_resolved_media_list(
+        results,
+        viewer_user_id=user_id,
+        viewer_gym_id=_viewer_media_gym_id_for_user(user_id),
+    )
 
     return render_template(
         "search_results.html",
@@ -10913,6 +14156,10 @@ def admin_users():
     if not is_admin(user_id):
         return "Access denied", 403
 
+    can_review_gym_requests = _is_fitbaseai_superadmin(user_id)
+    pending_gym_requests = []
+    recent_reviewed_gym_requests = []
+
     with get_connection() as conn:
         with conn.cursor() as cursor:
             search_term = request.args.get('search', '')
@@ -10947,13 +14194,281 @@ def admin_users():
             total_users = counts_row[0] or 0
             total_workouts_completed = counts_row[1] or 0
 
+        if can_review_gym_requests:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as admin_cursor:
+                admin_cursor.execute(
+                    """
+                    SELECT gr.id,
+                           gr.submitted_name,
+                           gr.submitted_city,
+                           gr.submitted_state,
+                           gr.submitted_country,
+                           gr.submitted_address_line1,
+                           gr.submitted_postal_code,
+                           gr.submitted_address_line2,
+                           gr.agent_recommendation,
+                           gr.agent_confidence,
+                           gr.agent_summary,
+                           gr.agent_evidence_json,
+                           gr.created_at,
+                           requester.username AS requested_by_username,
+                           requester.name AS requested_by_name,
+                           requester.last_name AS requested_by_last_name
+                      FROM gym_requests gr
+                 LEFT JOIN users requester
+                        ON requester.id = gr.requested_by_user_id
+                     WHERE gr.status = %s
+                     ORDER BY gr.created_at ASC
+                    """,
+                    (GYM_REQUEST_STATUS_PENDING,),
+                )
+                pending_gym_requests = admin_cursor.fetchall() or []
+
+                admin_cursor.execute(
+                    """
+                    SELECT gr.id,
+                           gr.submitted_name,
+                           gr.submitted_city,
+                           gr.submitted_state,
+                           gr.submitted_country,
+                           gr.status,
+                           gr.review_notes,
+                           gr.reviewed_at,
+                           reviewer.username AS reviewed_by_username
+                      FROM gym_requests gr
+                 LEFT JOIN users reviewer
+                        ON reviewer.id = gr.reviewed_by_user_id
+                     WHERE gr.status IN (%s, %s)
+                     ORDER BY gr.reviewed_at DESC NULLS LAST, gr.created_at DESC
+                     LIMIT 8
+                    """,
+                    (GYM_REQUEST_STATUS_APPROVED, GYM_REQUEST_STATUS_REJECTED),
+                )
+                recent_reviewed_gym_requests = admin_cursor.fetchall() or []
+
     return render_template(
         'admin_dashboard.html',
         users=users,
         search_term=search_term,
         total_users=total_users,
-        total_workouts_completed=total_workouts_completed
+        total_workouts_completed=total_workouts_completed,
+        agent_admin_summary=get_agent_admin_summary(),
+        can_review_gym_requests=can_review_gym_requests,
+        pending_gym_requests=pending_gym_requests,
+        recent_reviewed_gym_requests=recent_reviewed_gym_requests,
     )
+
+
+@app.post('/admin/gym_requests/<int:request_id>/approve')
+@login_required
+def admin_approve_gym_request(request_id):
+    reviewer_id = session.get('user_id')
+    if not _is_fitbaseai_superadmin(reviewer_id):
+        return "Access denied", 403
+
+    review_notes = (request.form.get('review_notes') or '').strip() or None
+    try:
+        request_row = None
+        gym_id = None
+        with get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                request_row, gym_id = _approve_gym_request(
+                    cursor,
+                    request_id=request_id,
+                    reviewer_id=reviewer_id,
+                    review_notes=review_notes,
+                )
+            conn.commit()
+        try:
+            _notify_requester_of_gym_request_review(
+                request_row=request_row or {},
+                approved=True,
+                review_notes=review_notes,
+            )
+        except Exception:
+            logging.exception("Requester gym approval notification failed for request %s", request_id)
+        flash(
+            f"Approved gym request for {request_row.get('submitted_name')} and published it as gym #{gym_id}.",
+            "success",
+        )
+    except ValueError as exc:
+        flash(str(exc), "warning")
+    except Exception:
+        logging.exception("Admin gym request approval failed for request %s", request_id)
+        flash("The gym request could not be approved.", "danger")
+    return redirect(f"{url_for('admin_users')}#admin-gym-requests")
+
+
+@app.post('/admin/gym_requests/<int:request_id>/reject')
+@login_required
+def admin_reject_gym_request(request_id):
+    reviewer_id = session.get('user_id')
+    if not _is_fitbaseai_superadmin(reviewer_id):
+        return "Access denied", 403
+
+    review_notes = (request.form.get('review_notes') or '').strip() or None
+    try:
+        request_row = None
+        with get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                request_row = _reject_gym_request(
+                    cursor,
+                    request_id=request_id,
+                    reviewer_id=reviewer_id,
+                    review_notes=review_notes,
+                )
+            conn.commit()
+        try:
+            _notify_requester_of_gym_request_review(
+                request_row=request_row or {},
+                approved=False,
+                review_notes=review_notes or "Rejected during manual review.",
+            )
+        except Exception:
+            logging.exception("Requester gym rejection notification failed for request %s", request_id)
+        flash(f"Rejected gym request for {request_row.get('submitted_name')}.", "success")
+    except ValueError as exc:
+        flash(str(exc), "warning")
+    except Exception:
+        logging.exception("Admin gym request rejection failed for request %s", request_id)
+        flash("The gym request could not be rejected.", "danger")
+    return redirect(f"{url_for('admin_users')}#admin-gym-requests")
+
+
+@app.post('/agent/chat')
+@login_required
+def agent_chat():
+    if not _current_user_can_access_fitbaseai(session.get('user_id')):
+        return jsonify({'success': False, 'error': 'FitBaseAI is currently available only to Pro trainer and admin accounts.'}), 403
+    payload = request.get_json(silent=True) or {}
+    message_text = (payload.get('message') or '').strip()
+    if not message_text:
+        return jsonify({'success': False, 'error': 'Message is required.'}), 400
+
+    try:
+        result = chat_with_fitbaseai(
+            user_id=session['user_id'],
+            message_text=message_text,
+            page_context=payload.get('page_context') or {},
+            thread_id=payload.get('thread_id'),
+        )
+    except ValueError as exc:
+        return jsonify({'success': False, 'error': str(exc)}), 400
+    except Exception:
+        current_app.logger.exception("Agent chat route failed")
+        return jsonify({'success': False, 'error': 'FitBaseAI could not complete that request.'}), 500
+
+    return jsonify({'success': True, **result})
+
+
+@app.get('/agent/thread/latest')
+@login_required
+def agent_thread_latest():
+    if not _current_user_can_access_fitbaseai(session.get('user_id')):
+        return jsonify({'success': False, 'error': 'FitBaseAI is currently available only to Pro trainer and admin accounts.'}), 403
+    try:
+        latest_thread = get_agent_latest_thread(session['user_id'])
+        if not latest_thread:
+            return jsonify({'success': True, 'thread_id': None, 'thread': None, 'messages': []})
+        messages = get_agent_thread_messages(session['user_id'], latest_thread['id'])
+    except Exception:
+        current_app.logger.exception("Agent latest thread lookup failed")
+        return jsonify({'success': False, 'error': 'Unable to load your latest FitBaseAI thread.'}), 500
+    return jsonify({
+        'success': True,
+        'thread_id': latest_thread['id'],
+        'thread': latest_thread,
+        'messages': messages,
+    })
+
+
+@app.get('/agent/thread/<thread_id>')
+@login_required
+def agent_thread(thread_id):
+    if not _current_user_can_access_fitbaseai(session.get('user_id')):
+        return jsonify({'success': False, 'error': 'FitBaseAI is currently available only to Pro trainer and admin accounts.'}), 403
+    try:
+        messages = get_agent_thread_messages(session['user_id'], thread_id)
+    except Exception:
+        current_app.logger.exception("Agent thread lookup failed")
+        return jsonify({'success': False, 'error': 'Unable to load that FitBaseAI thread.'}), 500
+    return jsonify({'success': True, 'thread_id': thread_id, 'messages': messages})
+
+
+@app.post('/agent/history/clear')
+@login_required
+def agent_history_clear():
+    if not _current_user_can_access_fitbaseai(session.get('user_id')):
+        return jsonify({'success': False, 'error': 'FitBaseAI is currently available only to Pro trainer and admin accounts.'}), 403
+    try:
+        result = clear_agent_history(session['user_id'])
+    except Exception:
+        current_app.logger.exception("Agent history clear failed")
+        return jsonify({'success': False, 'error': 'Unable to clear your FitBaseAI history.'}), 500
+    return jsonify({'success': True, **result})
+
+
+@app.post('/agent/actions/<action_id>/confirm')
+@login_required
+def agent_action_confirm(action_id):
+    if not _current_user_can_access_fitbaseai(session.get('user_id')):
+        return jsonify({'success': False, 'error': 'FitBaseAI is currently available only to Pro trainer and admin accounts.'}), 403
+    try:
+        result = confirm_agent_action(user_id=session['user_id'], action_id=action_id)
+    except ValueError as exc:
+        return jsonify({'success': False, 'error': str(exc)}), 400
+    except Exception:
+        current_app.logger.exception("Agent action confirm failed")
+        return jsonify({'success': False, 'error': 'That FitBaseAI action could not be completed.'}), 500
+    return jsonify(result)
+
+
+@app.post('/agent/actions/<action_id>/cancel')
+@login_required
+def agent_action_cancel(action_id):
+    if not _current_user_can_access_fitbaseai(session.get('user_id')):
+        return jsonify({'success': False, 'error': 'FitBaseAI is currently available only to Pro trainer and admin accounts.'}), 403
+    try:
+        result = cancel_agent_action(user_id=session['user_id'], action_id=action_id)
+    except ValueError as exc:
+        return jsonify({'success': False, 'error': str(exc)}), 400
+    except Exception:
+        current_app.logger.exception("Agent action cancel failed")
+        return jsonify({'success': False, 'error': 'That FitBaseAI action could not be cancelled.'}), 500
+    return jsonify(result)
+
+
+@app.post('/admin/agent/manuscript')
+@login_required
+def admin_agent_manuscript_upload():
+    if not is_admin(session['user_id']):
+        return jsonify({'success': False, 'error': 'Admin access required.'}), 403
+    document = request.files.get('document')
+    if not document:
+        return jsonify({'success': False, 'error': 'Document upload is required.'}), 400
+    try:
+        result = ingest_manuscript_upload(user_id=session['user_id'], file_storage=document)
+    except ValueError as exc:
+        return jsonify({'success': False, 'error': str(exc)}), 400
+    except Exception:
+        current_app.logger.exception("Agent manuscript upload failed")
+        return jsonify({'success': False, 'error': 'That manuscript upload could not be processed.'}), 500
+    flash(f"Uploaded manuscript content: {result.get('title')}.", "success")
+    return jsonify({'success': True, 'result': result})
+
+
+@app.post('/admin/agent/research/sync')
+@login_required
+def admin_agent_research_sync():
+    if not is_admin(session['user_id']):
+        return jsonify({'success': False, 'error': 'Admin access required.'}), 403
+    try:
+        result = run_research_sync(user_id=session['user_id'])
+    except Exception:
+        current_app.logger.exception("Agent research sync failed")
+        return jsonify({'success': False, 'error': 'The FitBaseAI research sync failed.'}), 500
+    flash("FitBaseAI research sync completed.", "success")
+    return jsonify({'success': True, 'result': result})
 
 
 @app.context_processor
@@ -10973,6 +14488,15 @@ def admin_user_profile(user_id):
     if request.method == 'POST':
         username_clean = (request.form.get('username') or '').strip() or None
         email_clean = (request.form.get('email') or '').strip().lower() or None
+        trial_end_date_raw = (request.form.get('trial_end_date') or '').strip()
+        trial_end_date_value = None
+
+        if trial_end_date_raw:
+            try:
+                trial_end_date_value = datetime.strptime(trial_end_date_raw, '%Y-%m-%d').date()
+            except ValueError:
+                flash("Enter a valid trial end date.", "danger")
+                return redirect(url_for('admin_user_profile', user_id=user_id))
 
         goals = request.form.getlist('fitness_goals')
         fitness_goals_str = ", ".join(g.title().strip() for g in goals) or None
@@ -11034,6 +14558,28 @@ def admin_user_profile(user_id):
 
         with get_connection() as conn:
             with conn.cursor() as cursor:
+                cursor.execute(
+                    "SELECT subscription_type, trial_end_date FROM users WHERE id = %s FOR UPDATE",
+                    (user_id,),
+                )
+                existing_user = cursor.fetchone()
+                if not existing_user:
+                    return "User not found", 404
+
+                current_subscription_type = (existing_user[0] or '').strip().lower()
+                current_trial_end_date = existing_user[1]
+                requested_subscription_type = (data['subscription_type'] or '').strip().lower()
+                should_clear_trial_end_date = (
+                    current_subscription_type == 'free'
+                    and requested_subscription_type in {'premium', 'pro'}
+                )
+                trial_date_changed_by_admin = (trial_end_date_value != current_trial_end_date)
+                effective_trial_end_date = (
+                    None
+                    if should_clear_trial_end_date and not trial_date_changed_by_admin
+                    else trial_end_date_value
+                )
+
                 update_query = """
                     UPDATE users SET
                         username = %s,
@@ -11059,7 +14605,8 @@ def admin_user_profile(user_id):
                         injury_free_since = CASE WHEN %s THEN COALESCE(injury_free_since, CURRENT_DATE) ELSE NULL END,
                         workouts_completed = %s,
                         sessions_remaining = %s,
-                        trainer_id = %s
+                        trainer_id = %s,
+                        trial_end_date = %s
                     WHERE id = %s
                 """
                 try:
@@ -11071,7 +14618,8 @@ def admin_user_profile(user_id):
                         data['exercise_history'], fitness_goals_str, data['injury'],
                         data['injury_details'], data['cardio_restriction'], data['commitment'], data['additional_notes'],
                         is_injury_free,
-                        data['workouts_completed'], data['sessions_remaining'], trainer_id_val, user_id
+                        data['workouts_completed'], data['sessions_remaining'], trainer_id_val,
+                        effective_trial_end_date, user_id
                     ))
                     conn.commit()
                     flash("User profile updated successfully.", "success")
@@ -11609,6 +15157,8 @@ def inject_global_context():
         "current_date": current_date,
         "user": user,
         "user_has_schedule_access": _user_has_schedule_access(user),
+        "fitbaseai_enabled": _fitbaseai_access_enabled(user),
+        "fitbaseai_home_orb_visible": _fitbaseai_home_orb_visible(user),
     }
 
 

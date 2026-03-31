@@ -183,11 +183,24 @@ Edit User Profile
             </div>
             <div class="col-md-6">
               <label class="form-label">Subscription</label>
-              <select class="form-select" name="subscription_type">
+              <select class="form-select"
+                      id="subscription-type"
+                      name="subscription_type"
+                      data-original-subscription="{{ (user.subscription_type or 'free')|lower }}">
                 <option value="free" {% if user.subscription_type == 'free' %}selected{% endif %}>Free</option>
                 <option value="premium" {% if user.subscription_type == 'premium' %}selected{% endif %}>Premium</option>
                 <option value="pro" {% if user.subscription_type == 'pro' %}selected{% endif %}>Pro</option>
               </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label" for="trial-end-date">Trial End Date</label>
+              <input type="date"
+                     class="form-control"
+                     id="trial-end-date"
+                     name="trial_end_date"
+                     value="{{ user.trial_end_date.isoformat() if user.trial_end_date else '' }}"
+                     data-original-value="{{ user.trial_end_date.isoformat() if user.trial_end_date else '' }}">
+              <div class="form-text">Leave blank to clear.</div>
             </div>
             <div class="col-md-6">
               <label class="form-label">Assigned Trainer</label>
@@ -436,6 +449,8 @@ Edit User Profile
 document.addEventListener('DOMContentLoaded', function () {
   const goalCheckboxes = document.querySelectorAll('.goal-checkbox');
   const goalWarning = document.getElementById('goal-warning');
+  const subscriptionSelect = document.getElementById('subscription-type');
+  const trialEndDateInput = document.getElementById('trial-end-date');
 
   goalCheckboxes.forEach((cb) => {
     cb.addEventListener('change', () => {
@@ -450,6 +465,18 @@ document.addEventListener('DOMContentLoaded', function () {
         goalWarning.style.display = 'none';
       }
     });
+  });
+
+  subscriptionSelect?.addEventListener('change', () => {
+    if (!trialEndDateInput) return;
+    const originalSubscription = String(subscriptionSelect.dataset.originalSubscription || '').trim().toLowerCase();
+    const originalTrialEndDate = trialEndDateInput.dataset.originalValue || '';
+    const nextSubscription = String(subscriptionSelect.value || '').trim().toLowerCase();
+    const upgradingFromFree = originalSubscription === 'free' && (nextSubscription === 'premium' || nextSubscription === 'pro');
+
+    if (upgradingFromFree && trialEndDateInput.value === originalTrialEndDate) {
+      trialEndDateInput.value = '';
+    }
   });
 
   const injuryFields = document.getElementById('injury-fields');

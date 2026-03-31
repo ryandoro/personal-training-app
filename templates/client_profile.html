@@ -627,7 +627,7 @@
             {% set session_mode = session_selected %}
             {% set workout_view = session_workout if session_mode else active_workout %}
             {% set can_complete_session = (session_mode and session_workout and session_workout.plan) or ((not session_mode) and active_workout and active_workout.plan) %}
-            <div id="active-workout-card" class="card border-0" style="border-radius: 20px;" tabindex="-1">
+            <div id="active-workout-card" class="client-profile-active-card border-0" style="border-radius: 20px;" tabindex="-1">
                 {% if scheduled_sessions %}
                     <div class="workout-view-toggle-wrapper">
                         <div class="calendar-view-toggle workout-view-toggle btn-group w-100" role="group" aria-label="Workout view mode">
@@ -1153,6 +1153,11 @@
                                 allow="autoplay; encrypted-media; picture-in-picture"
                                 allowfullscreen
                                 loading="lazy"></iframe>
+                        <video id="exerciseVideoModalVideo"
+                               class="exercise-video-modal__frame d-none"
+                               controls
+                               playsinline
+                               preload="metadata"></video>
                     </div>
                 </div>
             </div>
@@ -1331,7 +1336,9 @@
         initialized: false,
         modal: null,
         frame: null,
-        title: null
+        video: null,
+        title: null,
+        activeMediaType: null
     };
     const workoutToggleContainer = document.getElementById('client-workout-toggle-container');
     const workoutCollapseToggle = document.getElementById('client-workout-collapse-toggle');
@@ -3020,8 +3027,9 @@
         const state = exerciseVideoModalState;
         state.modal = document.getElementById('exerciseVideoModal');
         state.frame = document.getElementById('exerciseVideoModalFrame');
+        state.video = document.getElementById('exerciseVideoModalVideo');
         state.title = document.getElementById('exerciseVideoModalTitle');
-        if (!state.modal || !state.frame) return;
+        if (!state.modal || !state.frame || !state.video) return;
         if (state.initialized) return;
         state.initialized = true;
 
@@ -3029,15 +3037,63 @@
             const trigger = event.target.closest('.exercise-video-launch');
             if (!trigger) return;
             const youtubeId = trigger.dataset.youtubeId || '';
+            const videoUrl = trigger.dataset.videoUrl || '';
+            const posterUrl = trigger.dataset.videoPosterUrl || '';
             const exerciseName = (trigger.dataset.exerciseName || '').trim();
-            state.frame.src = buildExerciseVideoEmbedUrl(youtubeId);
+            if (youtubeId) {
+                state.activeMediaType = 'youtube';
+                state.frame.classList.remove('d-none');
+                state.video.classList.add('d-none');
+                state.video.pause();
+                state.video.removeAttribute('src');
+                state.video.removeAttribute('poster');
+                state.video.load();
+                state.frame.src = buildExerciseVideoEmbedUrl(youtubeId);
+            } else if (videoUrl) {
+                state.activeMediaType = 'video';
+                state.frame.classList.add('d-none');
+                state.frame.src = '';
+                state.video.classList.remove('d-none');
+                state.video.src = videoUrl;
+                if (posterUrl) {
+                    state.video.poster = posterUrl;
+                } else {
+                    state.video.removeAttribute('poster');
+                }
+                state.video.load();
+            } else {
+                state.activeMediaType = null;
+                state.frame.src = '';
+                state.frame.classList.add('d-none');
+                state.video.pause();
+                state.video.removeAttribute('src');
+                state.video.removeAttribute('poster');
+                state.video.classList.add('d-none');
+                state.video.load();
+            }
             if (state.title) {
                 state.title.textContent = exerciseName ? `${exerciseName} Demo` : 'Exercise Demo';
             }
         });
 
+        state.modal.addEventListener('shown.bs.modal', () => {
+            if (state.activeMediaType === 'video' && state.video) {
+                const playAttempt = state.video.play();
+                if (playAttempt && typeof playAttempt.catch === 'function') {
+                    playAttempt.catch(() => {});
+                }
+            }
+        });
+
         state.modal.addEventListener('hidden.bs.modal', () => {
             state.frame.src = '';
+            state.frame.classList.remove('d-none');
+            state.video.pause();
+            state.video.removeAttribute('src');
+            state.video.removeAttribute('poster');
+            state.video.classList.add('d-none');
+            state.video.load();
+            state.activeMediaType = null;
             if (state.title) {
                 state.title.textContent = 'Exercise Demo';
             }
@@ -3796,6 +3852,13 @@
             const newUrl = query ? `${window.location.pathname}?${query}${window.location.hash}` : `${window.location.pathname}${window.location.hash}`;
             history.replaceState({}, document.title, newUrl);
         }
+
+        window.addEventListener('fitbaseai:action-completed', (event) => {
+            const actionResult = event.detail || {};
+            const actionType = String(actionResult.action_type || '').toLowerCase();
+            if (actionType !== 'optimize_workout_layout') return;
+            window.location.reload();
+        });
     });
 })();
 </script>

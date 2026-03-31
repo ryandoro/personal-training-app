@@ -53,6 +53,212 @@
                 </div>
             </div>
 
+            <section class="agent-admin-card mt-4" aria-label="FitBaseAI knowledge controls">
+                <div class="agent-admin-card__header">
+                    <div>
+                        <p class="agent-admin-card__eyebrow mb-1">FitBaseAI</p>
+                        <h3 class="agent-admin-card__title mb-1">Knowledge and budget controls</h3>
+                        <p class="agent-admin-card__copy mb-0">
+                            Upload manuscript material, sync weekly research, and watch the current month’s API budget.
+                        </p>
+                    </div>
+                    <div class="agent-admin-card__budget">
+                        <span class="agent-admin-card__budget-label">Monthly spend</span>
+                        <span class="agent-admin-card__budget-value">
+                            ${{ '%.2f'|format(agent_admin_summary.budget.spent_usd) }}
+                            / ${{ '%.2f'|format(agent_admin_summary.budget.budget_usd) }}
+                        </span>
+                    </div>
+                </div>
+
+                <div class="agent-admin-card__stats">
+                    <div class="agent-admin-card__stat">
+                        <span class="agent-admin-card__stat-label">Manuscript docs</span>
+                        <span class="agent-admin-card__stat-value">{{ agent_admin_summary.manuscript_count }}</span>
+                    </div>
+                    <div class="agent-admin-card__stat">
+                        <span class="agent-admin-card__stat-label">Research docs</span>
+                        <span class="agent-admin-card__stat-value">{{ agent_admin_summary.research_count }}</span>
+                    </div>
+                    <div class="agent-admin-card__stat">
+                        <span class="agent-admin-card__stat-label">Latest sync</span>
+                        <span class="agent-admin-card__stat-value">
+                            {{ agent_admin_summary.latest_sync.status or 'Not run yet' }}
+                        </span>
+                    </div>
+                </div>
+
+                <div class="agent-admin-card__actions">
+                    <form class="agent-admin-card__form" data-fitbase-manuscript-form enctype="multipart/form-data">
+                        <label class="agent-admin-card__label" for="fitbase-manuscript-upload">Upload manuscript text</label>
+                        <input id="fitbase-manuscript-upload"
+                               class="form-control"
+                               type="file"
+                               name="document"
+                               accept=".txt,.md,.markdown,.docx,.pdf"
+                               required>
+                        <button type="submit" class="btn btn-brand">Upload to FitBaseAI</button>
+                    </form>
+
+                    <form class="agent-admin-card__form" data-fitbase-research-sync-form>
+                        <label class="agent-admin-card__label">Weekly research corpus</label>
+                        <p class="agent-admin-card__hint mb-0">
+                            Pull the latest free-source Tier 1 and Tier 2 research into the local FitBaseAI corpus.
+                        </p>
+                        <button type="submit" class="btn btn-brand-outline">Run Research Sync</button>
+                    </form>
+                </div>
+
+                <div class="agent-admin-card__status" data-fitbase-admin-status aria-live="polite"></div>
+            </section>
+
+            {% if can_review_gym_requests %}
+            <section id="admin-gym-requests" class="surface-section surface-section--flat mt-4" aria-label="Gym review queue">
+                <div class="surface-section__header">
+                    <div class="surface-section__icon">
+                        <i class="bi bi-building-check"></i>
+                    </div>
+                    <div>
+                        <h5 class="surface-section__title mb-1">Gym review queue</h5>
+                        <p class="surface-section__subtitle mb-0">
+                            New gyms stay pending until you approve them into the verified directory.
+                        </p>
+                    </div>
+                </div>
+
+                {% if pending_gym_requests %}
+                <div class="d-flex flex-column gap-3">
+                    {% for gym_request in pending_gym_requests %}
+                    <div class="card border-0 shadow-sm">
+                        <div class="card-body">
+                            <div class="d-flex flex-column flex-lg-row justify-content-between gap-3">
+                                <div class="flex-grow-1">
+                                    <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                                        <span class="badge bg-warning text-dark">Pending Review</span>
+                                        <span class="badge bg-light text-dark border">
+                                            {{ gym_request.created_at.strftime('%b %-d, %Y') if gym_request.created_at else 'Recently submitted' }}
+                                        </span>
+                                    </div>
+                                    <h5 class="mb-1">{{ gym_request.submitted_name }}</h5>
+                                    <p class="text-muted mb-2">
+                                        {{ gym_request.submitted_city or 'City missing' }},
+                                        {{ gym_request.submitted_state or 'State missing' }},
+                                        {{ gym_request.submitted_country or 'Country missing' }}
+                                    </p>
+                                    {% if gym_request.submitted_address_line1 or gym_request.submitted_postal_code or gym_request.submitted_address_line2 %}
+                                    <p class="mb-2 text-muted">
+                                        {{ gym_request.submitted_address_line1 or '' }}
+                                        {% if gym_request.submitted_postal_code %}<span class="ms-1">{{ gym_request.submitted_postal_code }}</span>{% endif %}
+                                        {% if gym_request.submitted_address_line2 %}<span class="ms-1">{{ gym_request.submitted_address_line2 }}</span>{% endif %}
+                                    </p>
+                                    {% endif %}
+                                    <p class="mb-2">
+                                        Requested by:
+                                        <strong>
+                                            {% if gym_request.requested_by_name or gym_request.requested_by_last_name %}
+                                                {{ gym_request.requested_by_name or '' }} {{ gym_request.requested_by_last_name or '' }}
+                                            {% else %}
+                                                @{{ gym_request.requested_by_username or 'unknown' }}
+                                            {% endif %}
+                                        </strong>
+                                    </p>
+                                    <div class="p-3 rounded-3 border bg-light">
+                                        <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                                            <span class="badge bg-primary">Automated Review</span>
+                                            <span class="badge bg-light text-dark border">{{ gym_request.agent_recommendation or 'review_required' }}</span>
+                                            {% if gym_request.agent_confidence is not none %}
+                                            <span class="badge bg-light text-dark border">
+                                                Confidence {{ '%.0f'|format((gym_request.agent_confidence or 0) * 100) }}%
+                                            </span>
+                                            {% endif %}
+                                        </div>
+                                        <p class="mb-2">{{ gym_request.agent_summary or 'Manual review required.' }}</p>
+                                        {% set evidence = gym_request.agent_evidence_json or {} %}
+                                        <div class="small text-muted">
+                                            {% if evidence.similar_verified_gyms %}
+                                            <div>Possible verified duplicates: {{ evidence.similar_verified_gyms|length }}</div>
+                                            {% endif %}
+                                            {% if evidence.similar_pending_requests %}
+                                            <div>Possible pending duplicates: {{ evidence.similar_pending_requests|length }}</div>
+                                            {% endif %}
+                                            {% if evidence.missing_fields %}
+                                            <div>Missing fields: {{ evidence.missing_fields|join(', ') }}</div>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="flex-shrink-0" style="min-width: 320px;">
+                                    <form method="POST" class="d-flex flex-column gap-2">
+                                        <label class="form-label fw-semibold mb-0" for="review-notes-{{ gym_request.id }}">Review Notes</label>
+                                        <textarea id="review-notes-{{ gym_request.id }}"
+                                                  name="review_notes"
+                                                  class="form-control"
+                                                  rows="4"
+                                                  placeholder="Optional approval or rejection notes."></textarea>
+                                        <div class="d-flex flex-column flex-sm-row gap-2 justify-content-end">
+                                            <button type="submit"
+                                                    class="btn btn-outline-danger"
+                                                    formaction="{{ url_for('admin_reject_gym_request', request_id=gym_request.id) }}">
+                                                Reject
+                                            </button>
+                                            <button type="submit"
+                                                    class="btn btn-brand"
+                                                    formaction="{{ url_for('admin_approve_gym_request', request_id=gym_request.id) }}">
+                                                Approve Gym
+                                            </button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="alert alert-light border mb-0">
+                    No pending gym requests right now.
+                </div>
+                {% endif %}
+
+                {% if recent_reviewed_gym_requests %}
+                <div class="mt-4">
+                    <h6 class="mb-3">Recently reviewed</h6>
+                    <div class="table-responsive">
+                        <table class="table align-middle mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Gym</th>
+                                    <th>Status</th>
+                                    <th>Reviewed By</th>
+                                    <th>Reviewed At</th>
+                                    <th>Notes</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for gym_request in recent_reviewed_gym_requests %}
+                                <tr>
+                                    <td>
+                                        <div class="fw-semibold">{{ gym_request.submitted_name }}</div>
+                                        <div class="small text-muted">{{ gym_request.submitted_city or 'City missing' }}, {{ gym_request.submitted_state or 'State missing' }}</div>
+                                    </td>
+                                    <td>
+                                        <span class="badge {% if gym_request.status == 'approved' %}bg-success{% else %}bg-danger{% endif %}">
+                                            {{ gym_request.status|capitalize }}
+                                        </span>
+                                    </td>
+                                    <td>{{ gym_request.reviewed_by_username or 'system' }}</td>
+                                    <td>{{ gym_request.reviewed_at.strftime('%b %-d, %Y %I:%M %p') if gym_request.reviewed_at else '—' }}</td>
+                                    <td class="small text-muted">{{ gym_request.review_notes or '—' }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                {% endif %}
+            </section>
+            {% endif %}
+
             {% with messages = get_flashed_messages(with_categories=true) %}
                 {% if messages %}
                     {% for category, message in messages %}

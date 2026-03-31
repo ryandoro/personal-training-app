@@ -1,7 +1,7 @@
 {% extends "layout.html" %}
 
 {% block title %}
-    Trainer Schedule
+    Trainer Dashboard
 {% endblock %}
 
 {% block content %}
@@ -21,7 +21,7 @@
                     <div class="dashboard-snapshot__icon dashboard-snapshot__icon--hero mb-3" aria-hidden="true">
                         <i class="bi bi-people-fill"></i>
                     </div>
-                    <h2 class="trainer-dashboard-hero__title mb-3">Trainer Schedule</h2>
+                    <h2 class="trainer-dashboard-hero__title mb-3">Trainer Dashboard</h2>
                 <p class="trainer-dashboard-hero__subtitle mb-3">
                     Manage your clients, upcoming sessions, and roster health.
                 </p>
@@ -2410,6 +2410,38 @@ function applyWeekPicker(event) {
                 showDashboardToast('Unable to load schedule.', 'danger');
             });
     }
+
+    function handleFitBaseAIDashboardAction(actionResult) {
+        if (!actionResult || !actionResult.action_type) return;
+        const actionType = String(actionResult.action_type || '').toLowerCase();
+        const scheduleActions = new Set([
+            'book_session',
+            'book_and_assign_workout',
+            'swap_sessions',
+            'reschedule_session',
+            'cancel_session',
+            'complete_session',
+            'set_session_booked',
+            'delete_session',
+            'assign_workout',
+            'block_time_off'
+        ]);
+        const clientId = Number(actionResult.client_id || actionResult.result?.client_id || 0);
+        if (clientId && actionResult.client_counts) {
+            syncClientSessionCounts(clientId, actionResult.client_counts);
+        }
+        const trainerCompletedDelta = Number(actionResult.trainer_completed_delta || 0);
+        if (trainerCompletedDelta) {
+            adjustTrainerSessionsCompleted(trainerCompletedDelta);
+        }
+        if (scheduleActions.has(actionType)) {
+            fetchEvents();
+        }
+    }
+
+    window.addEventListener('fitbaseai:action-completed', (event) => {
+        handleFitBaseAIDashboardAction(event.detail || {});
+    });
 
     function selectClient(button) {
         bookButtons.forEach(btn => btn.classList.remove('active'));
