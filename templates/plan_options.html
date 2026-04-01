@@ -16,7 +16,7 @@
                 </p>
             {% else %}
                 <p class="surface-hero__subtitle">
-                    Start as a trainer (Pro) to manage clients, or choose Premium for solo training. Every new account unlocks a free 14-day trial after the questionnaire.
+                    Start as a trainer (Pro) to manage clients, or choose Premium for solo training. Every new account unlocks a free {{ free_trial_days }}-day trial after the questionnaire.
                 </p>
             {% endif %}
         </div>
@@ -44,7 +44,7 @@
                                 </div>
                             {% else %}
                                 <div class="plan-price-panel">
-                                    <p class="plan-meta__eyebrow mb-1">14-day free trial</p>
+                                    <p class="plan-meta__eyebrow mb-1">{{ free_trial_days }}-day free trial</p>
                                     <p class="plan-meta__label mb-1">Continue plan for</p>
                                     <p class="plan-price h2 fw-bold mb-0">$14.99<span>/month</span></p>
                                 </div>
@@ -93,7 +93,7 @@
                                 </div>
                             {% else %}
                                 <div class="plan-price-panel">
-                                    <p class="plan-meta__eyebrow mb-1">14-day free trial</p>
+                                    <p class="plan-meta__eyebrow mb-1">{{ free_trial_days }}-day free trial</p>
                                     <p class="plan-meta__label mb-1">Continue plan for</p>
                                     <p class="plan-price h2 fw-bold mb-0">$9.99<span>/month</span></p>
                                 </div>

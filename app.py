@@ -123,6 +123,7 @@ else:
 
 REMEMBER_ME_TTL_DAYS = int(os.getenv("REMEMBER_ME_TTL_DAYS", "30"))
 REMEMBER_ME_MAX_DAYS = int(os.getenv("REMEMBER_ME_MAX_DAYS", "90"))
+FREE_TRIAL_DAYS = int(os.getenv("FREE_TRIAL_DAYS", "30"))
 REMEMBER_COOKIE_NAME = "remember_token"
 REMEMBER_COOKIE_SAMESITE = "Lax"
 REMEMBER_COOKIE_SECURE = (ENV == "production")
@@ -2953,7 +2954,7 @@ def training():
         try:
             with get_connection() as conn:
                 with conn.cursor() as cursor:
-                    trial_end_date = datetime.today().date() + timedelta(days=14)
+                    trial_end_date = datetime.today().date() + timedelta(days=FREE_TRIAL_DAYS)
                     cursor.execute("""
                         UPDATE users
                         SET 
@@ -2984,7 +2985,7 @@ def training():
                     conn.commit()
 
                     plan_label = "Pro" if user_role == 'trainer' else "Premium"
-                    flash(f"✅ Your 14-day free {plan_label} trial has started! You now have full access to the personalized workout generator and tracking.", "success")
+                    flash(f"✅ Your {FREE_TRIAL_DAYS}-day free {plan_label} trial has started! You now have full access to the personalized workout generator and tracking.", "success")
 
             form_completed = True  # Mark the form as completed
             injury_regions_prefill = injury_regions_selected
@@ -15185,6 +15186,7 @@ def inject_global_context():
     return {
         "current_year": current_year,
         "current_date": current_date,
+        "free_trial_days": FREE_TRIAL_DAYS,
         "user": user,
         "user_has_schedule_access": _user_has_schedule_access(user),
         "fitbaseai_enabled": _fitbaseai_access_enabled(user),

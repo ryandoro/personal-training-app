@@ -18,7 +18,7 @@
                     <a href="{{ url_for('login') }}" class="btn btn-outline-light btn-lg">Log In</a>
                 </div>
                 <p class="landing-trial-note mt-3 mb-0 text-center">
-                    Complete the quick questionnaire to unlock a free 14-day trial (trainer or solo).
+                    Complete the quick questionnaire to unlock a free {{ free_trial_days }}-day trial (trainer or solo).
                 </p>
                 <ul class="landing-hero-list list-unstyled mt-5">
                     <li><i class="bi bi-lightning-charge-fill me-2 text-orange"></i>Build programs in seconds, not hours</li>
@@ -354,7 +354,7 @@
     <div class="landing-band">
         <p class="landing-eyebrow text-uppercase mb-2">Train aware. Live ready.</p>
         <h2 class="fw-bold mb-3">Ready to coach with FitBaseAI?</h2>
-        <p class="lead mb-4">Create your trainer account and unlock a free 14-day trial after the questionnaire. Invite clients when you’re ready.</p>
+        <p class="lead mb-4">Create your trainer account and unlock a free {{ free_trial_days }}-day trial after the questionnaire. Invite clients when you’re ready.</p>
         <div class="landing-cta-group justify-content-center">
             <a href="{{ url_for('plan_options') }}" class="btn btn-ignite btn-lg">Start Free Trainer Trial</a>
             <a href="{{ url_for('login') }}" class="btn btn-outline-light btn-lg">Log In</a>
