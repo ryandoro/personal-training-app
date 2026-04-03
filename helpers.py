@@ -158,6 +158,7 @@ CARDIO_BODYWEIGHT_WORKOUTS = (
     "Treadmill Sprinting",
     "Treadmill Jogging",
 )
+HOME_WORKOUT_EXCLUDED_NAME_TERMS = ("trx",)
 
 # Prefix lookup so both leg press machine families can be identified quickly
 LEG_PRESS_MACHINE_PREFIXES = {
@@ -165,6 +166,8 @@ LEG_PRESS_MACHINE_PREFIXES = {
     "HAMMER_STRENGTH": "hammer strength leg press machine",
 }
 LEG_PRESS_FETCH_BUFFER = 4
+RECENT_SUBCATEGORY_LOOKBACK = 2
+RECENT_SUBCATEGORY_INACTIVITY_RELAX_DAYS = 30
 
 
 def get_default_catalog_gym_id() -> int | None:
@@ -249,6 +252,20 @@ def build_home_equipment_clause(equipment_tokens: list[str]) -> tuple[str, list[
     if not clauses:
         return "", [], allow_cardio_bodyweight
     return f"({' OR '.join(clauses)})", params, allow_cardio_bodyweight
+
+
+def build_name_exclusion_clause(exclude_terms) -> tuple[str, list[str]]:
+    """Build a SQL clause excluding workouts whose names contain any excluded term."""
+    normalized_terms: list[str] = []
+    for raw in exclude_terms or []:
+        term = (str(raw) or "").strip().lower()
+        if term and term not in normalized_terms:
+            normalized_terms.append(term)
+    if not normalized_terms:
+        return "", []
+    clause = " AND ".join(["LOWER(w.name) NOT LIKE %s"] * len(normalized_terms))
+    params = [f"%{term}%" for term in normalized_terms]
+    return clause, params
 
 
 def normalize_custom_workout_categories(categories) -> list[str]:
@@ -976,6 +993,235 @@ def prioritize_movement_types(rows):
     return ordered, bool(compounds)
 
 
+def _normalize_subcategory_key(value) -> str:
+    return (str(value or "")).strip().upper()
+
+
+def _normalize_plan_blocks(plan) -> list[tuple[str | None, list]]:
+    if isinstance(plan, list):
+        normalized = []
+        for entry in plan:
+            if isinstance(entry, dict) and 'subcategory' in entry:
+                normalized.append((entry.get('subcategory'), entry.get('exercises') or []))
+            elif isinstance(entry, (list, tuple)) and len(entry) >= 2:
+                normalized.append((entry[0], entry[1]))
+        return normalized
+    if isinstance(plan, dict):
+        return [(key, value) for key, value in plan.items() if key != '_meta']
+    return []
+
+
+def _extract_workout_id(entry) -> int | None:
+    raw_value = None
+    if isinstance(entry, dict):
+        raw_value = entry.get('workout_id')
+    elif isinstance(entry, (list, tuple)) and entry:
+        raw_value = entry[0]
+    try:
+        return int(raw_value) if raw_value is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _build_recent_exercise_context(user_id: int, subcategory_names) -> dict[str, dict[str, list | set]]:
+    subcategory_keys: list[str] = []
+    seen = set()
+    for name in subcategory_names or []:
+        key = _normalize_subcategory_key(name)
+        if key and key not in seen:
+            seen.add(key)
+            subcategory_keys.append(key)
+
+    context = {
+        key: {
+            'active': set(),
+            'assigned_sessions': set(),
+            'recent_sessions': [],
+        }
+        for key in subcategory_keys
+    }
+    if not context:
+        return context
+
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT workout_data
+                      FROM active_workouts
+                     WHERE user_id = %s
+                    """,
+                    (user_id,),
+                )
+                active_row = cursor.fetchone()
+                active_payload = active_row[0] if active_row else None
+                if isinstance(active_payload, str):
+                    try:
+                        active_payload = json.loads(active_payload)
+                    except (TypeError, ValueError, json.JSONDecodeError):
+                        active_payload = None
+                if isinstance(active_payload, dict):
+                    for subcategory, exercises in _normalize_plan_blocks(active_payload.get('plan')):
+                        subcategory_key = _normalize_subcategory_key(subcategory)
+                        if subcategory_key not in context:
+                            continue
+                        for entry in exercises or []:
+                            workout_id = _extract_workout_id(entry)
+                            if workout_id is not None:
+                                context[subcategory_key]['active'].add(workout_id)
+
+                cursor.execute(
+                    """
+                    SELECT session_payload
+                      FROM trainer_schedule
+                     WHERE client_id = %s
+                       AND status = %s
+                       AND session_payload IS NOT NULL
+                    """,
+                    (user_id, 'booked'),
+                )
+                for row in cursor.fetchall() or []:
+                    session_payload = row[0] if row else None
+                    if isinstance(session_payload, str):
+                        try:
+                            session_payload = json.loads(session_payload)
+                        except (TypeError, ValueError, json.JSONDecodeError):
+                            session_payload = None
+                    if not isinstance(session_payload, dict):
+                        continue
+                    for subcategory, exercises in _normalize_plan_blocks(session_payload.get('plan')):
+                        subcategory_key = _normalize_subcategory_key(subcategory)
+                        if subcategory_key not in context:
+                            continue
+                        for entry in exercises or []:
+                            workout_id = _extract_workout_id(entry)
+                            if workout_id is not None:
+                                context[subcategory_key]['assigned_sessions'].add(workout_id)
+
+                lookback = RECENT_SUBCATEGORY_LOOKBACK
+                cursor.execute(
+                    """
+                    SELECT MAX(recorded_at)
+                      FROM user_exercise_history
+                     WHERE user_id = %s
+                       AND source = %s
+                    """,
+                    (user_id, 'session_complete'),
+                )
+                last_completed_row = cursor.fetchone()
+                last_completed_at = last_completed_row[0] if last_completed_row else None
+                if last_completed_at:
+                    if last_completed_at.tzinfo is None:
+                        last_completed_at = last_completed_at.replace(tzinfo=timezone.utc)
+                    inactivity_limit = timedelta(days=RECENT_SUBCATEGORY_INACTIVITY_RELAX_DAYS)
+                    if datetime.now(timezone.utc) - last_completed_at > inactivity_limit:
+                        lookback = 1
+
+                if lookback <= 0:
+                    return context
+
+                cursor.execute(
+                    """
+                    SELECT
+                        UPPER(COALESCE(subcategory, '')) AS subcategory_key,
+                        session_id,
+                        MAX(recorded_at) AS completed_at,
+                        ARRAY_AGG(DISTINCT workout_id) FILTER (WHERE workout_id IS NOT NULL) AS workout_ids
+                    FROM user_exercise_history
+                    WHERE user_id = %s
+                      AND source = %s
+                      AND session_id IS NOT NULL
+                      AND UPPER(COALESCE(subcategory, '')) = ANY(%s)
+                    GROUP BY UPPER(COALESCE(subcategory, '')), session_id
+                    ORDER BY completed_at DESC
+                    """,
+                    (user_id, 'session_complete', subcategory_keys),
+                )
+                for row in cursor.fetchall() or []:
+                    subcategory_key = _normalize_subcategory_key(row[0])
+                    if subcategory_key not in context:
+                        continue
+                    sessions = context[subcategory_key]['recent_sessions']
+                    if len(sessions) >= lookback:
+                        continue
+                    workout_ids = {
+                        int(workout_id)
+                        for workout_id in (row[3] or [])
+                        if workout_id is not None
+                    }
+                    if workout_ids:
+                        sessions.append(workout_ids)
+    except psycopg2.errors.UndefinedTable:
+        logger.warning("Workout history tables missing; recent exercise exclusions skipped for user_id=%s", user_id)
+    except Exception:
+        logger.exception("Failed to build recent exercise context for user_id=%s", user_id)
+
+    return context
+
+
+def _partition_candidate_rows(
+    rows,
+    active_ids: set[int],
+    assigned_session_ids: set[int],
+    recent_sessions: list[set[int]],
+) -> list[list]:
+    fresh_rows = []
+    older_recent_rows = []
+    most_recent_rows = []
+    assigned_session_rows = []
+    active_rows = []
+
+    most_recent_ids = recent_sessions[0] if recent_sessions else set()
+    older_recent_ids = set().union(*recent_sessions[1:]) if len(recent_sessions) > 1 else set()
+
+    for row in rows or []:
+        try:
+            workout_id = int(row[0])
+        except (TypeError, ValueError, IndexError):
+            continue
+        if workout_id in assigned_session_ids:
+            assigned_session_rows.append(row)
+        elif workout_id in active_ids:
+            active_rows.append(row)
+        elif workout_id in older_recent_ids:
+            older_recent_rows.append(row)
+        elif workout_id in most_recent_ids:
+            most_recent_rows.append(row)
+        else:
+            fresh_rows.append(row)
+
+    return [fresh_rows, older_recent_rows, most_recent_rows, assigned_session_rows, active_rows]
+
+
+def _select_ranked_rows(candidate_groups: list[list], n: int, subcategory_key: str) -> list:
+    selected_rows = []
+    selected_ids = set()
+    chosen_machine = None
+
+    for group in candidate_groups:
+        for row in group or []:
+            try:
+                workout_id = int(row[0])
+            except (TypeError, ValueError, IndexError):
+                continue
+            if workout_id in selected_ids:
+                continue
+            if subcategory_key == 'LEGS':
+                machine = identify_leg_press_machine(row[1] if len(row) > 1 else None)
+                if machine:
+                    if chosen_machine and machine != chosen_machine:
+                        continue
+                    if not chosen_machine:
+                        chosen_machine = machine
+            selected_rows.append(row)
+            selected_ids.add(workout_id)
+            if len(selected_rows) >= n:
+                return selected_rows
+
+    return selected_rows
+
+
 def generate_workout(
     selected_category,
     user_level,
@@ -1029,6 +1275,15 @@ def generate_workout(
             if not equipment_tokens:
                 raise ValueError("Select at least one piece of equipment for a Custom Home Workout.")
             equipment_clause, equipment_params, allow_cardio_bodyweight = build_home_equipment_clause(equipment_tokens)
+            home_name_exclusion_clause, home_name_exclusion_params = build_name_exclusion_clause(
+                HOME_WORKOUT_EXCLUDED_NAME_TERMS
+            )
+            if home_name_exclusion_clause:
+                if equipment_clause:
+                    equipment_clause = f"({equipment_clause}) AND {home_name_exclusion_clause}"
+                else:
+                    equipment_clause = home_name_exclusion_clause
+                equipment_params.extend(home_name_exclusion_params)
     else:
         structure = WORKOUT_STRUCTURE.get(user_level, {})
         subcategories = structure.get(category_key, {})
@@ -1070,6 +1325,7 @@ def generate_workout(
         'categories': set(),
         'subcategories': set(),
     }
+    recent_exercise_context = _build_recent_exercise_context(user_id, counts.keys())
 
     with get_connection() as conn:
         with conn.cursor() as cursor:
@@ -1143,39 +1399,20 @@ def generate_workout(
                     params.append("%dumbbell%")
                 query += """
                     ORDER BY RANDOM()
-                    LIMIT %s
                 """
-                fetch_limit = n
-                include_leg_press_buffer = subcategory_key == 'LEGS' and n > 0
-                if include_leg_press_buffer:
-                    fetch_limit += LEG_PRESS_FETCH_BUFFER
-                params.append(fetch_limit)
                 cursor.execute(query, params)
                 results = cursor.fetchall()
-                selected_rows = list(results[:n])
-                extras = list(results[n:]) if include_leg_press_buffer else []
-                chosen_machine = None
-                if subcategory_key == 'LEGS':
-                    selected_rows, chosen_machine = filter_leg_press_rows(selected_rows)
-                if extras and len(selected_rows) < n:
-                    selected_ids = {row[0] for row in selected_rows}
-                    for row in extras:
-                        if row[0] in selected_ids:
-                            continue
-                        if subcategory_key == 'LEGS':
-                            machine = identify_leg_press_machine(row[1] if len(row) > 1 else None)
-                            if machine:
-                                if chosen_machine and machine != chosen_machine:
-                                    continue
-                                if not chosen_machine:
-                                    chosen_machine = machine
-                        selected_rows.append(row)
-                        selected_ids.add(row[0])
-                        if len(selected_rows) >= n:
-                            break
+                subcategory_context = recent_exercise_context.get(subcategory_key, {})
+                candidate_groups = _partition_candidate_rows(
+                    results,
+                    subcategory_context.get('active') or set(),
+                    subcategory_context.get('assigned_sessions') or set(),
+                    subcategory_context.get('recent_sessions') or [],
+                )
+                selected_rows = _select_ranked_rows(candidate_groups, n, subcategory_key)
                 ordered_results, has_compound = prioritize_movement_types(selected_rows)
                 if subcategory_key == 'LEGS':
-                    ordered_results, chosen_machine = group_leg_press_rows(ordered_results, chosen_machine)
+                    ordered_results, _ = group_leg_press_rows(ordered_results)
                 if ordered_results and has_compound:
                     first_type = (ordered_results[0][-1] or '').lower()
                     if first_type != 'compound':

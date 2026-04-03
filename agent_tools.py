@@ -3623,7 +3623,10 @@ def _generate_workout_payload_for_client(
     }
     if custom_categories:
         workout_payload["custom_categories"] = custom_categories
-    workout_payload, optimization_meta = app_module._optimize_workout_payload_layout(workout_payload)
+    workout_payload, optimization_meta = app_module._optimize_workout_payload_layout(
+        workout_payload,
+        preserve_block_order=True,
+    )
     return workout_payload, None, optimization_meta
 
 
@@ -3962,7 +3965,10 @@ def execute_pending_action(action_row: dict, actor_row: dict) -> dict[str, Any]:
             if error_response:
                 payload_data, status_code = error_response
                 return {"success": False, "error": (payload_data or {}).get("error") or f"Unable to organize that workout ({status_code})."}
-            optimized_payload, optimization_meta = app_module._optimize_workout_payload_layout(workout_payload)
+            optimized_payload, optimization_meta = app_module._optimize_workout_payload_layout(
+                workout_payload,
+                preserve_block_order=True,
+            )
             if optimization_meta.get("changed"):
                 with get_connection() as conn:
                     with conn.cursor() as cursor:
@@ -4001,7 +4007,10 @@ def execute_pending_action(action_row: dict, actor_row: dict) -> dict[str, Any]:
         workout_payload = (active or {}).get("workout_data") or {}
         if not active or not app_module._session_payload_has_plan(workout_payload):
             return {"success": False, "error": f"No active workout is available for {_format_person_name(client_row)} right now."}
-        optimized_payload, optimization_meta = app_module._optimize_workout_payload_layout(workout_payload)
+        optimized_payload, optimization_meta = app_module._optimize_workout_payload_layout(
+            workout_payload,
+            preserve_block_order=True,
+        )
         if optimization_meta.get("changed"):
             with get_connection() as conn:
                 with conn.cursor() as cursor:

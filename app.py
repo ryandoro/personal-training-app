@@ -1,4 +1,5 @@
 import os, re, logging, json, math, uuid, time as time_module, psycopg2, psycopg2.extras, psycopg2.errors, stripe, requests
+import itertools
 from difflib import SequenceMatcher
 from flask import Flask, flash, redirect, render_template, request, session, jsonify, url_for, current_app, abort, send_from_directory, g
 from markupsafe import Markup
@@ -54,7 +55,9 @@ from helpers import (
     CUSTOM_WORKOUT_SELECTION_LIMITS,
     HOME_EQUIPMENT_OPTIONS,
     build_home_equipment_clause,
+    build_name_exclusion_clause,
     CARDIO_BODYWEIGHT_WORKOUTS,
+    HOME_WORKOUT_EXCLUDED_NAME_TERMS,
     normalize_custom_workout_categories,
     normalize_home_equipment_selection,
     custom_selection_bounds,
@@ -9256,7 +9259,10 @@ def generate_client_workout(client_id):
     if is_home:
         workout_payload['home_equipment'] = home_equipment
 
-    workout_payload, optimization_meta = _optimize_workout_payload_layout(workout_payload)
+    workout_payload, optimization_meta = _optimize_workout_payload_layout(
+        workout_payload,
+        preserve_block_order=True,
+    )
     workout_plan = workout_payload.get('plan') or workout_plan
 
     if session_event_id:
@@ -10156,7 +10162,10 @@ def generate_workout_route():
     if is_home:
         workout_payload['home_equipment'] = home_equipment
 
-    workout_payload, optimization_meta = _optimize_workout_payload_layout(workout_payload)
+    workout_payload, optimization_meta = _optimize_workout_payload_layout(
+        workout_payload,
+        preserve_block_order=True,
+    )
     workout_plan = workout_payload.get('plan') or workout_plan
 
     set_active_workout(user_id, selected_category, workout_payload)
@@ -10600,22 +10609,32 @@ def _build_new_exercise_entry(exercises, formatted_exercise):
 
 
 WORKOUT_EQUIPMENT_FAMILIES = (
-    "machine",
-    "dumbbell",
-    "barbell",
-    "bodyweight",
-    "cable",
     "trx",
+    "bodyweight",
+    "machine",
+    "kettlebell",
+    "ez_bar",
+    "dumbbell",
+    "cable",
+    "barbell",
+    "band",
     "other",
 )
 WORKOUT_EQUIPMENT_FAMILY_PATTERNS = (
-    ("machine", re.compile(r"\bmachine\b", flags=re.IGNORECASE)),
-    ("dumbbell", re.compile(r"\bdumbbell\b", flags=re.IGNORECASE)),
-    ("barbell", re.compile(r"\bbarbell\b", flags=re.IGNORECASE)),
-    ("bodyweight", re.compile(r"\bbodyweight\b", flags=re.IGNORECASE)),
-    ("cable", re.compile(r"\bcable\b", flags=re.IGNORECASE)),
     ("trx", re.compile(r"\btrx\b", flags=re.IGNORECASE)),
+    ("bodyweight", re.compile(r"\bbodyweight\b", flags=re.IGNORECASE)),
+    (
+        "machine",
+        re.compile(r"\b(?:machine|life\s*fitness|freemotion|hammer\s*strength)\b", flags=re.IGNORECASE),
+    ),
+    ("kettlebell", re.compile(r"\bkettlebell\b", flags=re.IGNORECASE)),
+    ("ez_bar", re.compile(r"\bez\s*bar\b", flags=re.IGNORECASE)),
+    ("dumbbell", re.compile(r"\bdumbbell\b", flags=re.IGNORECASE)),
+    ("cable", re.compile(r"\bcable\b", flags=re.IGNORECASE)),
+    ("barbell", re.compile(r"\bbarbell\b", flags=re.IGNORECASE)),
+    ("band", re.compile(r"\bband\b", flags=re.IGNORECASE)),
 )
+WORKOUT_BOUNDARY_FAMILY_MATCH_BONUS = 1000.0
 
 
 def _exercise_entry_name(entry):
@@ -10691,7 +10710,7 @@ def _normalize_workout_subcategory_order_key(value: str | None) -> str:
     return normalized.strip()
 
 
-def _sort_workout_block_exercises_for_efficiency(exercises: list, metadata_map: dict[int, dict]) -> tuple[list, dict]:
+def _annotate_workout_block_entries(exercises: list, metadata_map: dict[int, dict]) -> list[dict]:
     annotated: list[dict] = []
     for original_index, entry in enumerate(exercises or []):
         workout_id = _coerce_optional_int(_exercise_entry_workout_id(entry))
@@ -10708,36 +10727,287 @@ def _sort_workout_block_exercises_for_efficiency(exercises: list, metadata_map: 
                 'original_index': original_index,
             }
         )
+    return annotated
+
+
+def _group_workout_block_entries_by_family(annotated: list[dict]) -> list[dict]:
+    grouped_entries: OrderedDict[str, list[dict]] = OrderedDict()
+    for item in annotated:
+        grouped_entries.setdefault(item['family'] or 'other', []).append(item)
+
+    family_groups: list[dict] = []
+    for original_group_index, (family, items) in enumerate(grouped_entries.items()):
+        ordered_items = sorted(
+            items,
+            key=lambda item: (
+                item['movement_rank'],
+                item['original_index'],
+            ),
+        )
+        movement_ranks = [item['movement_rank'] for item in ordered_items]
+        family_groups.append(
+            {
+                'family': family,
+                'items': ordered_items,
+                'best_rank': min(movement_ranks) if movement_ranks else 2,
+                'avg_rank': (sum(movement_ranks) / len(movement_ranks)) if movement_ranks else 2.0,
+                'original_group_index': original_group_index,
+            }
+        )
+    return family_groups
+
+
+def _movement_tier_family_precedence(movement_rank: int, family: str | None) -> int:
+    normalized_family = (family or 'other').strip().lower()
+    if movement_rank != 0:
+        return 0
+    if normalized_family == 'barbell':
+        return 0
+    if normalized_family == 'dumbbell':
+        return 1
+    if normalized_family == 'machine':
+        return 3
+    return 2
+
+
+def _build_workout_movement_tier_candidates(annotated: list[dict]) -> list[dict]:
+    if not annotated:
+        return [
+            {
+                'items': [],
+                'first_family': 'other',
+                'last_family': 'other',
+                'score': 0.0,
+            }
+        ]
+
+    family_groups = _group_workout_block_entries_by_family(annotated)
+    tier_rank = min((item.get('movement_rank', 2) for item in annotated), default=2)
+    if len(family_groups) < 2:
+        ordered = family_groups[0]['items'] if family_groups else list(annotated)
+        single_family = ordered[0]['family'] if ordered else 'other'
+        return [
+            {
+                'items': ordered,
+                'first_family': single_family,
+                'last_family': single_family,
+                'score': 0.0,
+            }
+        ]
+
+    candidate_map: dict[tuple[str, str], dict] = {}
+    family_indexes = tuple(range(len(family_groups)))
+
+    for permutation in itertools.permutations(family_indexes):
+        ordered_groups = [family_groups[idx] for idx in permutation]
+        precedence_sequence = [
+            _movement_tier_family_precedence(tier_rank, group.get('family'))
+            for group in ordered_groups
+        ]
+        if precedence_sequence != sorted(precedence_sequence):
+            continue
+        ordered = [item for group in ordered_groups for item in group['items']]
+        if not ordered:
+            continue
+        candidate = {
+            'items': ordered,
+            'first_family': ordered_groups[0]['family'],
+            'last_family': ordered_groups[-1]['family'],
+            'score': _score_workout_block_family_order(ordered_groups),
+        }
+        key = (candidate['first_family'], candidate['last_family'])
+        existing = candidate_map.get(key)
+        if existing is None or candidate['score'] > existing['score']:
+            candidate_map[key] = candidate
+
+    if not candidate_map:
+        ordered_groups = sorted(
+            family_groups,
+            key=lambda group: (
+                _movement_tier_family_precedence(tier_rank, group.get('family')),
+                group.get('original_group_index', 0),
+            ),
+        )
+        ordered = [item for group in ordered_groups for item in group['items']]
+        first_family = ordered_groups[0]['family'] if ordered_groups else 'other'
+        last_family = ordered_groups[-1]['family'] if ordered_groups else 'other'
+        return [
+            {
+                'items': ordered,
+                'first_family': first_family,
+                'last_family': last_family,
+                'score': _score_workout_block_family_order(ordered_groups),
+            }
+        ]
+
+    return list(candidate_map.values())
+
+
+def _score_workout_block_family_order(ordered_groups: list[dict]) -> float:
+    group_count = len(ordered_groups)
+    score = 0.0
+    for position, group in enumerate(ordered_groups):
+        desirability = (
+            (2 - group.get('best_rank', 2)) * 100.0
+            + (2 - group.get('avg_rank', 2.0)) * 10.0
+            + max(0, group_count - int(group.get('original_group_index', position))) * 0.1
+        )
+        score += (group_count - position) * desirability
+    return score
+
+
+def _build_workout_block_layout_candidates(exercises: list, metadata_map: dict[int, dict]) -> list[dict]:
+    annotated = _annotate_workout_block_entries(exercises, metadata_map)
+    original_indexes = [item['original_index'] for item in annotated]
 
     if len(annotated) < 2:
         primary_family = annotated[0]['family'] if annotated else 'other'
         primary_rank = annotated[0]['movement_rank'] if annotated else 2
-        return list(exercises or []), {
-            'changed': False,
-            'primary_family': primary_family,
+        return [
+            {
+                'exercises': list(exercises or []),
+                'first_family': primary_family,
+                'last_family': primary_family,
+                'primary_family': primary_family,
+                'primary_movement_rank': primary_rank,
+                'first_movement_rank': primary_rank,
+                'last_movement_rank': primary_rank,
+                'score': 0.0,
+                'changed': False,
+            }
+        ]
+
+    movement_tier_candidates: list[list[dict]] = []
+    movement_ranks = sorted({item['movement_rank'] for item in annotated})
+    for movement_rank in movement_ranks:
+        tier_items = [item for item in annotated if item['movement_rank'] == movement_rank]
+        movement_tier_candidates.append(_build_workout_movement_tier_candidates(tier_items))
+
+    candidate_map: dict[tuple[str, str], dict] = {}
+    for tier_combo in itertools.product(*movement_tier_candidates):
+        ordered = [item for tier_candidate in tier_combo for item in tier_candidate['items']]
+        if not ordered:
+            continue
+        first_family = ordered[0]['family']
+        last_family = ordered[-1]['family']
+        primary_rank = ordered[0]['movement_rank']
+        last_rank = ordered[-1]['movement_rank']
+        ordered_indexes = [item['original_index'] for item in ordered]
+        candidate = {
+            'exercises': [item['entry'] for item in ordered],
+            'first_family': first_family,
+            'last_family': last_family,
+            'primary_family': first_family,
             'primary_movement_rank': primary_rank,
+            'first_movement_rank': primary_rank,
+            'last_movement_rank': last_rank,
+            'score': sum(float(tier_candidate.get('score') or 0.0) for tier_candidate in tier_combo),
+            'changed': ordered_indexes != original_indexes,
         }
+        key = (
+            first_family,
+            last_family,
+            primary_rank,
+            last_rank,
+        )
+        existing = candidate_map.get(key)
+        if existing is None or candidate['score'] > existing['score']:
+            candidate_map[key] = candidate
 
-    family_rank = _family_sequence_from_entries(annotated)
-    ordered = sorted(
-        annotated,
-        key=lambda item: (
-            item['movement_rank'],
-            family_rank.get(item['family'] or 'other', len(family_rank)),
-            item['original_index'],
-        ),
-    )
-    changed = [item.get('workout_id') for item in ordered] != [item.get('workout_id') for item in annotated]
-    primary_family = ordered[0]['family'] if ordered else 'other'
-    primary_rank = ordered[0]['movement_rank'] if ordered else 2
-    return [item['entry'] for item in ordered], {
-        'changed': changed,
-        'primary_family': primary_family,
-        'primary_movement_rank': primary_rank,
-    }
+    return list(candidate_map.values())
 
 
-def _optimize_workout_payload_layout(workout_payload: dict) -> tuple[dict, dict]:
+def _optimize_workout_block_flow(
+    normalized_blocks: list[dict],
+    metadata_map: dict[int, dict],
+) -> tuple[list[dict], list[dict], int]:
+    if not normalized_blocks:
+        return [], [], 0
+
+    candidate_lists = [
+        _build_workout_block_layout_candidates(block.get('exercises') or [], metadata_map)
+        for block in normalized_blocks
+    ]
+
+    best_scores: list[dict[int, float]] = []
+    best_prev: list[dict[int, int | None]] = []
+
+    for block_index, candidates in enumerate(candidate_lists):
+        score_map: dict[int, float] = {}
+        prev_map: dict[int, int | None] = {}
+        for candidate_index, candidate in enumerate(candidates):
+            candidate_score = float(candidate.get('score') or 0.0)
+            if block_index == 0:
+                score_map[candidate_index] = candidate_score
+                prev_map[candidate_index] = None
+                continue
+
+            best_total = None
+            best_candidate_index = None
+            previous_scores = best_scores[block_index - 1]
+            previous_candidates = candidate_lists[block_index - 1]
+            for previous_index, previous_total in previous_scores.items():
+                previous_candidate = previous_candidates[previous_index]
+                boundary_bonus = 0.0
+                previous_family = previous_candidate.get('last_family')
+                current_family = candidate.get('first_family')
+                previous_rank = int(previous_candidate.get('last_movement_rank', 2))
+                current_rank = int(candidate.get('first_movement_rank', 2))
+                if (
+                    previous_family
+                    and current_family
+                    and previous_family != 'other'
+                    and previous_rank == current_rank
+                    and previous_family == current_family
+                ):
+                    boundary_bonus = WORKOUT_BOUNDARY_FAMILY_MATCH_BONUS
+                total_score = previous_total + candidate_score + boundary_bonus
+                if best_total is None or total_score > best_total:
+                    best_total = total_score
+                    best_candidate_index = previous_index
+
+            score_map[candidate_index] = best_total if best_total is not None else candidate_score
+            prev_map[candidate_index] = best_candidate_index
+
+        best_scores.append(score_map)
+        best_prev.append(prev_map)
+
+    last_scores = best_scores[-1] if best_scores else {}
+    last_index = max(last_scores, key=last_scores.get) if last_scores else 0
+    chosen_indexes = [0] * len(candidate_lists)
+    current_index = last_index
+    for block_index in range(len(candidate_lists) - 1, -1, -1):
+        chosen_indexes[block_index] = current_index
+        previous_index = best_prev[block_index].get(current_index)
+        current_index = previous_index if previous_index is not None else 0
+
+    optimized_blocks: list[dict] = []
+    block_layout_meta: list[dict] = []
+    changed_exercise_blocks = 0
+
+    for original_index, (block, candidates, candidate_index) in enumerate(
+        zip(normalized_blocks, candidate_lists, chosen_indexes)
+    ):
+        selected_candidate = candidates[candidate_index]
+        if selected_candidate.get('changed'):
+            changed_exercise_blocks += 1
+        optimized_blocks.append({**block, 'exercises': list(selected_candidate.get('exercises') or [])})
+        block_layout_meta.append(
+            {
+                'original_index': original_index,
+                'primary_family': selected_candidate.get('primary_family') or 'other',
+                'primary_movement_rank': int(selected_candidate.get('primary_movement_rank', 2)),
+            }
+        )
+
+    return optimized_blocks, block_layout_meta, changed_exercise_blocks
+
+
+def _optimize_workout_payload_layout(
+    workout_payload: dict,
+    *,
+    preserve_block_order: bool = True,
+) -> tuple[dict, dict]:
     normalized_payload = _normalize_workout_payload_plan(workout_payload)
     if not isinstance(normalized_payload, dict):
         return workout_payload, {'changed': False}
@@ -10762,28 +11032,16 @@ def _optimize_workout_payload_layout(workout_payload: dict) -> tuple[dict, dict]
         return normalized_payload, {'changed': False}
 
     metadata_map = _load_workout_layout_metadata(workout_ids)
-    optimized_blocks: list[dict] = []
-    block_layout_meta: list[dict] = []
-    changed_exercise_blocks = 0
-
-    for original_index, block in enumerate(normalized_blocks):
-        optimized_exercises, block_meta = _sort_workout_block_exercises_for_efficiency(
-            block.get('exercises') or [],
-            metadata_map,
-        )
-        if block_meta.get('changed'):
-            changed_exercise_blocks += 1
-        optimized_blocks.append({**block, 'exercises': optimized_exercises})
-        block_layout_meta.append(
-            {
-                'original_index': original_index,
-                'primary_family': block_meta.get('primary_family') or 'other',
-                'primary_movement_rank': int(block_meta.get('primary_movement_rank', 2)),
-            }
-        )
+    optimized_blocks, block_layout_meta, changed_exercise_blocks = _optimize_workout_block_flow(
+        normalized_blocks,
+        metadata_map,
+    )
 
     custom_categories = normalize_custom_workout_categories(normalized_payload.get('custom_categories') or [])
-    if custom_categories:
+    family_rank = {}
+    if preserve_block_order:
+        ordered_indexes = list(range(len(optimized_blocks)))
+    elif custom_categories:
         custom_order = {
             _normalize_workout_subcategory_order_key(token): idx
             for idx, token in enumerate(custom_categories)
@@ -10816,13 +11074,14 @@ def _optimize_workout_payload_layout(workout_payload: dict) -> tuple[dict, dict]
     updated_payload = dict(normalized_payload)
     updated_payload['plan'] = reordered_blocks
     grouped_families = []
-    if not custom_categories:
+    if not custom_categories and not preserve_block_order:
         grouped_families = [family for family in family_rank.keys() if family != 'other']
     return updated_payload, {
         'changed': bool(changed_exercise_blocks or block_order_changed),
         'changed_exercise_blocks': changed_exercise_blocks,
         'block_order_changed': block_order_changed,
         'grouped_families': grouped_families,
+        'preserved_block_order': preserve_block_order,
     }
 
 
@@ -11010,7 +11269,20 @@ def _load_trainer_session_payload_for_edit(trainer: dict, event_id: int):
     return row, payload, None
 
 
-def _resolve_refresh_context(workout_payload, subcategory, workout_id):
+def _is_home_workout_payload(workout_payload, workout_category=None) -> bool:
+    normalized_workout_category = str(workout_category or '').strip()
+    if not isinstance(workout_payload, dict):
+        return (normalized_workout_category == HOME_WORKOUT_TOKEN)
+    payload_category = str(workout_payload.get('category') or '').strip()
+    if payload_category == HOME_WORKOUT_TOKEN:
+        return True
+    if normalized_workout_category == HOME_WORKOUT_TOKEN:
+        return True
+    raw_equipment = workout_payload.get('home_equipment')
+    return bool(normalize_home_equipment_selection(raw_equipment))
+
+
+def _resolve_refresh_context(workout_payload, subcategory, workout_id, *, workout_category=None):
     if not isinstance(workout_payload, dict):
         return None, ({'success': False, 'error': 'Active workout plan is missing.'}, 400)
     plan = workout_payload.get('plan')
@@ -11045,6 +11317,7 @@ def _resolve_refresh_context(workout_payload, subcategory, workout_id):
         return None, ({'success': False, 'error': 'Exercise not found in this workout.'}, 404)
 
     equipment_tokens = []
+    is_home_workout = _is_home_workout_payload(workout_payload, workout_category)
     raw_equipment = workout_payload.get('home_equipment')
     if raw_equipment:
         equipment_tokens = normalize_home_equipment_selection(raw_equipment)
@@ -11053,6 +11326,16 @@ def _resolve_refresh_context(workout_payload, subcategory, workout_id):
     allow_cardio_bodyweight = False
     if equipment_tokens:
         equipment_clause, equipment_params, allow_cardio_bodyweight = build_home_equipment_clause(equipment_tokens)
+    if is_home_workout:
+        home_name_exclusion_clause, home_name_exclusion_params = build_name_exclusion_clause(
+            HOME_WORKOUT_EXCLUDED_NAME_TERMS
+        )
+        if home_name_exclusion_clause:
+            if equipment_clause:
+                equipment_clause = f"({equipment_clause}) AND {home_name_exclusion_clause}"
+            else:
+                equipment_clause = home_name_exclusion_clause
+            equipment_params.extend(home_name_exclusion_params)
     restrict_barbell = bool(equipment_tokens) and 'BARBELL' not in equipment_tokens
     restrict_dumbbell = bool(equipment_tokens) and 'DUMBBELL' not in equipment_tokens
 
@@ -11079,7 +11362,7 @@ def _resolve_refresh_context(workout_payload, subcategory, workout_id):
     return context, None
 
 
-def _resolve_block_without_anchor(workout_payload, subcategory):
+def _resolve_block_without_anchor(workout_payload, subcategory, *, workout_category=None):
     if not isinstance(workout_payload, dict):
         return None, ({'success': False, 'error': 'Active workout plan is missing.'}, 400)
     plan = workout_payload.get('plan')
@@ -11110,6 +11393,7 @@ def _resolve_block_without_anchor(workout_payload, subcategory):
         existing_ids.add(entry_int)
 
     equipment_tokens = []
+    is_home_workout = _is_home_workout_payload(workout_payload, workout_category)
     raw_equipment = workout_payload.get('home_equipment')
     if raw_equipment:
         equipment_tokens = normalize_home_equipment_selection(raw_equipment)
@@ -11118,6 +11402,16 @@ def _resolve_block_without_anchor(workout_payload, subcategory):
     allow_cardio_bodyweight = False
     if equipment_tokens:
         equipment_clause, equipment_params, allow_cardio_bodyweight = build_home_equipment_clause(equipment_tokens)
+    if is_home_workout:
+        home_name_exclusion_clause, home_name_exclusion_params = build_name_exclusion_clause(
+            HOME_WORKOUT_EXCLUDED_NAME_TERMS
+        )
+        if home_name_exclusion_clause:
+            if equipment_clause:
+                equipment_clause = f"({equipment_clause}) AND {home_name_exclusion_clause}"
+            else:
+                equipment_clause = home_name_exclusion_clause
+            equipment_params.extend(home_name_exclusion_params)
     restrict_barbell = bool(equipment_tokens) and 'BARBELL' not in equipment_tokens
     restrict_dumbbell = bool(equipment_tokens) and 'DUMBBELL' not in equipment_tokens
 
@@ -11525,10 +11819,19 @@ def personal_list_workout_alternatives(workout_id):
         return jsonify({'success': False, 'error': 'No active workout to update.'}), 404
     workout_payload = active.get('workout_data') or {}
     if workout_id > 0:
-        context, error = _resolve_refresh_context(workout_payload, subcategory, workout_id)
+        context, error = _resolve_refresh_context(
+            workout_payload,
+            subcategory,
+            workout_id,
+            workout_category=active.get('category'),
+        )
         anchor_index = context['replacement_index'] if not error else 0
     else:
-        context, error = _resolve_block_without_anchor(workout_payload, subcategory)
+        context, error = _resolve_block_without_anchor(
+            workout_payload,
+            subcategory,
+            workout_category=active.get('category'),
+        )
         anchor_index = len(context['exercises']) - 1 if not error else 0
     if error:
         payload, status = error
@@ -11595,13 +11898,22 @@ def personal_refresh_workout_exercise(workout_id):
         return jsonify({'success': False, 'error': 'No active workout to update.'}), 404
     workout_payload = active.get('workout_data') or {}
     if workout_id > 0:
-        context, error = _resolve_refresh_context(workout_payload, subcategory, workout_id)
+        context, error = _resolve_refresh_context(
+            workout_payload,
+            subcategory,
+            workout_id,
+            workout_category=active.get('category'),
+        )
         if error:
             payload, status = error
             return jsonify(payload), status
         anchor_index = context['replacement_index']
     else:
-        context, error = _resolve_block_without_anchor(workout_payload, subcategory)
+        context, error = _resolve_block_without_anchor(
+            workout_payload,
+            subcategory,
+            workout_category=active.get('category'),
+        )
         if error:
             payload, status = error
             return jsonify(payload), status
@@ -11701,10 +12013,19 @@ def personal_add_workout_exercise(workout_id):
         return jsonify({'success': False, 'error': 'No active workout to update.'}), 404
     workout_payload = active.get('workout_data') or {}
     if workout_id > 0:
-        context, error = _resolve_refresh_context(workout_payload, subcategory, workout_id)
+        context, error = _resolve_refresh_context(
+            workout_payload,
+            subcategory,
+            workout_id,
+            workout_category=active.get('category'),
+        )
         anchor_index = context['replacement_index'] if not error else 0
     else:
-        context, error = _resolve_block_without_anchor(workout_payload, subcategory)
+        context, error = _resolve_block_without_anchor(
+            workout_payload,
+            subcategory,
+            workout_category=active.get('category'),
+        )
         anchor_index = len(context['exercises']) - 1 if not error else 0
     if error:
         payload, status = error
@@ -11793,10 +12114,19 @@ def personal_remove_workout_exercise(workout_id):
         return jsonify({'success': False, 'error': 'No active workout to update.'}), 404
     workout_payload = active.get('workout_data') or {}
     if workout_id > 0:
-        context, error = _resolve_refresh_context(workout_payload, subcategory, workout_id)
+        context, error = _resolve_refresh_context(
+            workout_payload,
+            subcategory,
+            workout_id,
+            workout_category=active.get('category'),
+        )
         anchor_index = context['replacement_index'] if not error else 0
     else:
-        context, error = _resolve_block_without_anchor(workout_payload, subcategory)
+        context, error = _resolve_block_without_anchor(
+            workout_payload,
+            subcategory,
+            workout_category=active.get('category'),
+        )
         anchor_index = len(context['exercises']) - 1 if not error else 0
     if error:
         payload, status = error
@@ -11943,10 +12273,19 @@ def trainer_list_client_workout_alternates(client_id, workout_id):
         return jsonify({'success': False, 'error': 'No active workout to update.'}), 404
     workout_payload = active.get('workout_data') or {}
     if workout_id > 0:
-        context, error = _resolve_refresh_context(workout_payload, subcategory, workout_id)
+        context, error = _resolve_refresh_context(
+            workout_payload,
+            subcategory,
+            workout_id,
+            workout_category=active.get('category'),
+        )
         anchor_index = context['replacement_index'] if not error else 0
     else:
-        context, error = _resolve_block_without_anchor(workout_payload, subcategory)
+        context, error = _resolve_block_without_anchor(
+            workout_payload,
+            subcategory,
+            workout_category=active.get('category'),
+        )
         anchor_index = len(context['exercises']) - 1 if not error else 0
     if error:
         payload, status = error
@@ -12020,13 +12359,22 @@ def trainer_refresh_client_workout_exercise(client_id, workout_id):
         return jsonify({'success': False, 'error': 'No active workout to update.'}), 404
     workout_payload = active.get('workout_data') or {}
     if workout_id > 0:
-        context, error = _resolve_refresh_context(workout_payload, subcategory, workout_id)
+        context, error = _resolve_refresh_context(
+            workout_payload,
+            subcategory,
+            workout_id,
+            workout_category=active.get('category'),
+        )
         if error:
             payload, status = error
             return jsonify(payload), status
         anchor_index = context['replacement_index']
     else:
-        context, error = _resolve_block_without_anchor(workout_payload, subcategory)
+        context, error = _resolve_block_without_anchor(
+            workout_payload,
+            subcategory,
+            workout_category=active.get('category'),
+        )
         if error:
             payload, status = error
             return jsonify(payload), status
@@ -12145,10 +12493,19 @@ def trainer_add_client_workout_exercise(client_id, workout_id):
         return jsonify({'success': False, 'error': 'No active workout to update.'}), 404
     workout_payload = active.get('workout_data') or {}
     if workout_id > 0:
-        context, error = _resolve_refresh_context(workout_payload, subcategory, workout_id)
+        context, error = _resolve_refresh_context(
+            workout_payload,
+            subcategory,
+            workout_id,
+            workout_category=active.get('category'),
+        )
         anchor_index = context['replacement_index'] if not error else 0
     else:
-        context, error = _resolve_block_without_anchor(workout_payload, subcategory)
+        context, error = _resolve_block_without_anchor(
+            workout_payload,
+            subcategory,
+            workout_category=active.get('category'),
+        )
         anchor_index = len(context['exercises']) - 1 if not error else 0
     if error:
         payload, status = error
@@ -12254,7 +12611,12 @@ def trainer_remove_client_workout_exercise(client_id, workout_id):
     if not active:
         return jsonify({'success': False, 'error': 'No active workout to update.'}), 404
     workout_payload = active.get('workout_data') or {}
-    context, error = _resolve_refresh_context(workout_payload, subcategory, workout_id)
+    context, error = _resolve_refresh_context(
+        workout_payload,
+        subcategory,
+        workout_id,
+        workout_category=active.get('category'),
+    )
     if error:
         payload, status = error
         return jsonify(payload), status
@@ -12387,10 +12749,19 @@ def trainer_session_list_workout_alternates(event_id, workout_id):
     user_level = get_user_level(client_row.get('exercise_history') if client_row else None)
 
     if workout_id > 0:
-        context, error = _resolve_refresh_context(workout_payload, subcategory, workout_id)
+        context, error = _resolve_refresh_context(
+            workout_payload,
+            subcategory,
+            workout_id,
+            workout_category=row.get('session_category'),
+        )
         anchor_index = context['replacement_index'] if not error else 0
     else:
-        context, error = _resolve_block_without_anchor(workout_payload, subcategory)
+        context, error = _resolve_block_without_anchor(
+            workout_payload,
+            subcategory,
+            workout_category=row.get('session_category'),
+        )
         anchor_index = len(context['exercises']) - 1 if not error else 0
     if error:
         payload, status = error
@@ -12460,13 +12831,22 @@ def trainer_refresh_session_workout_exercise(event_id, workout_id):
     user_level = get_user_level(client_row.get('exercise_history') if client_row else None)
 
     if workout_id > 0:
-        context, error = _resolve_refresh_context(workout_payload, subcategory, workout_id)
+        context, error = _resolve_refresh_context(
+            workout_payload,
+            subcategory,
+            workout_id,
+            workout_category=row.get('session_category'),
+        )
         if error:
             payload, status = error
             return jsonify(payload), status
         anchor_index = context['replacement_index']
     else:
-        context, error = _resolve_block_without_anchor(workout_payload, subcategory)
+        context, error = _resolve_block_without_anchor(
+            workout_payload,
+            subcategory,
+            workout_category=row.get('session_category'),
+        )
         if error:
             payload, status = error
             return jsonify(payload), status
@@ -12585,10 +12965,19 @@ def trainer_add_session_workout_exercise(event_id, workout_id):
     user_level = get_user_level(client_row.get('exercise_history') if client_row else None)
 
     if workout_id > 0:
-        context, error = _resolve_refresh_context(workout_payload, subcategory, workout_id)
+        context, error = _resolve_refresh_context(
+            workout_payload,
+            subcategory,
+            workout_id,
+            workout_category=row.get('session_category'),
+        )
         anchor_index = context['replacement_index'] if not error else 0
     else:
-        context, error = _resolve_block_without_anchor(workout_payload, subcategory)
+        context, error = _resolve_block_without_anchor(
+            workout_payload,
+            subcategory,
+            workout_category=row.get('session_category'),
+        )
         anchor_index = len(context['exercises']) - 1 if not error else 0
     if error:
         payload, status = error
@@ -12684,7 +13073,12 @@ def trainer_remove_session_workout_exercise(event_id, workout_id):
         payload, status = error_response
         return jsonify(payload), status
 
-    context, error = _resolve_refresh_context(workout_payload, subcategory, workout_id)
+    context, error = _resolve_refresh_context(
+        workout_payload,
+        subcategory,
+        workout_id,
+        workout_category=row.get('session_category'),
+    )
     if error:
         payload, status = error
         return jsonify(payload), status
