@@ -320,15 +320,11 @@ def _format_reschedule_summary(
     new_end: datetime | None,
     page_context: dict | None,
 ) -> str:
-    old_date = _format_date_label(old_start, page_context)
-    new_date = _format_date_label(new_start, page_context)
-    old_window = _format_time_window_label(old_start, old_end, page_context)
-    new_window = _format_time_window_label(new_start, new_end, page_context)
-    if old_date and new_date and old_date == new_date:
-        return f"Move the session on {old_date} from {old_window} to {new_window}."
-    if old_date and new_date:
-        return f"Move the session from {old_date} {old_window} to {new_date} {new_window}."
-    return f"Move the session from {old_window} to {new_window}."
+    old_slot = _format_time_range_with_weekday(old_start, old_end, page_context)
+    new_slot = _format_time_range_with_weekday(new_start, new_end, page_context)
+    if old_slot and new_slot:
+        return f"Move the session currently set for {old_slot}.\nNew session time: {new_slot}."
+    return f"Move the session from {_format_time_window_label(old_start, old_end, page_context)} to {_format_time_window_label(new_start, new_end, page_context)}."
 
 
 def _format_reschedule_result_message(
@@ -340,15 +336,15 @@ def _format_reschedule_result_message(
     page_context: dict | None,
 ) -> str:
     client_name = _format_person_name(client_row)
-    old_date = _format_date_label(old_start, page_context)
-    new_date = _format_date_label(new_start, page_context)
-    old_window = _format_time_window_label(old_start, old_end, page_context)
-    new_window = _format_time_window_label(new_start, new_end, page_context)
-    if old_date and new_date and old_date == new_date:
-        return f"Moved {client_name}'s session on {old_date} from {old_window} to {new_window}."
-    if old_date and new_date:
-        return f"Moved {client_name}'s session from {old_date} {old_window} to {new_date} {new_window}."
-    return f"Moved {client_name}'s session from {old_window} to {new_window}."
+    old_slot = _format_time_range_with_weekday(old_start, old_end, page_context)
+    new_slot = _format_time_range_with_weekday(new_start, new_end, page_context)
+    if old_slot and new_slot:
+        return f"Moved {client_name}'s session from {old_slot}.\nNew session time: {new_slot}."
+    return (
+        f"Moved {client_name}'s session from "
+        f"{_format_time_window_label(old_start, old_end, page_context)} "
+        f"to {_format_time_window_label(new_start, new_end, page_context)}."
+    )
 
 
 def _format_swap_summary(
@@ -1167,6 +1163,12 @@ def _lookup_today_schedule(actor_row: dict, target_row: dict, page_context: dict
         rows = [row for row in rows if not row.get("is_self_booked")]
     rows = [row for row in rows if (_normalize_text(row.get("status")) or "booked").lower() != "cancelled"]
     tz_info = _tzinfo_from_page(page_context)
+    today_local = datetime.now(tz_info).date()
+    day_descriptor = "today"
+    if target_day == today_local + timedelta(days=1):
+        day_descriptor = "tomorrow"
+    elif target_day == today_local - timedelta(days=1):
+        day_descriptor = "yesterday"
     items = []
     for row in rows:
         counterpart = {
@@ -1180,6 +1182,7 @@ def _lookup_today_schedule(actor_row: dict, target_row: dict, page_context: dict
                 "event_id": row.get("id"),
                 "start_time": row.get("start_time").isoformat() if row.get("start_time") else None,
                 "end_time": row.get("end_time").isoformat() if row.get("end_time") else None,
+                "day_header_label": row.get("start_time").astimezone(tz_info).strftime("%A, %b %-d, %Y") if row.get("start_time") else None,
                 "date_label": _format_date_label(row.get("start_time"), page_context),
                 "time_label": _format_clock_label(row.get("start_time"), page_context),
                 "time_range_label": _format_time_range(row.get("start_time"), row.get("end_time"), page_context),
@@ -1197,6 +1200,7 @@ def _lookup_today_schedule(actor_row: dict, target_row: dict, page_context: dict
         "target_name": _format_person_name(target_row),
         "target_date": target_day.isoformat(),
         "target_date_label": target_day.strftime("%a, %b %-d, %Y"),
+        "target_day_descriptor": day_descriptor,
         "is_self_schedule": is_self_schedule,
         "items": items,
         "count": len(items),
@@ -1529,6 +1533,7 @@ def _lookup_schedule_window_summary(
             "event_id": row.get("id"),
             "status": row.get("status"),
             "weekday_label": row.get("start_time").astimezone(tz_info).strftime("%a") if row.get("start_time") else None,
+            "day_header_label": row.get("start_time").astimezone(tz_info).strftime("%A, %b %-d, %Y") if row.get("start_time") else None,
             "date_label": _format_date_label(row.get("start_time"), page_context),
             "time_range_label": _format_time_range(row.get("start_time"), row.get("end_time"), page_context),
             "time_window_label": _format_time_window_label(row.get("start_time"), row.get("end_time"), page_context),
@@ -1907,7 +1912,20 @@ def maybe_prepare_direct_lookup(
 
     range_arguments = _build_relative_schedule_range(message_text, page_context)
     if not range_arguments:
-        return None
+        explicit_target_day = _extract_relative_or_named_date(message_text, page_context)
+        if explicit_target_day:
+            start_dt, end_dt = _date_range_bounds(
+                explicit_target_day,
+                explicit_target_day + timedelta(days=1),
+                page_context,
+            )
+            range_arguments = {
+                "window_start": start_dt.isoformat(),
+                "window_end": end_dt.isoformat(),
+                "window_label": f"on {explicit_target_day.strftime('%A, %b %-d, %Y')}",
+            }
+        else:
+            return None
 
     asks_for_count = any(phrase in lowered for phrase in (
         "how many",
@@ -2523,6 +2541,8 @@ def _extract_relative_or_named_date(message_text: str, page_context: dict | None
         return today_local
     if "tomorrow" in lowered:
         return today_local + timedelta(days=1)
+    if "yesterday" in lowered:
+        return today_local - timedelta(days=1)
 
     iso_match = re.search(r"\b(\d{4}-\d{2}-\d{2})\b", lowered)
     if iso_match:
@@ -2804,12 +2824,62 @@ def _extract_reschedule_time_pair(message_text: str) -> tuple[dict[str, Any] | N
     mentions = _extract_time_mentions(message_text)
     if not mentions:
         return None, None
-    from_to_match = re.search(r"\bfrom\b.+?\bto\b", message_text, flags=re.IGNORECASE)
+    to_match = re.search(r"\bto\b", message_text, flags=re.IGNORECASE)
     if len(mentions) >= 2:
         return mentions[0], mentions[1]
-    if from_to_match:
+    if to_match and mentions[0]["start"] > to_match.start():
+        return None, mentions[0]
+    if to_match:
         return mentions[0], None
     return None, mentions[0]
+
+
+def _strip_time_phrases_for_date_parsing(message_text: str) -> str:
+    cleaned = _normalize_text(message_text)
+    cleaned = re.sub(
+        r"\bfrom\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)?\s*(?:-|to)\s*\d{1,2}(?::\d{2})?\s*(?:am|pm)?\b",
+        " ",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    cleaned = re.sub(
+        r"\bat\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)\b",
+        " ",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    cleaned = re.sub(
+        r"\b\d{1,2}(?::\d{2})?\s*(?:am|pm)\b",
+        " ",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    return _normalize_text(cleaned)
+
+
+def _extract_reschedule_date_pair(message_text: str, page_context: dict | None) -> tuple[date | None, date | None]:
+    normalized = _normalize_text(message_text)
+    to_match = re.search(r"\bto\b", normalized, flags=re.IGNORECASE)
+    source_segment = normalized
+    destination_segment = ""
+    if to_match:
+        source_segment = normalized[:to_match.start()]
+        destination_segment = normalized[to_match.end():]
+
+    source_day = _extract_relative_or_named_date(_strip_time_phrases_for_date_parsing(source_segment), page_context)
+    destination_day = _extract_relative_or_named_date(_strip_time_phrases_for_date_parsing(destination_segment), page_context)
+
+    if source_day and not destination_day:
+        date_mentions = _extract_date_mentions_with_spans(normalized, page_context)
+        if len(date_mentions) >= 2:
+            destination_day = date_mentions[1]["date"]
+    if not source_day and not destination_day:
+        return None, None
+    if not source_day:
+        source_day = destination_day
+    if not destination_day:
+        destination_day = source_day
+    return source_day, destination_day
 
 
 def _build_local_iso_from_parts(target_day: date, clock_parts: tuple[int, int], page_context: dict | None) -> str:
@@ -3379,7 +3449,13 @@ def maybe_prepare_direct_schedule_action(
         "client_name": _format_person_name(client_row),
     }
 
-    target_day = _extract_relative_or_named_date(parse_message, page_context)
+    source_day = None
+    destination_day = None
+    if action_type == "reschedule_session":
+        source_day, destination_day = _extract_reschedule_date_pair(parse_message, page_context)
+        target_day = source_day
+    else:
+        target_day = _extract_relative_or_named_date(parse_message, page_context)
     clock_window = _extract_clock_window_from_message(parse_message)
     if target_day:
         arguments["target_date"] = target_day.isoformat()
@@ -3411,17 +3487,17 @@ def maybe_prepare_direct_schedule_action(
             arguments["duration_minutes"] = DEFAULT_ASSIGNED_WORKOUT_DURATION_MINUTES
 
     if action_type == "reschedule_session":
-        if not target_day:
+        if not source_day:
             return None
         current_time_hint, new_time_hint = _extract_reschedule_time_pair(parse_message)
-        client_sessions = _find_client_day_sessions(actor_row, client_row, target_day, page_context)
+        client_sessions = _find_client_day_sessions(actor_row, client_row, source_day, page_context)
         target_session = _match_session_by_time_hint(client_sessions, current_time_hint, page_context)
         if not target_session:
             if current_time_hint or new_time_hint:
                 time_label = current_time_hint.get("raw") if current_time_hint else "that"
                 return {
                     "success": False,
-                    "error": f"I could not match {_format_person_name(client_row)}'s {time_label.strip()} session on {target_day.isoformat()}. Tell me the exact current session time or choose it from the calendar.",
+                    "error": f"I could not match {_format_person_name(client_row)}'s {time_label.strip()} session on {source_day.isoformat()}. Tell me the exact current session time or choose it from the calendar.",
                 }
             return None
         duration_minutes = max(
@@ -3433,15 +3509,22 @@ def maybe_prepare_direct_schedule_action(
         new_start_iso = None
         if new_time_hint:
             new_start_iso = _build_local_iso_from_mention(
-                target_day,
+                destination_day or source_day,
                 new_time_hint,
                 page_context,
                 reference_dt=target_session.get("start_time"),
             )
         if not new_start_iso:
             clock_parts = _extract_clock_from_message(parse_message)
-            if clock_parts:
-                new_start_iso = _build_local_iso_from_parts(target_day, clock_parts, page_context)
+            if clock_parts and (destination_day or source_day):
+                new_start_iso = _build_local_iso_from_parts(destination_day or source_day, clock_parts, page_context)
+        if not new_start_iso and (destination_day or source_day) and target_session.get("start_time"):
+            reference_dt = target_session.get("start_time").astimezone(_tzinfo_from_page(page_context))
+            new_start_iso = _build_local_iso_from_parts(
+                destination_day or source_day,
+                (reference_dt.hour, reference_dt.minute),
+                page_context,
+            )
         if not new_start_iso:
             return {
                 "success": False,
@@ -3449,6 +3532,8 @@ def maybe_prepare_direct_schedule_action(
             }
         arguments["event_id"] = target_session["id"]
         arguments["source_start_time"] = target_session.get("start_time").isoformat() if target_session.get("start_time") else None
+        if destination_day:
+            arguments["target_date"] = destination_day.isoformat()
         arguments["start_time"] = new_start_iso
         arguments["duration_minutes"] = duration_minutes
         result = prepare_fitbase_action(arguments, actor_row, page_context)

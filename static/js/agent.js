@@ -245,6 +245,82 @@
         return article;
     }
 
+    function parseGroupedScheduleMessage(content) {
+        const rawLines = String(content || '').split('\n');
+        const introLines = [];
+        const groups = [];
+        let currentGroup = null;
+
+        rawLines.forEach((rawLine) => {
+            const trimmed = String(rawLine || '').trim();
+            if (!trimmed) {
+                return;
+            }
+            if (/^[A-Za-z]+day,\s+[A-Z][a-z]{2}\s+\d{1,2},\s+\d{4}:$/.test(trimmed)) {
+                currentGroup = {
+                    label: trimmed.slice(0, -1),
+                    items: [],
+                };
+                groups.push(currentGroup);
+                return;
+            }
+            if (currentGroup) {
+                currentGroup.items.push(trimmed.replace(/^•\s*/, ''));
+                return;
+            }
+            introLines.push(trimmed);
+        });
+
+        if (!groups.length) {
+            return null;
+        }
+        return { introLines, groups };
+    }
+
+    function createMessageBodyNode(role, content) {
+        if (role === 'assistant') {
+            const groupedSchedule = parseGroupedScheduleMessage(content);
+            if (groupedSchedule) {
+                const body = document.createElement('div');
+                body.className = 'fitbaseai-message__body fitbaseai-message__body--schedule';
+
+                groupedSchedule.introLines.forEach((line) => {
+                    const intro = document.createElement('div');
+                    intro.className = 'fitbaseai-schedule-body__intro';
+                    intro.textContent = line;
+                    body.appendChild(intro);
+                });
+
+                groupedSchedule.groups.forEach((group) => {
+                    const section = document.createElement('section');
+                    section.className = 'fitbaseai-schedule-body__group';
+
+                    const heading = document.createElement('div');
+                    heading.className = 'fitbaseai-schedule-body__day';
+                    heading.textContent = group.label;
+                    section.appendChild(heading);
+
+                    const list = document.createElement('ul');
+                    list.className = 'fitbaseai-schedule-body__list';
+                    group.items.forEach((itemText) => {
+                        const item = document.createElement('li');
+                        item.className = 'fitbaseai-schedule-body__item';
+                        item.textContent = itemText;
+                        list.appendChild(item);
+                    });
+                    section.appendChild(list);
+                    body.appendChild(section);
+                });
+                return body;
+            }
+        }
+
+        const body = document.createElement('div');
+        body.className = 'fitbaseai-message__body';
+        body.textContent = content;
+        return body;
+    }
+
     function resetMessagesToDefault() {
         messagesRoot.querySelectorAll('canvas').forEach((canvas) => {
             destroyExerciseDetailChart(canvas);
@@ -888,9 +964,7 @@
         }
 
         if (messageText) {
-            const body = document.createElement('div');
-            body.className = 'fitbaseai-message__body';
-            body.textContent = messageText;
+            const body = createMessageBodyNode(role, messageText);
             article.appendChild(body);
         }
 

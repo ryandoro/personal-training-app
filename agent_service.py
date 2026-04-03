@@ -1182,17 +1182,40 @@ def _fallback_tool_response(tool_result: dict[str, Any], pending_action: dict[st
         return f"{target}'s EST. 1RM for {name} is {best} lbs."
     if metric_key == "most_tracked_workout":
         return f"{tool_result.get('target_name')}'s most tracked workout is {tool_result.get('workout_name')} with {tool_result.get('tracked_count')} tracked entries."
+    def _format_grouped_self_schedule_lines(items: list[dict[str, Any]]) -> str:
+        grouped_lines: list[str] = []
+        current_header = None
+        for item in items:
+            day_header_label = item.get("day_header_label") or item.get("date_label")
+            counterpart_name = item.get("counterpart_name")
+            time_window_label = item.get("time_window_label") or item.get("time_range_label") or item.get("time_label") or item.get("start_time")
+            status_label = (_normalize_text(item.get("status")) or "booked").lower()
+            if day_header_label and day_header_label != current_header:
+                if grouped_lines:
+                    grouped_lines.append("")
+                grouped_lines.append(f"{day_header_label}:")
+                current_header = day_header_label
+            detail_line = f"    {counterpart_name} {time_window_label}".rstrip() if counterpart_name else f"    {time_window_label}".rstrip()
+            if status_label and status_label != "booked":
+                detail_line += f" ({status_label})"
+            grouped_lines.append(detail_line)
+        return "\n".join(grouped_lines)
+
     if metric_key == "today_schedule":
         items = tool_result.get("items") or []
         date_label = tool_result.get("target_date_label") or tool_result.get("target_date")
         is_self_schedule = bool(tool_result.get("is_self_schedule"))
+        day_descriptor = tool_result.get("target_day_descriptor") or "today"
         if not items:
             return f"You have no sessions on {date_label}." if is_self_schedule else f"{tool_result.get('target_name')} has no sessions on {date_label}."
         lead_line = (
-            f"You have {len(items)} session{'s' if len(items) != 1 else ''} on {date_label}"
+            f"You have {len(items)} session{'s' if len(items) != 1 else ''} {day_descriptor}"
             if is_self_schedule
             else f"{tool_result.get('target_name')} has {len(items)} session{'s' if len(items) != 1 else ''} on {date_label}"
         )
+        if is_self_schedule:
+            grouped_lines = _format_grouped_self_schedule_lines(items)
+            return f"{lead_line}:\n\n{grouped_lines}"
         bullet_lines = []
         for item in items:
             item_date_label = item.get("date_label")
@@ -1271,6 +1294,9 @@ def _fallback_tool_response(tool_result: dict[str, Any], pending_action: dict[st
                 lead_line = f"{lead_intro}{session_word} booked with {target_name} {window_label}"
         if not slot_labels:
             return f"{lead_line}."
+        if is_self_schedule:
+            grouped_lines = _format_grouped_self_schedule_lines(items)
+            return f"{lead_line}:\n\n{grouped_lines}"
         bullet_lines = "\n".join(f"• {label}" for label in slot_labels)
         return f"{lead_line}:\n\n{bullet_lines}"
     if metric_key == "platform_summary":

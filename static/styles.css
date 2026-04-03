@@ -756,6 +756,32 @@ body.fitbaseai-resizing .fitbaseai-panel__resize-grip {
   overflow-wrap: anywhere;
 }
 
+.fitbaseai-message__body--schedule {
+  white-space: normal;
+}
+
+.fitbaseai-schedule-body__intro {
+  margin-bottom: 0.9rem;
+}
+
+.fitbaseai-schedule-body__group + .fitbaseai-schedule-body__group {
+  margin-top: 0.9rem;
+}
+
+.fitbaseai-schedule-body__day {
+  font-weight: 700;
+  margin-bottom: 0.35rem;
+}
+
+.fitbaseai-schedule-body__list {
+  margin: 0;
+  padding-left: 1.15rem;
+}
+
+.fitbaseai-schedule-body__item + .fitbaseai-schedule-body__item {
+  margin-top: 0.18rem;
+}
+
 .fitbaseai-message__state {
   display: inline-flex;
   align-items: center;
@@ -1028,6 +1054,7 @@ body.fitbaseai-resizing .fitbaseai-panel__resize-grip {
   margin-top: 0.3rem;
   color: #574d3e;
   line-height: 1.4;
+  white-space: pre-line;
 }
 
 .fitbaseai-action-card--completed .fitbaseai-action-card__summary {
