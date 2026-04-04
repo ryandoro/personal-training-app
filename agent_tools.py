@@ -2513,6 +2513,10 @@ def _match_client_from_message(actor_row: dict, message_text: str, page_context:
     return None
 
 
+def resolve_client_from_message(actor_row: dict, message_text: str, page_context: dict | None) -> dict[str, Any] | None:
+    return _match_client_from_message(actor_row, message_text, page_context)
+
+
 def _match_client_from_segment(
     actor_row: dict,
     segment_text: str,

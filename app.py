@@ -14911,7 +14911,10 @@ def admin_user_profile(user_id):
 
     # Handle update
     if request.method == 'POST':
-        username_clean = (request.form.get('username') or '').strip() or None
+        raw_username = (request.form.get('username') or '').strip()
+        if raw_username.lower() in {'none', 'null'}:
+            raw_username = ''
+        username_clean = raw_username or None
         email_clean = (request.form.get('email') or '').strip().lower() or None
         trial_end_date_raw = (request.form.get('trial_end_date') or '').strip()
         trial_end_date_value = None
@@ -14991,6 +14994,23 @@ def admin_user_profile(user_id):
                 if not existing_user:
                     return "User not found", 404
 
+                cursor.execute(
+                    "SELECT id FROM users WHERE lower(username) = lower(%s) AND id != %s",
+                    (username_clean, user_id),
+                )
+                if cursor.fetchone():
+                    flash("That username is already taken.", "danger")
+                    return redirect(url_for('admin_user_profile', user_id=user_id))
+
+                if email_clean:
+                    cursor.execute(
+                        "SELECT id FROM users WHERE lower(email) = lower(%s) AND id != %s",
+                        (email_clean, user_id),
+                    )
+                    if cursor.fetchone():
+                        flash("That email is already in use.", "danger")
+                        return redirect(url_for('admin_user_profile', user_id=user_id))
+
                 current_subscription_type = (existing_user[0] or '').strip().lower()
                 current_trial_end_date = existing_user[1]
                 requested_subscription_type = (data['subscription_type'] or '').strip().lower()
@@ -15049,9 +15069,15 @@ def admin_user_profile(user_id):
                     conn.commit()
                     flash("User profile updated successfully.", "success")
                     return redirect(url_for('admin_user_profile', user_id=user_id)) 
-                except psycopg2.errors.UniqueViolation:
+                except psycopg2.errors.UniqueViolation as exc:
+                    constraint_name = getattr(exc.diag, 'constraint_name', None)
                     conn.rollback()
-                    flash("Username or email already in use.", "danger")
+                    if constraint_name in {"users_username_key", "users_username_unique_ci"}:
+                        flash("That username is already taken.", "danger")
+                    elif constraint_name == "users_email_unique_ci":
+                        flash("That email is already in use.", "danger")
+                    else:
+                        flash("Username or email already in use.", "danger")
                     return redirect(url_for('admin_user_profile', user_id=user_id))
 
     # Load user info

@@ -23,6 +23,7 @@ from agent_tools import (
     maybe_prepare_batched_schedule_actions,
     maybe_prepare_direct_lookup,
     maybe_prepare_direct_schedule_action,
+    resolve_client_from_message,
 )
 from helpers import (
     calculate_target_heart_rate,
@@ -246,6 +247,15 @@ def _format_person_name(row: dict | None) -> str:
     return full or _normalize_text(row.get("username")) or "Unknown"
 
 
+def _message_refers_to_actor_self(message_text: str | None) -> bool:
+    normalized = f" {_normalize_text(message_text).lower()} "
+    if not normalized.strip():
+        return False
+    if re.search(r"(?<!\w)my client(?:s)?(?!\w)", normalized):
+        return False
+    return bool(re.search(r"(?<!\w)(i|my|me|my own)(?!\w)", normalized))
+
+
 def _split_fitness_goals(raw_goals: Any) -> list[str]:
     if raw_goals is None:
         return []
@@ -315,8 +325,29 @@ def _load_user_profile_row(user_id: int) -> dict | None:
             return cursor.fetchone()
 
 
-def _load_coaching_target_row(actor_row: dict, page_context: dict | None) -> tuple[dict, str]:
+def _load_coaching_target_row(actor_row: dict, page_context: dict | None, message_text: str | None = None) -> tuple[dict, str]:
     role = _normalize_role(actor_row)
+    named_client = None
+    if role in {"trainer", "admin"} and _normalize_text(message_text):
+        named_client = resolve_client_from_message(actor_row, message_text or "", page_context)
+    if named_client and named_client.get("id") != actor_row.get("id"):
+        with get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(
+                    f"""
+                    SELECT {AGENT_USER_PROFILE_COLUMNS}
+                      FROM users
+                     WHERE id = %s
+                    """,
+                    (named_client["id"],),
+                )
+                target_row = cursor.fetchone()
+        if target_row:
+            return target_row, "named_client"
+
+    if _message_refers_to_actor_self(message_text):
+        return actor_row, "self"
+
     selected_client_id = _coerce_int((page_context or {}).get("selected_client_id"))
     if not selected_client_id or selected_client_id == actor_row.get("id"):
         return actor_row, "self"
@@ -431,8 +462,8 @@ def _load_recent_coaching_signals(target_user_id: int) -> dict[str, Any]:
     return signals
 
 
-def _build_coaching_context(actor_row: dict, page_context: dict | None) -> dict[str, Any]:
-    target_row, relationship = _load_coaching_target_row(actor_row, page_context)
+def _build_coaching_context(actor_row: dict, page_context: dict | None, message_text: str | None = None) -> dict[str, Any]:
+    target_row, relationship = _load_coaching_target_row(actor_row, page_context, message_text)
     goals = _split_fitness_goals(target_row.get("fitness_goals"))
     exercise_history = _normalize_text(target_row.get("exercise_history"))
     user_level = get_user_level(exercise_history)
@@ -1473,7 +1504,7 @@ def _parse_commitment_days(commitment_text: str | None) -> int | None:
 
 
 def _coaching_intro(coaching_context: dict[str, Any]) -> str:
-    if (coaching_context or {}).get("relationship") == "selected_client":
+    if (coaching_context or {}).get("relationship") != "self":
         target_name = _normalize_text((coaching_context or {}).get("target_name")) or "that client's"
         return f"Based on {target_name}'s current profile"
     return "Based on your current profile"
@@ -1603,7 +1634,104 @@ def _sentence_split(text: str) -> list[str]:
     ]
 
 
-def _postprocess_general_coaching_answer(text: str) -> str:
+def _humanize_goal(goal: str) -> str:
+    normalized = _normalize_text(goal)
+    lowered = normalized.lower()
+    mapping = {
+        "lose weight": "weight loss",
+        "gain muscle": "muscle gain",
+        "increase strength": "increasing strength",
+        "increase endurance": "increasing endurance",
+        "feel better": "feeling better",
+    }
+    return mapping.get(lowered, lowered)
+
+
+def _goal_phrase(goals: list[str]) -> str | None:
+    cleaned = [_humanize_goal(goal) for goal in (goals or []) if _normalize_text(goal)]
+    if not cleaned:
+        return None
+    if len(cleaned) == 1:
+        return f"goal of {cleaned[0].lower()}"
+    if len(cleaned) == 2:
+        return f"goals of {cleaned[0].lower()} and {cleaned[1].lower()}"
+    return "goals of " + ", ".join(goal.lower() for goal in cleaned[:-1]) + f", and {cleaned[-1].lower()}"
+
+
+def _build_coaching_profile_prefix(message_text: str, coaching_context: dict[str, Any] | None) -> str | None:
+    coaching_context = coaching_context or {}
+    normalized = _normalize_text(message_text).lower()
+    if not normalized:
+        return None
+
+    nutrition_keywords = (
+        "calorie",
+        "calories",
+        "sugar",
+        "protein",
+        "carb",
+        "carbs",
+        "fat",
+        "fats",
+        "macro",
+        "macros",
+        "nutrition",
+        "eat",
+        "eating",
+    )
+    frequency_keywords = ("how many days", "days per week", "how often")
+    duration_keywords = ("how long", "duration", "minutes")
+    heart_rate_keywords = ("heart rate", "bpm", "zone")
+
+    bits: list[str] = []
+    if any(keyword in normalized for keyword in nutrition_keywords):
+        if coaching_context.get("age") is not None:
+            bits.append(f"age {coaching_context['age']}")
+        if coaching_context.get("weight_label"):
+            bits.append(f"weight {coaching_context['weight_label']}")
+        if coaching_context.get("height_label"):
+            bits.append(f"height {coaching_context['height_label']}")
+        if coaching_context.get("gender"):
+            bits.append(_normalize_text(coaching_context["gender"]).lower())
+        goal_text = _goal_phrase(coaching_context.get("fitness_goals") or [])
+        if goal_text:
+            bits.append(goal_text)
+        if coaching_context.get("commitment"):
+            bits.append(f"current commitment of {coaching_context['commitment']}")
+    elif any(keyword in normalized for keyword in frequency_keywords):
+        if coaching_context.get("exercise_history"):
+            bits.append(f"exercise history of {coaching_context['exercise_history']}")
+        goal_text = _goal_phrase(coaching_context.get("fitness_goals") or [])
+        if goal_text:
+            bits.append(goal_text)
+        if coaching_context.get("commitment"):
+            bits.append(f"current commitment of {coaching_context['commitment']}")
+    elif any(keyword in normalized for keyword in duration_keywords):
+        goal_text = _goal_phrase(coaching_context.get("fitness_goals") or [])
+        if goal_text:
+            bits.append(goal_text)
+        if coaching_context.get("workout_duration"):
+            bits.append(f"preferred workout duration of {coaching_context['workout_duration']} minutes")
+        if coaching_context.get("commitment"):
+            bits.append(f"current commitment of {coaching_context['commitment']}")
+    elif any(keyword in normalized for keyword in heart_rate_keywords):
+        if coaching_context.get("age") is not None:
+            bits.append(f"age {coaching_context['age']}")
+
+    if not bits:
+        return None
+
+    if coaching_context.get("relationship") != "self":
+        target_name = _normalize_text(coaching_context.get("target_name")) or "your client's"
+        return f"Based on {target_name}'s " + ", ".join(bits) + ","
+    return "Based on your " + ", ".join(bits) + ","
+
+
+def _postprocess_general_coaching_answer(
+    text: str,
+    message_text: str | None = None,
+    coaching_context: dict[str, Any] | None = None,
+) -> str:
     if not text:
         return text
 
@@ -1632,6 +1760,11 @@ def _postprocess_general_coaching_answer(text: str) -> str:
 
     trimmed = " ".join(sentences[:3]).strip()
     trimmed = re.sub(r"\s+", " ", trimmed).strip()
+    prefix = _build_coaching_profile_prefix(message_text or "", coaching_context or {})
+    if prefix and not re.match(r"(?i)^based on\b", trimmed):
+        if trimmed and trimmed[0].isalpha():
+            trimmed = trimmed[0].lower() + trimmed[1:]
+        trimmed = f"{prefix} {trimmed}".strip()
     return trimmed
 
 
@@ -1915,7 +2048,7 @@ def chat_with_fitbaseai(
         )
 
     retrieval_context = search_retrieval_context(cleaned_message)
-    coaching_context = _build_coaching_context(user_row, page_context or {})
+    coaching_context = _build_coaching_context(user_row, page_context or {}, cleaned_message)
     base_messages = _build_base_messages(
         user_row=user_row,
         page_context=page_context or {},
@@ -1934,6 +2067,7 @@ def chat_with_fitbaseai(
         "If the question is general coaching, training, nutrition, recovery, or wellbeing guidance, "
         "personalize the answer to the coaching target profile in the runtime context, "
         "use the stored goals, commitment, injuries, and guidelines when they are relevant, "
+        "and usually begin with a short 'Based on ...' summary of the most relevant stored profile facts before the answer. "
         "and give a concise helpful answer. "
         "Default to 1-2 sentences, never exceed 3 sentences unless the user asked for more detail, "
         "and do not add unsolicited follow-up offers."
@@ -1950,7 +2084,7 @@ def chat_with_fitbaseai(
             if not assistant_text:
                 assistant_text = _render_general_answer_fallback(cleaned_message, coaching_context)
             else:
-                assistant_text = _postprocess_general_coaching_answer(assistant_text)
+                assistant_text = _postprocess_general_coaching_answer(assistant_text, cleaned_message, coaching_context)
             return _finalize_assistant_message(
                 thread_id,
                 user_id,
@@ -1987,13 +2121,13 @@ def chat_with_fitbaseai(
                         fallback_instruction=direct_answer_instruction,
                     )
                 elif assistant_text:
-                    assistant_text = _postprocess_general_coaching_answer(assistant_text)
+                    assistant_text = _postprocess_general_coaching_answer(assistant_text, cleaned_message, coaching_context)
                 if not assistant_text and tool_result_for_fallback:
                     assistant_text = _fallback_tool_response(tool_result_for_fallback, pending_action_payload)
                 if not assistant_text:
                     assistant_text = _render_general_answer_fallback(cleaned_message, coaching_context)
                 elif not tool_result_for_fallback:
-                    assistant_text = _postprocess_general_coaching_answer(assistant_text)
+                    assistant_text = _postprocess_general_coaching_answer(assistant_text, cleaned_message, coaching_context)
                 return _finalize_assistant_message(
                     thread_id,
                     user_id,

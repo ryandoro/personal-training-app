@@ -145,7 +145,7 @@ Edit User Profile
           <div class="row g-3">
             <div class="col-md-6">
               <label class="form-label">Username</label>
-              <input type="text" class="form-control" name="username" value="{{ user.username }}">
+              <input type="text" class="form-control" name="username" value="{{ user.username or '' }}">
             </div>
             <div class="col-md-6">
               <label class="form-label">Email</label>
