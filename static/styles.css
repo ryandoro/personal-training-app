@@ -9899,6 +9899,17 @@ html.chrome-macos .client-injury-alert .badge {
   }
 }
 
+@media (min-width: 768px) and (max-width: 1024px) {
+  .client-profile-container .client-profile-hero-card,
+  .client-profile-container #workout-generator-card,
+  .client-profile-container #active-workout-card {
+    width: calc(100vw - 1.5rem);
+    max-width: calc(100vw - 1.5rem);
+    margin-left: calc(50% - 50vw + 0.75rem);
+    margin-right: calc(50% - 50vw + 0.75rem);
+  }
+}
+
 .btn-agenda {
   background: #f0f1f6;
   color: #1f3d59;
