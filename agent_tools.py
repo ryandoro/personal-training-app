@@ -60,7 +60,7 @@ DEFAULT_CUSTOM_DURATION_CHOICES = (20, 30, 45, 60)
 DEFAULT_ASSIGNED_WORKOUT_DURATION_MINUTES = 60
 BATCH_ACTION_LIMIT = 3
 _BATCH_REQUEST_SPLIT_PATTERN = re.compile(
-    r"(?:\s*(?:;|\n+|[.!?]+)\s*|\s+(?:and then|then|also|and|&)\s+)(?=(?:please\s+)?(?:swap|cancel|reschedule|schedule|book|assign|move|delete|remove|complete|mark)\b)",
+    r"(?:\s*(?:;|\n+|[.!?]+)\s*|\s+(?:and then|then|also|and|&)\s+)(?=(?:please\s+)?(?:swap|switch|cancel|reschedule|schedule|book|assign|move|delete|remove|complete|mark)\b)",
     flags=re.IGNORECASE,
 )
 
@@ -3405,11 +3405,11 @@ def maybe_prepare_direct_schedule_action(
 
     lowered = _normalize_text(message_text).lower()
     workout_optimization_markers = ("organize", "reorganize", "optimize", "rearrange", "group", "efficient", "efficiency")
-    if not any(keyword in lowered for keyword in ("swap", "cancel", "reschedule", "schedule", "book", "assign", "move", "delete", "remove", "complete", "mark", *workout_optimization_markers)):
+    if not any(keyword in lowered for keyword in ("swap", "switch", "cancel", "reschedule", "schedule", "book", "assign", "move", "delete", "remove", "complete", "mark", *workout_optimization_markers)):
         return None
     workout_request = _extract_workout_request_from_message(message_text)
     action_type = None
-    if "swap" in lowered:
+    if "swap" in lowered or "switch" in lowered:
         action_type = "swap_sessions"
     elif "workout" in lowered and any(marker in lowered for marker in workout_optimization_markers):
         action_type = "optimize_workout_layout"

@@ -48,7 +48,7 @@ DEFAULT_PLANNER_OUTPUT_TOKENS = 350
 MULTI_REQUEST_START_PATTERN = re.compile(
     r"(?:^|(?:[,;]|\n+)\s*|\s+(?:and then|then|also|and|&)\s+)"
     r"(?:(?:please|can you|could you|would you)\s+)?"
-    r"(?:swap|cancel|reschedule|schedule|book|assign|move|delete|remove|complete|mark|"
+    r"(?:swap|switch|cancel|reschedule|schedule|book|assign|move|delete|remove|complete|mark|"
     r"what(?:'s| is)?|show|tell me|give me|how many|how often|who do i have|what do i have|do i have|am i|did i)\b",
     flags=re.IGNORECASE,
 )
@@ -1409,6 +1409,7 @@ def _message_likely_needs_tools(message_text: str) -> bool:
         "delete ",
         "remove ",
         "swap ",
+        "switch ",
         "assign ",
         "block ",
         "move ",
