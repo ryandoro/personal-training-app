@@ -8706,6 +8706,43 @@ html.chrome-macos .client-injury-alert .badge {
     align-items: center;
     justify-content: center;
   }
+
+  .training-container--premium-user:not(.client-workout) .exercise-card--customizable {
+    padding-right: 0.55rem;
+  }
+
+  .training-container--premium-user:not(.client-workout) .exercise-card--customizable .exercise-card-header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 34px;
+    gap: 0.25rem;
+    width: 100%;
+  }
+
+  .training-container--premium-user:not(.client-workout) .exercise-card--customizable .exercise-card-toggle:not(.exercise-card-toggle-mobile) {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .training-container--premium-user:not(.client-workout) .exercise-card--customizable .exercise-card-toggle .exercise-name {
+    padding-right: 0;
+  }
+
+  .training-container--premium-user:not(.client-workout) .exercise-card--customizable .exercise-card-controls {
+    grid-template-columns: 34px;
+    grid-template-rows: repeat(2, 34px);
+    grid-template-areas:
+      "toggle"
+      "refresh";
+    gap: 0.35rem;
+    min-width: 34px;
+    justify-content: end;
+  }
+
+  .training-container--premium-user:not(.client-workout) .exercise-card--customizable .exercise-card-controls .exercise-card-toggle-mobile,
+  .training-container--premium-user:not(.client-workout) .exercise-card--customizable .exercise-card-controls .exercise-refresh-btn {
+    width: 34px;
+    height: 34px;
+  }
 }
 
 .training-container .exercise-list {

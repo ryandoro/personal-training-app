@@ -3146,15 +3146,16 @@ def training():
             cursor.execute("SELECT * FROM users WHERE id = %s", (user_id,))
             user = cursor.fetchone()
 
+    personal_exercise_swap_enabled = _user_can_swap_personal_workout_exercise(user)
     personal_workout_customization_enabled = _user_can_customize_personal_workout(user)
     personal_workout_reorder_url = (
         url_for('personal_reorder_workout_exercises') if personal_workout_customization_enabled else ''
     )
     personal_exercise_refresh_template = (
-        url_for('personal_refresh_workout_exercise', workout_id=0) if personal_workout_customization_enabled else ''
+        url_for('personal_refresh_workout_exercise', workout_id=0) if personal_exercise_swap_enabled else ''
     )
     personal_exercise_alternates_template = (
-        url_for('personal_list_workout_alternatives', workout_id=0) if personal_workout_customization_enabled else ''
+        url_for('personal_list_workout_alternatives', workout_id=0) if personal_exercise_swap_enabled else ''
     )
     personal_exercise_add_template = (
         url_for('personal_add_workout_exercise', workout_id=0) if personal_workout_customization_enabled else ''
@@ -3192,6 +3193,7 @@ def training():
         trainer_platform_goals_prefill=trainer_platform_goals_prefill,
         trainer_client_count_options=TRAINER_CLIENT_COUNT_BUCKETS,
         trainer_sessions_per_week_options=TRAINER_SESSION_BUCKETS,
+        personal_exercise_swap_enabled=personal_exercise_swap_enabled,
         personal_workout_customization_enabled=personal_workout_customization_enabled,
         personal_workout_reorder_url=personal_workout_reorder_url,
         personal_exercise_refresh_template=personal_exercise_refresh_template,
@@ -4198,7 +4200,7 @@ def _require_trainer(user_id: int) -> dict | None:
 
 
 def _user_can_customize_personal_workout(user_row: dict | None) -> bool:
-    """Return True when a user can reorder or refresh their personal workouts."""
+    """Return True when a user can add, remove, or reorder personal workouts."""
     if not user_row:
         return False
     role = (user_row.get('role') or '').lower()
@@ -4206,6 +4208,14 @@ def _user_can_customize_personal_workout(user_row: dict | None) -> bool:
     if role not in {'trainer', 'admin'}:
         return False
     return subscription == 'pro'
+
+
+def _user_can_swap_personal_workout_exercise(user_row: dict | None) -> bool:
+    """Return True when a user can swap exercises in their personal workout."""
+    if not user_row:
+        return False
+    subscription = (user_row.get('subscription_type') or '').lower()
+    return subscription in {'premium', 'pro'}
 
 
 def _trainer_has_pro_access(trainer_row: dict | None) -> bool:
@@ -11807,8 +11817,8 @@ def personal_list_workout_alternatives(workout_id):
                 (user_id,),
             )
             user_row = cursor.fetchone()
-    if not _user_can_customize_personal_workout(user_row):
-        return jsonify({'success': False, 'error': 'Trainer Pro access required.'}), 403
+    if not _user_can_swap_personal_workout_exercise(user_row):
+        return jsonify({'success': False, 'error': 'Premium or Pro access required.'}), 403
 
     subcategory = (request.args.get('subcategory') or '').strip()
     if not subcategory:
@@ -11876,8 +11886,8 @@ def personal_refresh_workout_exercise(workout_id):
                 (user_id,),
             )
             user_row = cursor.fetchone()
-    if not _user_can_customize_personal_workout(user_row):
-        return jsonify({'success': False, 'error': 'Trainer Pro access required.'}), 403
+    if not _user_can_swap_personal_workout_exercise(user_row):
+        return jsonify({'success': False, 'error': 'Premium or Pro access required.'}), 403
 
     payload = request.get_json(silent=True) or {}
     subcategory = (payload.get('subcategory') or '').strip()

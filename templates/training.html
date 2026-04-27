@@ -855,6 +855,7 @@
        
         <script id="training-workout-config" type="application/json">
         {{ {
+            'enablePersonalExerciseSwap': personal_exercise_swap_enabled,
             'enablePersonalWorkoutCustomization': personal_workout_customization_enabled,
             'personalWorkoutReorderUrl': personal_workout_reorder_url,
             'personalExerciseRefreshTemplate': personal_exercise_refresh_template,
@@ -931,6 +932,7 @@
                     trainingWorkoutConfig = {};
                 }
             }
+            const PERSONAL_EXERCISE_SWAP_ENABLED = !!trainingWorkoutConfig.enablePersonalExerciseSwap;
             const PERSONAL_CUSTOMIZATION_ENABLED = !!trainingWorkoutConfig.enablePersonalWorkoutCustomization;
             const PERSONAL_REORDER_URL = trainingWorkoutConfig.personalWorkoutReorderUrl || '';
             const PERSONAL_REFRESH_TEMPLATE = trainingWorkoutConfig.personalExerciseRefreshTemplate || '';
@@ -1002,7 +1004,7 @@
             }
 
             function canCustomizeWorkout() {
-                return PERSONAL_CUSTOMIZATION_ENABLED;
+                return canRefreshExercises() || canAddRemoveExercises() || canReorderExercises();
             }
 
             function canReorderExercises() {
@@ -1010,7 +1012,7 @@
             }
 
             function canRefreshExercises() {
-                return PERSONAL_CUSTOMIZATION_ENABLED && !!PERSONAL_REFRESH_TEMPLATE;
+                return PERSONAL_EXERCISE_SWAP_ENABLED && !!PERSONAL_REFRESH_TEMPLATE;
             }
 
             function canAddRemoveExercises() {
@@ -1033,7 +1035,7 @@
                     }
                     if (handle) {
                         handle.setAttribute('draggable', dragEnabled ? 'true' : 'false');
-                        handle.style.display = canCustomizeWorkout() ? 'inline-flex' : 'none';
+                        handle.style.display = dragEnabled ? 'inline-flex' : 'none';
                     }
                     if (controls) {
                         controls.style.display = canCustomizeWorkout() ? '' : 'none';
@@ -2310,6 +2312,9 @@
 
                 const subcategoryAttr = escapeHtml(subcategoryName || '');
                 const showCardControls = canCustomizeWorkout();
+                const showRefreshControl = canRefreshExercises();
+                const showRemoveControl = canAddRemoveExercises();
+                const showDragHandle = canReorderExercises();
                 const cardControlsHtml = showCardControls ? `
                                 <div class="exercise-card-controls">
                                     <button type="button"
@@ -2321,6 +2326,7 @@
                                             <i class="bi bi-chevron-down"></i>
                                         </span>
                                     </button>
+                                    ${showRefreshControl ? `
                                     <button type="button"
                                         class="exercise-refresh-btn"
                                         data-subcategory="${subcategoryAttr}"
@@ -2328,6 +2334,8 @@
                                         aria-label="Swap exercise">
                                         <i class="bi bi-arrow-repeat"></i>
                                     </button>
+                                    ` : ''}
+                                    ${showRemoveControl ? `
                                     <button type="button"
                                         class="exercise-remove-btn"
                                         data-subcategory="${subcategoryAttr}"
@@ -2335,11 +2343,14 @@
                                         aria-label="Remove exercise">
                                         <i class="bi bi-dash"></i>
                                     </button>
+                                    ` : ''}
+                                    ${showDragHandle ? `
                                     <span class="exercise-drag-handle"
                                           title="Drag to reorder"
                                           aria-hidden="true">
                                         <i class="bi bi-grip-vertical"></i>
                                     </span>
+                                    ` : ''}
                                 </div>
                 ` : '';
                 const progressSection = IS_FREE_USER ? '' : `
